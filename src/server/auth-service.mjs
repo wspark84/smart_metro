@@ -125,7 +125,7 @@ export function ensureSocialAuthUser(existingUsers, provider, profile, now = new
     throw invalidAuthInput("The social provider did not verify ownership of this email address.");
   }
 
-  const matchedUser = matchedByProvider || matchedByEmail;
+  let matchedUser = matchedByProvider || matchedByEmail;
 
   if (!matchedUser) {
     const createdAt = now.toISOString();

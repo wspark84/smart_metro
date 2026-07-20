@@ -167,6 +167,25 @@ test("ensureSocialAuthUser links a provider by email and preserves one user reco
   assert.equal(linked.user.name, "Owner From Google");
 });
 
+test("ensureSocialAuthUser creates a new account for a verified social identity", () => {
+  const created = ensureSocialAuthUser(
+    [],
+    "google",
+    {
+      subject: "google-new-subject-1",
+      email: "new-google-user@example.com",
+      emailVerified: true,
+      name: "New Google User",
+    },
+    new Date("2026-07-20T00:00:00.000Z"),
+  );
+
+  assert.equal(created.created, true);
+  assert.equal(created.users.length, 1);
+  assert.equal(created.user.email, "new-google-user@example.com");
+  assert.equal(created.user.providers.google.subject, "google-new-subject-1");
+});
+
 test("ensureSocialAuthUser rejects an unverified social email before linking it to a local account", async () => {
   const owner = await registerAuthUser([], {
     email: "owner@example.com",
