@@ -1,0 +1,5 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Debug-only: lets a real phone reach a developer's HTTP LAN server.
+         Release builds still require HTTPS in MobileApiClient. -->
+    <application android:usesCleartextTraffic="true" />
+</manifest>

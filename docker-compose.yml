@@ -1,0 +1,58 @@
+services:
+  buswakeup:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: buswakeup:local
+    init: true
+    restart: unless-stopped
+    environment:
+      PORT: "4173"
+      NODE_ENV: production
+      TZ: Asia/Seoul
+      APP_BASE_URL: "${APP_BASE_URL:-http://127.0.0.1:4173}"
+      PUSH_GATEWAY_MODE: "${PUSH_GATEWAY_MODE:-preview}"
+      SEOUL_OPEN_API_KEY: "${SEOUL_OPEN_API_KEY:-}"
+      GYEONGGI_SERVICE_KEY: "${GYEONGGI_SERVICE_KEY:-}"
+      TAGO_SERVICE_KEY: "${TAGO_SERVICE_KEY:-}"
+      HOLIDAY_API_SERVICE_KEY: "${HOLIDAY_API_SERVICE_KEY:-}"
+      KAKAO_LOCAL_REST_API_KEY: "${KAKAO_LOCAL_REST_API_KEY:-}"
+      KAKAO_MOBILITY_REST_API_KEY: "${KAKAO_MOBILITY_REST_API_KEY:-}"
+      KAKAO_JAVASCRIPT_KEY: "${KAKAO_JAVASCRIPT_KEY:-}"
+      GOOGLE_CLIENT_ID: "${GOOGLE_CLIENT_ID:-}"
+      GOOGLE_CLIENT_SECRET: "${GOOGLE_CLIENT_SECRET:-}"
+      APPLE_SERVICE_ID: "${APPLE_SERVICE_ID:-}"
+      APPLE_TEAM_ID: "${APPLE_TEAM_ID:-}"
+      APPLE_KEY_ID: "${APPLE_KEY_ID:-}"
+      APPLE_PRIVATE_KEY: "${APPLE_PRIVATE_KEY:-}"
+      FCM_PROJECT_ID: "${FCM_PROJECT_ID:-}"
+      FCM_ACCESS_TOKEN: "${FCM_ACCESS_TOKEN:-}"
+      FCM_SERVICE_ACCOUNT_EMAIL: "${FCM_SERVICE_ACCOUNT_EMAIL:-}"
+      FCM_SERVICE_ACCOUNT_PRIVATE_KEY: "${FCM_SERVICE_ACCOUNT_PRIVATE_KEY:-}"
+      FCM_SERVICE_ACCOUNT_PRIVATE_KEY_ID: "${FCM_SERVICE_ACCOUNT_PRIVATE_KEY_ID:-}"
+      FCM_SERVICE_ACCOUNT_PROJECT_ID: "${FCM_SERVICE_ACCOUNT_PROJECT_ID:-}"
+      FCM_SERVICE_ACCOUNT_JSON: "${FCM_SERVICE_ACCOUNT_JSON:-}"
+      APNS_BUNDLE_ID: "${APNS_BUNDLE_ID:-}"
+      APNS_TEAM_ID: "${APNS_TEAM_ID:-}"
+      APNS_KEY_ID: "${APNS_KEY_ID:-}"
+      APNS_PRIVATE_KEY: "${APNS_PRIVATE_KEY:-}"
+      APNS_AUTH_TOKEN: "${APNS_AUTH_TOKEN:-}"
+      APNS_ENV: "${APNS_ENV:-production}"
+      EMAIL_FROM: "${EMAIL_FROM:-}"
+      SMTP_URL: "${SMTP_URL:-}"
+      SMTP_HOST: "${SMTP_HOST:-}"
+      SMTP_PORT: "${SMTP_PORT:-587}"
+      SMTP_SECURE: "${SMTP_SECURE:-false}"
+      SMTP_USER: "${SMTP_USER:-}"
+      SMTP_PASS: "${SMTP_PASS:-}"
+      WEB_PUSH_VAPID_SUBJECT: "${WEB_PUSH_VAPID_SUBJECT:-}"
+      WEB_PUSH_VAPID_PUBLIC_KEY: "${WEB_PUSH_VAPID_PUBLIC_KEY:-}"
+      WEB_PUSH_VAPID_PRIVATE_KEY: "${WEB_PUSH_VAPID_PRIVATE_KEY:-}"
+    ports:
+      - "${BUSWAKEUP_PORT:-4173}:4173"
+    volumes:
+      - buswakeup-data:/app/data
+    stop_grace_period: 20s
+
+volumes:
+  buswakeup-data:

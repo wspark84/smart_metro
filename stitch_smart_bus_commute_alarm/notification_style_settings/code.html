@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Notification Style Settings - BusWakeUp</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&amp;family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "surface-tint": "#2b5bb5",
+                        "tertiary": "#681700",
+                        "primary-container": "#0d47a1",
+                        "tertiary-container": "#902300",
+                        "on-background": "#191c1e",
+                        "error-container": "#ffdad6",
+                        "surface-dim": "#d8dadd",
+                        "surface-container-lowest": "#ffffff",
+                        "inverse-primary": "#b0c6ff",
+                        "secondary": "#006a62",
+                        "on-secondary-fixed": "#00201d",
+                        "on-tertiary-fixed-variant": "#872000",
+                        "on-secondary-fixed-variant": "#005049",
+                        "surface-variant": "#e0e3e6",
+                        "on-surface": "#191c1e",
+                        "primary-fixed": "#d9e2ff",
+                        "on-tertiary": "#ffffff",
+                        "surface-container-highest": "#e0e3e6",
+                        "on-secondary-container": "#006f66",
+                        "on-tertiary-container": "#ffa58d",
+                        "primary": "#003178",
+                        "primary-fixed-dim": "#b0c6ff",
+                        "on-primary": "#ffffff",
+                        "surface-container": "#eceef1",
+                        "surface-bright": "#f7f9fc",
+                        "on-surface-variant": "#434652",
+                        "on-primary-container": "#a1bbff",
+                        "outline": "#737783",
+                        "secondary-container": "#81f3e5",
+                        "on-secondary": "#ffffff",
+                        "on-error-container": "#93000a",
+                        "on-primary-fixed": "#001945",
+                        "secondary-fixed-dim": "#66d9cc",
+                        "background": "#f7f9fc",
+                        "surface-container-low": "#f2f4f7",
+                        "on-tertiary-fixed": "#3b0900",
+                        "inverse-surface": "#2d3133",
+                        "on-error": "#ffffff",
+                        "on-primary-fixed-variant": "#00429c",
+                        "outline-variant": "#c3c6d4",
+                        "secondary-fixed": "#84f5e8",
+                        "tertiary-fixed": "#ffdbd1",
+                        "surface-container-high": "#e6e8eb",
+                        "inverse-on-surface": "#eff1f4",
+                        "error": "#ba1a1a",
+                        "tertiary-fixed-dim": "#ffb5a0",
+                        "surface": "#f7f9fc"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "fontFamily": {
+                        "headline": ["Manrope"],
+                        "body": ["Inter"],
+                        "label": ["Inter"]
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        body { font-family: 'Inter', sans-serif; }
+        h1, h2, h3, h4, h5, h6, .font-headline { font-family: 'Manrope', sans-serif; }
+        
+        /* Custom Range Slider Styling */
+        input[type=range] {
+            -webkit-appearance: none;
+            width: 100%;
+            background: transparent;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 24px;
+            width: 24px;
+            border-radius: 50%;
+            background: #ffffff;
+            cursor: pointer;
+            margin-top: -10px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+            border: 2px solid #003178;
+        }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 4px;
+            cursor: pointer;
+            background: #e0e3e6;
+            border-radius: 2px;
+        }
+        input[type=range]:focus {
+            outline: none;
+        }
+        
+        /* Custom Toggle Switch */
+        .toggle-checkbox:checked {
+            right: 0;
+            border-color: #003178;
+        }
+        .toggle-checkbox:checked + .toggle-label {
+            background-color: #003178;
+        }
+        .toggle-checkbox:checked + .toggle-label:after {
+            transform: translateX(100%);
+            border-color: white;
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-surface text-on-surface min-h-screen pb-24">
+<!-- TopAppBar -->
+<header class="sticky top-0 z-50 w-full flex justify-between items-center px-6 py-4 bg-surface-bright/90 backdrop-blur-md">
+<div class="flex items-center gap-4">
+<button class="h-12 w-12 flex items-center justify-center rounded-full hover:bg-surface-container-high transition-colors">
+<span class="material-symbols-outlined text-on-surface" data-icon="arrow_back">arrow_back</span>
+</button>
+<h1 class="font-headline font-extrabold tracking-[-0.02em] text-2xl text-on-surface">Notification Style</h1>
+</div>
+</header>
+<!-- Main Content -->
+<main class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 space-y-8">
+<!-- Sound Section -->
+<section class="bg-surface-container-low rounded-3xl p-1 overflow-hidden">
+<div class="bg-surface-container-lowest rounded-[1.375rem] p-6 shadow-[0_4px_12px_rgba(25,28,30,0.02)]">
+<div class="flex items-center gap-3 mb-6">
+<div class="w-10 h-10 rounded-full bg-primary-fixed flex items-center justify-center text-on-primary-fixed">
+<span class="material-symbols-outlined" data-icon="volume_up" style="font-variation-settings: 'FILL' 1;">volume_up</span>
+</div>
+<h2 class="font-headline font-bold text-xl text-on-surface">Sound Alert</h2>
+</div>
+<div class="space-y-4">
+<!-- Option 1 -->
+<label class="flex items-center justify-between p-4 rounded-2xl border-2 border-primary-fixed bg-surface-bright cursor-pointer hover:bg-surface-container-low transition-colors">
+<div class="flex items-center gap-4">
+<div class="w-6 h-6 rounded-full border-2 border-primary flex items-center justify-center">
+<div class="w-3 h-3 rounded-full bg-primary"></div>
+</div>
+<div>
+<div class="font-medium text-on-surface">Energetic Melody</div>
+<div class="text-sm text-on-surface-variant">High frequency, cuts through noise</div>
+</div>
+</div>
+<button class="h-10 w-10 rounded-full bg-surface-container-highest flex items-center justify-center hover:bg-primary-fixed transition-colors text-primary">
+<span class="material-symbols-outlined" data-icon="play_arrow" style="font-variation-settings: 'FILL' 1;">play_arrow</span>
+</button>
+</label>
+<!-- Option 2 -->
+<label class="flex items-center justify-between p-4 rounded-2xl border-2 border-transparent hover:bg-surface-container-low transition-colors cursor-pointer">
+<div class="flex items-center gap-4">
+<div class="w-6 h-6 rounded-full border-2 border-outline flex items-center justify-center"></div>
+<div>
+<div class="font-medium text-on-surface">Calm Chime</div>
+<div class="text-sm text-on-surface-variant">Gentle wake-up for quiet environments</div>
+</div>
+</div>
+<button class="h-10 w-10 rounded-full bg-surface-container-highest flex items-center justify-center hover:bg-primary-fixed transition-colors text-primary">
+<span class="material-symbols-outlined" data-icon="play_arrow" style="font-variation-settings: 'FILL' 1;">play_arrow</span>
+</button>
+</label>
+<!-- Option 3 -->
+<label class="flex items-center justify-between p-4 rounded-2xl border-2 border-transparent hover:bg-surface-container-low transition-colors cursor-pointer">
+<div class="flex items-center gap-4">
+<div class="w-6 h-6 rounded-full border-2 border-outline flex items-center justify-center"></div>
+<div>
+<div class="font-medium text-on-surface">Strong Alarm</div>
+<div class="text-sm text-on-surface-variant">Maximum urgency</div>
+</div>
+</div>
+<button class="h-10 w-10 rounded-full bg-surface-container-highest flex items-center justify-center hover:bg-primary-fixed transition-colors text-primary">
+<span class="material-symbols-outlined" data-icon="play_arrow" style="font-variation-settings: 'FILL' 1;">play_arrow</span>
+</button>
+</label>
+</div>
+</div>
+</section>
+<!-- Vibration Section -->
+<section class="bg-surface-container-low rounded-3xl p-1 overflow-hidden">
+<div class="bg-surface-container-lowest rounded-[1.375rem] p-6 shadow-[0_4px_12px_rgba(25,28,30,0.02)]">
+<div class="flex items-center gap-3 mb-6">
+<div class="w-10 h-10 rounded-full bg-primary-fixed flex items-center justify-center text-on-primary-fixed">
+<span class="material-symbols-outlined" data-icon="vibration" style="font-variation-settings: 'FILL' 1;">vibration</span>
+</div>
+<h2 class="font-headline font-bold text-xl text-on-surface">Vibration</h2>
+</div>
+<div class="mb-8">
+<div class="flex justify-between items-center mb-4">
+<label class="font-medium text-on-surface">Vibration Strength</label>
+<span class="text-sm font-bold text-primary">Heavy</span>
+</div>
+<div class="relative pt-2">
+<input class="w-full" max="100" min="1" type="range" value="80"/>
+<div class="flex justify-between text-xs text-on-surface-variant mt-2 px-1">
+<span>Light</span>
+<span>Medium</span>
+<span>Heavy</span>
+</div>
+</div>
+</div>
+<div class="flex items-center justify-between p-4 bg-surface-container-low rounded-2xl">
+<div class="pr-4">
+<div class="font-medium text-on-surface mb-1">Escalation Mode</div>
+<div class="text-sm text-on-surface-variant">Gradually increases strength if unacknowledged</div>
+</div>
+<div class="relative inline-block w-12 mr-2 align-middle select-none transition duration-200 ease-in">
+<input checked="" class="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer z-10 transition-transform duration-200 ease-in-out" id="escalation-toggle" name="toggle" style="right: 0; border-color: #003178; transform: translateX(0);" type="checkbox"/>
+<label class="toggle-label block overflow-hidden h-6 rounded-full bg-primary cursor-pointer" for="escalation-toggle"></label>
+</div>
+</div>
+</div>
+</section>
+<!-- TTS Section -->
+<section class="bg-surface-container-low rounded-3xl p-1 overflow-hidden">
+<div class="bg-surface-container-lowest rounded-[1.375rem] p-6 shadow-[0_4px_12px_rgba(25,28,30,0.02)]">
+<div class="flex items-center gap-3 mb-6">
+<div class="w-10 h-10 rounded-full bg-primary-fixed flex items-center justify-center text-on-primary-fixed">
+<span class="material-symbols-outlined" data-icon="record_voice_over" style="font-variation-settings: 'FILL' 1;">record_voice_over</span>
+</div>
+<h2 class="font-headline font-bold text-xl text-on-surface">Voice Guidance (TTS)</h2>
+</div>
+<div class="grid grid-cols-2 gap-3 mb-6">
+<button class="py-3 px-4 rounded-xl bg-primary text-on-primary font-medium text-sm border border-transparent shadow-[0_2px_8px_rgba(0,49,120,0.2)]">Korean Female</button>
+<button class="py-3 px-4 rounded-xl bg-surface-container-high text-on-surface font-medium text-sm border border-outline-variant/30 hover:bg-surface-variant transition-colors">Korean Male</button>
+</div>
+<div class="mb-8">
+<div class="flex justify-between items-center mb-4">
+<label class="font-medium text-on-surface">Speaking Speed</label>
+<span class="text-sm font-bold text-primary">1.1x</span>
+</div>
+<div class="relative pt-2">
+<input class="w-full" max="13" min="8" type="range" value="11"/>
+<div class="flex justify-between text-xs text-on-surface-variant mt-2 px-1">
+<span>0.8x</span>
+<span>Normal</span>
+<span>1.3x</span>
+</div>
+</div>
+</div>
+<button class="w-full py-4 px-6 rounded-xl bg-surface-container-high text-primary font-medium flex items-center justify-center gap-2 hover:bg-primary-fixed transition-colors">
+<span class="material-symbols-outlined" data-icon="hearing" style="font-variation-settings: 'FILL' 1;">hearing</span>
+                    Listen to Sample
+                </button>
+<p class="text-center text-xs text-on-surface-variant mt-3 italic">"Bus 1002 is arriving in 5 minutes."</p>
+</div>
+</section>
+<!-- DND Section -->
+<section class="bg-surface-container-highest rounded-3xl p-1 overflow-hidden">
+<div class="bg-surface-container-lowest rounded-[1.375rem] p-6 shadow-[0_4px_12px_rgba(25,28,30,0.02)]">
+<div class="flex items-start justify-between">
+<div class="pr-6">
+<div class="flex items-center gap-2 mb-2">
+<span class="material-symbols-outlined text-tertiary" data-icon="warning" style="font-variation-settings: 'FILL' 1;">warning</span>
+<div class="font-headline font-bold text-lg text-tertiary">Critical Alert Bypass</div>
+</div>
+<div class="text-sm text-on-surface-variant">Allow BusWakeUp to sound alerts even when 'Do Not Disturb' is active. Recommended for crucial morning commutes.</div>
+</div>
+<div class="relative inline-block w-12 mr-2 mt-1 align-middle select-none transition duration-200 ease-in shrink-0">
+<input class="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 border-outline appearance-none cursor-pointer z-10 transition-transform duration-200 ease-in-out" id="dnd-toggle" name="toggle-dnd" style="left: 0;" type="checkbox"/>
+<label class="toggle-label block overflow-hidden h-6 rounded-full bg-surface-container-high cursor-pointer" for="dnd-toggle"></label>
+</div>
+</div>
+</div>
+</section>
+</main>
+</body></html>

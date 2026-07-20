@@ -1,0 +1,20 @@
+{
+  "name": "buswakeup-prototype",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node server.mjs",
+    "test": "node --test --test-isolation=none",
+    "mobile:doctor": "powershell -ExecutionPolicy Bypass -File .\\scripts\\mobile-flutter.ps1 doctor",
+    "mobile:pub:get": "powershell -ExecutionPolicy Bypass -File .\\scripts\\mobile-flutter.ps1 pub-get",
+    "mobile:analyze": "powershell -ExecutionPolicy Bypass -File .\\scripts\\mobile-flutter.ps1 analyze",
+    "mobile:test": "powershell -ExecutionPolicy Bypass -File .\\scripts\\mobile-flutter.ps1 test",
+    "mobile:build:web": "powershell -ExecutionPolicy Bypass -File .\\scripts\\mobile-flutter.ps1 build-web",
+    "mobile:build:apk:debug": "powershell -ExecutionPolicy Bypass -File .\\scripts\\mobile-flutter.ps1 build-apk-debug"
+  },
+  "dependencies": {
+    "nodemailer": "^9.0.3",
+    "web-push": "^3.6.7"
+  }
+}

@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Route Registration</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700;800&amp;family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "surface-tint": "#2b5bb5",
+                        "tertiary": "#681700",
+                        "primary-container": "#0d47a1",
+                        "tertiary-container": "#902300",
+                        "on-background": "#191c1e",
+                        "error-container": "#ffdad6",
+                        "surface-dim": "#d8dadd",
+                        "surface-container-lowest": "#ffffff",
+                        "inverse-primary": "#b0c6ff",
+                        "secondary": "#006a62",
+                        "on-secondary-fixed": "#00201d",
+                        "on-tertiary-fixed-variant": "#872000",
+                        "on-secondary-fixed-variant": "#005049",
+                        "surface-variant": "#e0e3e6",
+                        "on-surface": "#191c1e",
+                        "primary-fixed": "#d9e2ff",
+                        "on-tertiary": "#ffffff",
+                        "surface-container-highest": "#e0e3e6",
+                        "on-secondary-container": "#006f66",
+                        "on-tertiary-container": "#ffa58d",
+                        "primary": "#003178",
+                        "primary-fixed-dim": "#b0c6ff",
+                        "on-primary": "#ffffff",
+                        "surface-container": "#eceef1",
+                        "surface-bright": "#f7f9fc",
+                        "on-surface-variant": "#434652",
+                        "on-primary-container": "#a1bbff",
+                        "outline": "#737783",
+                        "secondary-container": "#81f3e5",
+                        "on-secondary": "#ffffff",
+                        "on-error-container": "#93000a",
+                        "on-primary-fixed": "#001945",
+                        "secondary-fixed-dim": "#66d9cc",
+                        "background": "#f7f9fc",
+                        "surface-container-low": "#f2f4f7",
+                        "on-tertiary-fixed": "#3b0900",
+                        "inverse-surface": "#2d3133",
+                        "on-error": "#ffffff",
+                        "on-primary-fixed-variant": "#00429c",
+                        "outline-variant": "#c3c6d4",
+                        "secondary-fixed": "#84f5e8",
+                        "tertiary-fixed": "#ffdbd1",
+                        "surface-container-high": "#e6e8eb",
+                        "inverse-on-surface": "#eff1f4",
+                        "error": "#ba1a1a",
+                        "tertiary-fixed-dim": "#ffb5a0",
+                        "surface": "#f7f9fc"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "fontFamily": {
+                        "headline": ["Manrope", "sans-serif"],
+                        "body": ["Inter", "sans-serif"],
+                        "label": ["Inter", "sans-serif"]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-surface text-on-surface font-body antialiased min-h-screen flex flex-col">
+<!-- TopAppBar -->
+<header class="flex justify-between items-center w-full px-6 py-4 bg-surface-bright docked full-width top-0 z-10 sticky">
+<div class="flex items-center gap-3">
+<button aria-label="Go back" class="text-primary hover:bg-surface-variant rounded-full p-2 transition-transform duration-200 scale-98 active:scale-95">
+<span class="material-symbols-outlined text-[24px]">arrow_back</span>
+</button>
+<h1 class="font-headline font-extrabold tracking-[-0.02em] text-2xl text-primary">Route Registration</h1>
+</div>
+<div class="w-10 h-10 rounded-full overflow-hidden bg-surface-container-high flex items-center justify-center">
+<img alt="User profile portrait" class="w-full h-full object-cover" data-alt="Close up portrait of a young professional smiling softly with neutral background lighting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuB9-PPg8vvkZg8TrZORR4A8BU17TGa3p-ZGtdmzdUtVMB80i2iEETE2_432ajX5dnbpDX8kSnFaoJik0mFkd5-7BKLo9akIPJsntF5gA8KPdKNuTcnSw6P0s1_9JA1ZGNFNvR4C0R15hoVtWVqCzhbwgUqWGXpj_3n7i3xZET2u3il_uj8D_NLPQ7jzOL5Kau4O0O-EOuYIHwhnG0nwNr2DFFM7TH_fWkOd5KTsyNyELD30BsAv4ByUSFDxWtz2lGU9IT5sRtRytSin"/>
+</div>
+</header>
+<main class="flex-grow flex flex-col px-4 pb-24 md:max-w-2xl md:mx-auto md:w-full md:pt-8">
+<!-- Progress Indicator -->
+<div class="mb-8 pt-4">
+<div class="flex justify-between items-center mb-2">
+<span class="font-label text-sm text-on-surface-variant font-medium uppercase tracking-wider">Step 3 of 5</span>
+<span class="font-label text-sm font-semibold text-primary">Bus Stop &amp; Route</span>
+</div>
+<div class="h-2 bg-surface-container-high rounded-full w-full overflow-hidden">
+<div class="h-full bg-gradient-to-r from-primary to-primary-container w-[60%] rounded-full transition-all duration-500 ease-in-out"></div>
+</div>
+</div>
+<!-- Section: Search Stop -->
+<section class="mb-8">
+<h2 class="font-headline font-bold text-xl text-on-surface mb-4">Where do you board?</h2>
+<div class="relative group">
+<div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+<span class="material-symbols-outlined text-outline-variant group-focus-within:text-primary transition-colors">search</span>
+</div>
+<input class="w-full pl-12 pr-4 py-4 bg-surface-container-highest border-0 rounded-xl font-body text-base text-on-surface placeholder-on-surface-variant focus:ring-2 focus:ring-primary focus:bg-primary-fixed transition-all min-h-[48px] shadow-sm" placeholder="Search stop name or ID (e.g., Gwanghwamun)" type="text"/>
+<!-- Quick Suggestion Chip -->
+<div class="absolute right-3 top-1/2 -translate-y-1/2">
+<button class="bg-surface-container-low hover:bg-surface-variant text-primary text-xs font-medium px-3 py-1.5 rounded-full transition-colors flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]">my_location</span> Near me
+                    </button>
+</div>
+</div>
+</section>
+<!-- Section: Results & Map Split -->
+<div class="flex flex-col md:flex-row gap-6 mb-10 h-full">
+<!-- Map Preview (Bento-style card) -->
+<div class="w-full md:w-1/2 bg-surface-container-low rounded-2xl overflow-hidden relative min-h-[200px] shadow-[0_8px_24px_rgba(25,28,30,0.03)] border border-outline-variant/15 flex flex-col">
+<div class="absolute top-3 left-3 z-10 bg-surface/90 backdrop-blur-md px-3 py-1.5 rounded-lg text-xs font-semibold text-on-surface flex items-center gap-1 shadow-sm border border-outline-variant/10">
+<span class="material-symbols-outlined text-[14px] text-primary">location_on</span>
+                    Gwanghwamun Station
+                </div>
+<!-- Simulated Map Image -->
+<div class="flex-grow relative bg-surface-container-high w-full h-full min-h-[250px]">
+<img alt="Map preview of Gwanghwamun area" class="w-full h-full object-cover opacity-80 mix-blend-multiply" data-alt="Digital clean transit map view showing downtown city streets with a highlighted blue marker pin indicating bus stop location" data-location="Seoul" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAsK9NulfqpJu1fualu1NsfboOXtG4E7gDQ9JWSxmG83Gc_u2VoIntLEh2_eoS42M5ox913n0HctTzFwmr-Nz5rf5AJ1nAOiR84_IZC4cB_I7ORc6G6OAxpuAZQ3JH8KCp32E7GOdfTslHdm8upnCr9AvhRldUrT6s_LaduRSruzshgqG778kt2u7OnBuJc4sf7JUY9sdmItbquosdDFDyP6LLMavXsd29GRf7s-8grOwps8Vceb6rfgVq7_BW_AzCRXMwoylRAyb5q"/>
+<!-- Map Pin Overlay -->
+<div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
+<div class="w-8 h-8 bg-primary rounded-full flex items-center justify-center shadow-lg border-2 border-surface-container-lowest animate-pulse">
+<div class="w-3 h-3 bg-white rounded-full"></div>
+</div>
+</div>
+</div>
+</div>
+<!-- Route Selection List -->
+<div class="w-full md:w-1/2 flex flex-col space-y-3">
+<h3 class="font-headline font-bold text-lg text-on-surface mb-1">Select routes passing here</h3>
+<!-- Selected Route -->
+<label class="relative flex items-center justify-between p-4 bg-surface-container-lowest rounded-xl cursor-pointer shadow-[0_4px_12px_rgba(25,28,30,0.02)] transition-all hover:bg-surface-variant/50 group border border-primary ring-1 ring-primary overflow-hidden">
+<div class="absolute inset-0 bg-primary/5 pointer-events-none"></div>
+<div class="flex items-center gap-4 z-10">
+<div class="w-12 h-12 rounded-lg bg-primary-container flex items-center justify-center text-on-primary font-headline font-bold text-lg shadow-sm">
+                            1002
+                        </div>
+<div class="flex flex-col">
+<span class="font-body font-semibold text-on-surface">Express Bus</span>
+<span class="font-label text-xs text-on-surface-variant">To: Gangnam Stn</span>
+</div>
+</div>
+<div class="z-10">
+<input checked="" class="w-6 h-6 rounded-md border-outline-variant text-primary focus:ring-primary-container bg-surface-container-lowest" type="checkbox"/>
+</div>
+</label>
+<!-- Selected Route -->
+<label class="relative flex items-center justify-between p-4 bg-surface-container-lowest rounded-xl cursor-pointer shadow-[0_4px_12px_rgba(25,28,30,0.02)] transition-all hover:bg-surface-variant/50 group border border-primary ring-1 ring-primary overflow-hidden">
+<div class="absolute inset-0 bg-primary/5 pointer-events-none"></div>
+<div class="flex items-center gap-4 z-10">
+<div class="w-12 h-12 rounded-lg bg-surface-tint flex items-center justify-center text-white font-headline font-bold text-lg shadow-sm">
+                            701
+                        </div>
+<div class="flex flex-col">
+<span class="font-body font-semibold text-on-surface">Trunk Bus</span>
+<span class="font-label text-xs text-on-surface-variant">To: Seoul Stn</span>
+</div>
+</div>
+<div class="z-10">
+<input checked="" class="w-6 h-6 rounded-md border-outline-variant text-primary focus:ring-primary-container bg-surface-container-lowest" type="checkbox"/>
+</div>
+</label>
+<!-- Unselected Route -->
+<label class="relative flex items-center justify-between p-4 bg-surface-container-lowest rounded-xl cursor-pointer shadow-[0_4px_12px_rgba(25,28,30,0.02)] transition-all hover:bg-surface-variant/50 group border border-transparent">
+<div class="flex items-center gap-4">
+<div class="w-12 h-12 rounded-lg bg-surface-variant flex items-center justify-center text-on-surface-variant font-headline font-bold text-lg group-hover:bg-surface-container-high transition-colors">
+                            7212
+                        </div>
+<div class="flex flex-col">
+<span class="font-body font-medium text-on-surface">Branch Bus</span>
+<span class="font-label text-xs text-on-surface-variant">To: Eunpyeong</span>
+</div>
+</div>
+<div>
+<input class="w-6 h-6 rounded-md border-outline-variant text-primary focus:ring-primary-container bg-surface-container-lowest" type="checkbox"/>
+</div>
+</label>
+</div>
+</div>
+</main>
+<!-- Bottom Action Area -->
+<div class="fixed bottom-0 left-0 w-full bg-surface/90 backdrop-blur-xl border-t border-outline-variant/10 px-6 py-4 flex justify-between items-center gap-4 z-40 pb-safe md:relative md:bg-transparent md:border-0 md:pt-8 md:pb-12 md:max-w-2xl md:mx-auto">
+<button class="flex-1 py-4 font-body font-medium text-primary bg-surface-container-high hover:bg-surface-variant rounded-xl transition-colors min-h-[48px]">
+            Back
+        </button>
+<button class="flex-[2] py-4 font-headline font-bold text-white bg-gradient-to-br from-primary to-primary-container hover:opacity-90 rounded-xl transition-opacity min-h-[48px] shadow-[0_8px_24px_rgba(13,71,161,0.25)] flex justify-center items-center gap-2">
+            Continue <span class="material-symbols-outlined text-[20px]">arrow_forward</span>
+</button>
+</div>
+</body></html>

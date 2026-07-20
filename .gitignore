@@ -1,0 +1,36 @@
+# Local environment variables and credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p8
+*.p12
+*.mobileprovision
+*.keystore
+*.jks
+
+# Runtime data and logs
+/data/
+*.log
+.server-*.log
+
+# JavaScript dependencies
+/node_modules/
+
+# Flutter and native mobile build output
+/mobile_app/.dart_tool/
+/mobile_app/.packages
+/mobile_app/build/
+/mobile_app/.gradle/
+/mobile_app/android/.gradle/
+/mobile_app/android/local.properties
+/mobile_app/android/key.properties
+/mobile_app/ios/Flutter/Generated.xcconfig
+/mobile_app/ios/Flutter/flutter_export_environment.sh
+
+# Local editor and workflow state
+/.gstack/
+.DS_Store
+.idea/
+.vscode/

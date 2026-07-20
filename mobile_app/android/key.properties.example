@@ -1,0 +1,6 @@
+# Copy this file to key.properties and fill it with the release keystore values.
+# Do not commit key.properties or the keystore file.
+storeFile=C:\\path\\to\\buswakeup-release.keystore
+storePassword=
+keyAlias=
+keyPassword=
