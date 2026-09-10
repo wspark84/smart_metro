@@ -1,3 +1,4 @@
+import { isValidLocation } from "../logic/commute.js";
 let sdkPromise = null;
 
 function loadKakaoMapSdk(appKey) {
@@ -26,7 +27,7 @@ function loadKakaoMapSdk(appKey) {
 }
 
 function isCoordinate(value) {
-  return Number.isFinite(Number(value?.lat)) && Number.isFinite(Number(value?.lng));
+  return isValidLocation(value);
 }
 
 function buildMarker(maps, map, coordinate, title) {

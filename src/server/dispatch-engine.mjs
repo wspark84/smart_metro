@@ -109,6 +109,8 @@ function resolveNotificationSpec(alert, notificationSettings, now) {
     escalationEnabled: notificationSettings?.escalationEnabled !== false,
     dndBypass: Boolean(notificationSettings?.dndBypass),
     preferredSoundPresetId: notificationSettings?.soundPresetId,
+    preferredSpeechRate: notificationSettings?.ttsSpeed,
+    vibrationStrength: notificationSettings?.vibrationStrength,
   });
 }
 

@@ -1076,6 +1076,22 @@ button {
   gap: 14px;
 }
 
+.auth-panel .field-grid {
+  grid-template-columns: minmax(0, 1fr);
+  margin: 18px 0;
+}
+
+.auth-panel .field-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.auth-panel .primary-cta {
+  width: 100%;
+  margin-bottom: 20px;
+}
+
 .field-block {
   display: flex;
   flex-direction: column;

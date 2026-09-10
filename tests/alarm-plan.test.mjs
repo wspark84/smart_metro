@@ -125,7 +125,8 @@ test("buildAlarmPlan uses the saved live snapshot as the source when it matches 
   const plan = buildAlarmPlan(state, new Date("2026-04-21T07:00:00+09:00"));
 
   assert.equal(plan.triggers[0].source, "live-snapshot");
-  assert.deepEqual(plan.triggers[0].arrivalsMin, [4, 16]);
+  assert.deepEqual(plan.triggers[0].observedArrivalsMin, [4, 16]);
+  assert.deepEqual(plan.triggers[0].arrivalsMin, [16]);
 });
 
 test("buildAlarmPlan adds a live ETA warning when comparable providers are sharply split", () => {

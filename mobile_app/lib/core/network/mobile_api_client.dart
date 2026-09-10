@@ -155,6 +155,11 @@ class MobileApiClient {
     return _request('GET', '/api/alarm-runtime');
   }
 
+  Future<Map<String, dynamic>> performAlarmAction(String type) {
+    return _request('POST', '/api/alarm-delivery/actions',
+        body: <String, dynamic>{'type': type});
+  }
+
   Future<Map<String, dynamic>> fetchDeviceProfile() {
     return _request('GET', '/api/device-profile');
   }
@@ -286,7 +291,7 @@ class MobileApiClient {
   }
 
   Future<Map<String, dynamic>> estimateCommute(Map<String, dynamic> payload) {
-    return _request('POST', '/api/commute/estimate', body: payload);
+    return _request('POST', '/api/commute/transit', body: payload);
   }
 
   Future<Map<String, dynamic>> _request(

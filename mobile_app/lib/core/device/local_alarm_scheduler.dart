@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/data/latest.dart' as tz_data;
 import 'package:timezone/timezone.dart' as tz;
+import 'backup_alarm_calendar.dart';
 
 class LocalAlarmScheduleResult {
   const LocalAlarmScheduleResult({
@@ -53,8 +54,10 @@ class LocalAlarmScheduler {
       return 'Exact alarms, full-screen intent, and DND bypass are Android-only permissions.';
     }
     await initialize();
-    final android = _notifications.resolvePlatformSpecificImplementation<
-        AndroidFlutterLocalNotificationsPlugin>();
+    final android = _notifications
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >();
     await android?.requestNotificationsPermission();
     await android?.requestExactAlarmsPermission();
     await android?.requestFullScreenIntentPermission();
@@ -67,7 +70,20 @@ class LocalAlarmScheduler {
     required bool fullScreenRequested,
     required bool dndBypassRequested,
     required String routeNumber,
+    required Map<String, dynamic> schedule,
   }) async {
+    if (kIsWeb ||
+        ![
+          TargetPlatform.android,
+          TargetPlatform.iOS,
+        ].contains(defaultTargetPlatform)) {
+      return const LocalAlarmScheduleResult(
+        scheduled: false,
+        exact: false,
+        scheduledAt: null,
+        message: '휴대폰 보조 알람은 Android 또는 iPhone 앱에서 예약할 수 있습니다.',
+      );
+    }
     await initialize();
     final parsed = _parseTime(time);
     if (parsed == null) {
@@ -75,17 +91,34 @@ class LocalAlarmScheduler {
         scheduled: false,
         exact: false,
         scheduledAt: null,
-        message: 'Enter a valid start time in HH:mm format before scheduling the local backup alarm.',
+        message:
+            'Enter a valid start time in HH:mm format before scheduling the local backup alarm.',
       );
     }
 
-    final scheduledAt = _nextOccurrence(parsed.$1, parsed.$2);
+    final dates = buildBackupAlarmCalendar(
+      now: DateTime.now(),
+      time: time.trim(),
+      schedule: schedule,
+    );
+    await cancelLocalBackup();
+    if (dates.isEmpty) {
+      return const LocalAlarmScheduleResult(
+        scheduled: false,
+        exact: false,
+        scheduledAt: null,
+        message: '선택한 요일과 휴일 설정에 따라 앞으로 30일 동안 예약할 보조 알람이 없습니다.',
+      );
+    }
+    final scheduledAt = dates.first;
     var exact = false;
     var dndGranted = false;
     var fullScreenGranted = false;
     if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
-      final android = _notifications.resolvePlatformSpecificImplementation<
-          AndroidFlutterLocalNotificationsPlugin>();
+      final android = _notifications
+          .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin
+          >();
       exact = await android?.canScheduleExactNotifications() ?? false;
       dndGranted = await android?.hasNotificationPolicyAccess() ?? false;
       // Android does not expose a separate reliable read API through this
@@ -97,8 +130,8 @@ class LocalAlarmScheduler {
     final channelId = dndBypassRequested && dndGranted
         ? 'buswakeup-critical-dnd'
         : critical
-            ? 'buswakeup-critical'
-            : 'buswakeup-morning';
+        ? 'buswakeup-critical'
+        : 'buswakeup-morning';
     final details = NotificationDetails(
       android: AndroidNotificationDetails(
         channelId,
@@ -126,27 +159,31 @@ class LocalAlarmScheduler {
         presentList: true,
         presentSound: true,
         sound: 'mechanical_alarm.wav',
-        interruptionLevel:
-            critical ? InterruptionLevel.timeSensitive : InterruptionLevel.active,
+        interruptionLevel: critical
+            ? InterruptionLevel.timeSensitive
+            : InterruptionLevel.active,
       ),
     );
 
-    await _notifications.zonedSchedule(
-      id: _backupAlarmId,
-      title: 'BusWakeUp local backup',
-      body: '$routeNumber번 버스 출발 준비 알림입니다.',
-      scheduledDate: scheduledAt,
-      notificationDetails: details,
-      androidScheduleMode: exact
-          ? AndroidScheduleMode.alarmClock
-          : AndroidScheduleMode.inexactAllowWhileIdle,
-      matchDateTimeComponents: DateTimeComponents.time,
-      payload: 'local-backup:$routeNumber',
-    );
+    for (var index = 0; index < dates.length; index++) {
+      await _notifications.zonedSchedule(
+        id: _backupAlarmId + index,
+        title: 'BusWakeUp local backup',
+        body: '$routeNumber번 버스 출발 준비 알림입니다.',
+        scheduledDate: dates[index],
+        notificationDetails: details,
+        androidScheduleMode: exact
+            ? AndroidScheduleMode.alarmClock
+            : AndroidScheduleMode.inexactAllowWhileIdle,
+        payload: 'local-backup:$routeNumber',
+      );
+    }
 
     final restrictions = <String>[];
     if (!exact && !kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
-      restrictions.add('exact-alarm permission is not granted, so Android may delay this backup');
+      restrictions.add(
+        'exact-alarm permission is not granted, so Android may delay this backup',
+      );
     }
     if (dndBypassRequested && !dndGranted) {
       restrictions.add('DND bypass is not granted');
@@ -159,31 +196,33 @@ class LocalAlarmScheduler {
       exact: exact,
       scheduledAt: scheduledAt,
       message: restrictions.isEmpty
-          ? 'Local backup alarm is scheduled daily at $time (Asia/Seoul).'
-          : 'Local backup alarm is scheduled daily at $time (Asia/Seoul), but ${restrictions.join('; ')}.',
+          ? '앞으로 30일 중 설정한 요일·휴일에 맞춰 ${dates.length}회의 시작 시각 보조 알람을 예약했습니다 ($time, 한국 시간). 앱을 열면 갱신됩니다.'
+          : '설정한 요일·휴일에 맞춰 ${dates.length}회의 보조 알람을 예약했습니다. 제한 사항: ${restrictions.join('; ')}.',
     );
   }
 
   Future<void> cancelLocalBackup() async {
+    if (kIsWeb ||
+        ![
+          TargetPlatform.android,
+          TargetPlatform.iOS,
+        ].contains(defaultTargetPlatform)) {
+      return;
+    }
     await initialize();
-    await _notifications.cancel(id: _backupAlarmId);
+    for (var index = 0; index < 30; index++) {
+      await _notifications.cancel(id: _backupAlarmId + index);
+    }
   }
 
   (int, int)? _parseTime(String value) {
-    final match = RegExp(r'^(?:[01]\d|2[0-3]):[0-5]\d$').firstMatch(value.trim());
+    final match = RegExp(
+      r'^(?:[01]\d|2[0-3]):[0-5]\d$',
+    ).firstMatch(value.trim());
     if (match == null) {
       return null;
     }
     final parts = value.trim().split(':');
     return (int.parse(parts[0]), int.parse(parts[1]));
-  }
-
-  tz.TZDateTime _nextOccurrence(int hour, int minute) {
-    final now = tz.TZDateTime.now(tz.local);
-    var next = tz.TZDateTime(tz.local, now.year, now.month, now.day, hour, minute);
-    if (!next.isAfter(now)) {
-      next = next.add(const Duration(days: 1));
-    }
-    return next;
   }
 }

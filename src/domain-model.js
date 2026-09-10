@@ -27,6 +27,8 @@ export function projectDomainSnapshot(state) {
     route: {
       id: "primary-route",
       selectedStopId: safe.commute.selectedStopId,
+      stopLocation: safe.commute.stopLocation,
+      transitJourney: safe.commute.transitJourney || null,
       selectedLineIds: safe.commute.selectedLineIds,
       primaryLineId: safe.commute.primaryLineId,
       busRideMin: safe.commute.busRideMin,
@@ -86,6 +88,8 @@ export function applyDomainSnapshotToState(snapshot, baseState = clone(DEFAULT_S
   });
   next.commute = mergeEntity(next.commute, {
     selectedStopId: domain.route?.selectedStopId,
+    stopLocation: domain.route?.stopLocation,
+    transitJourney: domain.route?.transitJourney || null,
     selectedLineIds: domain.route?.selectedLineIds,
     primaryLineId: domain.route?.primaryLineId,
     busRideMin: domain.route?.busRideMin,
@@ -109,7 +113,13 @@ export function applyDomainSnapshotToState(snapshot, baseState = clone(DEFAULT_S
     ttsSpeed: domain.notificationSettings?.ttsSpeed,
     dndBypass: domain.notificationSettings?.dndBypass,
   });
+  const previousBinding = JSON.stringify(projectDomainSnapshot(baseState).route.liveBinding);
   next.live = mergeEntity(next.live, domain.route?.liveBinding);
+  if (domain.route?.liveBinding && previousBinding !== JSON.stringify(domain.route.liveBinding)) {
+    next.live.snapshot = null;
+    next.live.lastSyncedAt = null;
+    next.live.status = "idle";
+  }
   next.holidayDates = Array.isArray(domain.schedule?.holidayDates) ? domain.schedule.holidayDates : next.holidayDates;
   next.officialHolidays = Array.isArray(domain.schedule?.officialHolidays)
     ? domain.schedule.officialHolidays

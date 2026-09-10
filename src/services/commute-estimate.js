@@ -8,7 +8,7 @@ export async function fetchCommuteApiConfig() {
 }
 
 export async function fetchCommuteEstimate(payload) {
-  const response = await fetch("/api/commute/estimate", {
+  const response = await fetch("/api/commute/transit", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

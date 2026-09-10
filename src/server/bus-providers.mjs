@@ -35,6 +35,7 @@ function asArray(value) {
 }
 
 function toFiniteNumber(value) {
+  if (value === null || value === undefined || String(value).trim() === "") return null;
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
 }
@@ -54,15 +55,12 @@ function toMinutesFromMessage(message) {
 }
 
 function normalizeArrivalMinutes(values) {
-  const arrivals = values.filter((value) => Number.isFinite(value)).map((value) => Number(value));
+  const arrivals = values.filter((value) => Number.isFinite(value) && value >= 0).map((value) => Number(value));
   if (!arrivals.length) {
     return [];
   }
 
   arrivals.sort((first, second) => first - second);
-  if (arrivals.length === 1) {
-    arrivals.push(arrivals[0] + 10);
-  }
 
   return arrivals.slice(0, 2);
 }
@@ -256,10 +254,10 @@ export function normalizeGyeonggiArrival(payload, { routeId = "", routeNumber = 
     throw new Error("Gyeonggi API returned no arrival rows.");
   }
 
-  const matched =
-    rows.find((row) => matchesRouteId(row, routeId)) ||
-    rows.find((row) => matchesRouteNumber(row, routeNumber)) ||
-    rows[0];
+  const matched = routeId
+    ? rows.find((row) => matchesRouteId(row, routeId))
+    : routeNumber ? rows.find((row) => matchesRouteNumber(row, routeNumber)) : rows[0];
+  if (!matched) throw new Error("Gyeonggi API returned no arrivals for the selected route.");
 
   const arrivals = normalizeArrivalMinutes([
     toFiniteNumber(pickFirst(matched, ["predictTime1", "predictTime"])),
@@ -295,6 +293,8 @@ export function normalizeGyeonggiStations(payload) {
       stationName: String(pickFirst(row, ["stationName", "stationNm", "station"])).trim(),
       stationNumber: String(pickFirst(row, ["mobileNo", "stationNo"])).trim(),
       regionName: String(pickFirst(row, ["regionName", "districtName"])).trim(),
+      ...(toFiniteNumber(row.x) !== null && toFiniteNumber(row.y) !== null
+        ? { posX: String(row.x), posY: String(row.y) } : {}),
     }))
     .filter((row) => row.stationId);
 }
@@ -344,7 +344,8 @@ export function normalizeTagoArrival(payload, routeNumber = "") {
   const matched =
     rows.find((row) => String(row.routeno || "").trim() === normalizedRouteNumber) ||
     rows.find((row) => String(row.routeid || "").trim() === normalizedRouteNumber) ||
-    rows[0];
+    (!normalizedRouteNumber ? rows[0] : null);
+  if (!matched) throw new Error("TAGO API returned no arrivals for the selected route.");
 
   const arrivals = normalizeArrivalMinutes(
     rows

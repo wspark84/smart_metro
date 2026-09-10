@@ -44,6 +44,12 @@ export function reconcileAlarmDelivery(deliveryState = createAlarmDeliveryState(
   }
 
   const dueEvents = Array.isArray(runtimeResult?.dueEvents) ? runtimeResult.dueEvents : [];
+  const plan = runtimeResult?.plan;
+  if (plan && (!plan.todayStatus?.firing || currentNow.getTime() > Date.parse(plan.window?.endAt) + 90_000)) {
+    if (next.currentAlert?.triggerKey) next.handledTriggerKeys.push(next.currentAlert.triggerKey);
+    next.currentAlert = null;
+    return next;
+  }
   const unhandled = dueEvents.filter((event) => {
     const triggerKey = triggerKeyFromEvent(event);
     return triggerKey && !next.handledTriggerKeys.includes(triggerKey);
@@ -82,6 +88,11 @@ export function applyAlarmDeliveryAction(deliveryState, action, now = new Date()
   const type = String(action?.type || "").trim().toUpperCase();
 
   if (!next.currentAlert) {
+    if (type === "ACK_DEPARTED") {
+      next.lastAction = type;
+      next.lastActionAt = currentNow.toISOString();
+      return next;
+    }
     throw new Error("No active alarm delivery exists.");
   }
 

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/network/mobile_api_client.dart';
+import '../../core/device/local_alarm_scheduler.dart';
 import '../auth/auth_workspace_screen.dart';
 import '../operations/mobile_operations_screen.dart';
 
@@ -48,6 +49,7 @@ class _MobileRootScreenState extends State<MobileRootScreen> {
       final payload = await _apiClient.fetchAuthSession();
       if (payload['authenticated'] != true) {
         await _apiClient.clearSession();
+        await LocalAlarmScheduler.instance.cancelLocalBackup();
       }
       if (!mounted) {
         return;
@@ -70,6 +72,7 @@ class _MobileRootScreenState extends State<MobileRootScreen> {
 
   Future<void> _logout() async {
     await _apiClient.logout();
+    await LocalAlarmScheduler.instance.cancelLocalBackup();
     if (!mounted) {
       return;
     }
@@ -82,11 +85,7 @@ class _MobileRootScreenState extends State<MobileRootScreen> {
   @override
   Widget build(BuildContext context) {
     if (_checkingSession) {
-      return const Scaffold(
-        body: Center(
-          child: CircularProgressIndicator(),
-        ),
-      );
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
     final authenticated = _sessionPayload?['authenticated'] == true;

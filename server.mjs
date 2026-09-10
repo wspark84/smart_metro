@@ -65,6 +65,7 @@ import { readBusAccuracyState, writeBusAccuracyState } from "./src/server/bus-ac
 import { createDispatchExecutionState, reconcileDispatchExecutions } from "./src/server/dispatch-execution-engine.mjs";
 import { readDispatchExecutionState, writeDispatchExecutionState } from "./src/server/dispatch-execution-store.mjs";
 import { buildAlarmPlan } from "./src/server/alarm-plan.mjs";
+import { refreshAlarmArrivals, isAlarmRefreshWindow } from "./src/server/alarm-arrival-refresh.mjs";
 import { fetchLiveArrival, getBusApiConfig, searchLiveStationRoutes, searchLiveStations } from "./src/server/bus-providers.mjs";
 import { createDispatchQueueState, reconcileDispatchQueue } from "./src/server/dispatch-engine.mjs";
 import { readDispatchQueueState, writeDispatchQueueState } from "./src/server/dispatch-queue-store.mjs";
@@ -102,6 +103,7 @@ import { buildPushPreview } from "./src/server/push-preview.mjs";
 import { getPlaceApiConfig, searchAddressPlaces } from "./src/server/place-providers.mjs";
 import { loadWithCache } from "./src/server/request-cache.mjs";
 import { estimateCommuteRoute, getRouteApiConfig } from "./src/server/route-providers.mjs";
+import { fetchTransitRoutes, refreshTransitJourney } from "./src/server/transit-providers.mjs";
 import {
   buildAppleAuthorizationUrl,
   buildGoogleAuthorizationUrl,
@@ -1100,7 +1102,7 @@ async function runAutoBusAccuracyProbe(now = new Date()) {
 
 async function tickAlarmRuntime(now = new Date()) {
   const files = getActiveFiles();
-  const state = await readEffectiveAppState();
+  let state = await readEffectiveAppState();
   if (!state) {
     alarmRuntimeState = {
       ...alarmRuntimeState,
@@ -1122,11 +1124,34 @@ async function tickAlarmRuntime(now = new Date()) {
     };
   }
 
+  if (isAlarmRefreshWindow(state, now)) state = await refreshTransitJourney(state, now, async (query) => {
+    const cached = await loadWithCache({ key: ['transit-route', query], ttlMs: 5 * 60_000,
+      loader: () => fetchTransitRoutes(query, process.env) });
+    return cached.value;
+  });
+  state = await refreshAlarmArrivals(state, now, (live) => {
+    const binding = Object.fromEntries(
+      ['provider', 'stationId', 'arsId', 'routeId', 'order', 'cityCode', 'nodeId', 'routeNumber']
+        .map((key) => [key, live[key] || '']),
+    );
+    return loadWithCache({key:['alarm-arrivals', binding], ttlMs:LIVE_ARRIVAL_CACHE_TTL_MS,
+      loader:() => fetchLiveArrival(binding)});
+  });
+  now = new Date();
   const result = reconcileAlarmRuntime(state, alarmRuntimeState, now, {
     accuracyRuntime: busAccuracyRuntimeState,
   });
   alarmRuntimeState = result.runtime;
   alarmDeliveryState = reconcileAlarmDelivery(alarmDeliveryState, result, now);
+  if (!result.plan.todayStatus.firing || now.getTime() > Date.parse(result.plan.window.endAt) + 90_000) {
+    // Cancel every queued stage when today's schedule is stopped or expired.
+    // Otherwise a failed push from an older alert could still be retried.
+    for (const bundle of dispatchQueueState.bundles || []) {
+      if (bundle.alertTriggerKey) {
+        dispatchQueueState = resetDispatchQueueForAlert(dispatchQueueState, bundle.alertTriggerKey);
+      }
+    }
+  }
   const dispatchResult = reconcileDispatchQueue(
     dispatchQueueState,
     alarmDeliveryState,
@@ -1515,7 +1540,6 @@ async function handleRequest(request, response) {
       const payload = await readJsonBody(request);
       const actionTokens = await readAuthActionTokens();
       const consumed = consumeAuthActionToken(actionTokens, "reset-password", payload?.token, now);
-      await writeAuthActionTokens(consumed.records);
       if (!consumed.record) {
         const error = new Error("This password reset link is invalid or has expired.");
         error.statusCode = 400;
@@ -1528,6 +1552,7 @@ async function handleRequest(request, response) {
         writeAuthUsers(updated.users),
         writeAuthSessions(authState.sessions.filter((session) => session.userId !== updated.user.id)),
       ]);
+      await writeAuthActionTokens(consumed.records);
       response.writeHead(200, {
         "Content-Type": "application/json; charset=utf-8",
         "Cache-Control": "no-store",
@@ -3272,6 +3297,19 @@ async function handleRequest(request, response) {
       "Cache-Control": "no-store",
     });
     response.end(JSON.stringify(getRouteApiConfig(process.env)));
+    return;
+  }
+
+  if (requestUrl.pathname === "/api/commute/transit" && request.method === "POST") {
+    try {
+      const payload = await readJsonBody(request);
+      const result = await fetchTransitRoutes(payload, process.env);
+      response.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+      response.end(JSON.stringify(result));
+    } catch (error) {
+      response.writeHead(400, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+      response.end(JSON.stringify({ error: error instanceof Error ? error.message : "대중교통 경로 조회에 실패했습니다." }));
+    }
     return;
   }
 

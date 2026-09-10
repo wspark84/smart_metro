@@ -95,10 +95,10 @@ function buildStabilityPrecheckCopy(stabilityPrecheck = false, stabilityPrecheck
 
   const safeLeadMin = Math.max(0, Number(stabilityPrecheckLeadMin) || 0);
   if (!safeLeadMin) {
-    return "?됱냼蹂대떎 紐⑥? ?ㅼ떆 ?쒖옉?섎뒗 ?덉젙 ?좎씠?낅땲??";
+    return "버스 도착 정보가 불안정해 미리 확인하는 알림입니다.";
   }
 
-  return `?됱냼蹂대떎 ${safeLeadMin}遺??먮━ ?쒗븷 ?ㅼ떆 ?뺤씤 ?뚮┝?낅땲??`;
+  return `평소보다 ${safeLeadMin}분 일찍 버스 도착 정보를 확인하는 알림입니다.`;
 }
 
 function buildAccuracyWarningCopy({
@@ -130,6 +130,7 @@ function buildAccuracyWarningCopy({
 
 export function composeAlertCopy({
   routeNumber,
+  vehicleType = "BUS",
   arrivalsMin,
   urgency,
   riskLevel,
@@ -145,10 +146,19 @@ export function composeAlertCopy({
   stabilityPrecheckLeadMin = 0,
 }) {
   const [currentArrival, nextArrival] = Array.isArray(arrivalsMin) ? arrivalsMin : [];
-  const lineLabel = `${routeNumber || "등록된"}번 버스`;
-  const title = `${lineLabel} ${currentArrival ?? "-"}분 후 도착`;
-  const criticalCondition = urgency === "MUST_CATCH" || urgency === "HURRY" || riskLevel === "RED";
-  const repeatedCriticalPhrase = buildRepeatedCriticalPhrase(2);
+  const vehicle = vehicleType === "SUBWAY" ? "지하철" : "버스";
+  const lineLabel = vehicleType === "SUBWAY" ? `${routeNumber || "등록된"} 지하철` : `${routeNumber || "등록된"}번 버스`;
+  if (riskLevel === "UNKNOWN") {
+    const detail = riskMessage || "도착 정보를 확인할 수 없습니다. 실시간 정보를 다시 확인해 주세요.";
+    return { title: `${lineLabel} 출발 준비 알림`, body: detail, spokenText: detail,
+      alertPhraseKo: detail, stabilityPrecheckText: "", accuracyWarningText: "", historicalBiasText: "" };
+  }
+  const title = `${lineLabel} ${currentArrival == null ? "-" : Math.ceil(currentArrival)}분 후 도착`;
+  const nextArrivalCopy = nextArrival == null
+    ? "다음 버스 도착 정보는 아직 없습니다."
+    : `다음 버스는 ${Math.ceil(nextArrival)}분 후 도착입니다.`;
+  const criticalCondition = urgency === "MUST_CATCH";
+  const repeatedCriticalPhrase = buildRepeatedCriticalPhrase(2).replaceAll("버스", vehicle);
   const stabilityPrecheckText = buildStabilityPrecheckCopy(stabilityPrecheck, stabilityPrecheckLeadMin);
   const accuracyWarningText = buildAccuracyWarningCopy({
     liveEtaDisagreementLevel,
@@ -162,13 +172,13 @@ export function composeAlertCopy({
     historicalBiasWeekdayTraceCount,
   });
 
-  let guidance = "지금 출발하면 정시 도착 가능성이 높습니다.";
+  let guidance = "선택한 교통편의 예상 도착 시간을 확인해 주세요.";
   if (urgency === "MUST_CATCH") {
-    guidance = `이번 버스를 꼭 타야 합니다. 다음 버스는 ${nextArrival ?? "-"}분 후 도착입니다.`;
+    guidance = `이번 버스를 꼭 타야 합니다. ${nextArrivalCopy}`;
   } else if (urgency === "HURRY" || riskLevel === "ORANGE") {
-    guidance = "여유 시간이 거의 없습니다. 바로 이동해야 합니다.";
+    guidance = "가장 먼저 오는 교통편을 타도 지각이 예상됩니다. 다른 이동 방법을 확인해 주세요.";
   } else if (riskLevel === "RED") {
-    guidance = "이미 지각 위험이 높습니다. 즉시 이동해야 합니다.";
+    guidance = "현재 경로로는 지각이 예상됩니다. 다른 이동 방법을 확인해 주세요.";
   } else if (urgency === "NEXT_ONLY") {
     guidance = "이번 버스는 놓친 상태입니다. 다음 버스를 바로 확인해야 합니다.";
   }
@@ -178,13 +188,13 @@ export function composeAlertCopy({
   }
 
   const body = criticalCondition
-    ? `${repeatedCriticalPhrase} ${repeatedCriticalPhrase} 다음 버스는 ${nextArrival ?? "-"}분 후 도착입니다.`
-    : `${guidance} 다음 버스는 ${nextArrival ?? "-"}분 후 도착입니다.`;
-  const spokenLead = `${lineLabel} ${currentArrival ?? "-"}분 후 도착입니다.`;
+    ? `${repeatedCriticalPhrase} ${repeatedCriticalPhrase} ${nextArrivalCopy}`
+    : `${riskMessage || guidance} ${nextArrivalCopy}`;
+  const spokenLead = `${lineLabel} ${currentArrival == null ? "-" : Math.ceil(currentArrival)}분 후 도착입니다.`;
   const spokenDetail = riskMessage || guidance;
   const spokenText = criticalCondition
     ? `${spokenLead} ${repeatedCriticalPhrase} ${spokenDetail}`
-    : `${spokenLead} 다음 버스는 ${nextArrival ?? "-"}분 후 도착입니다. ${spokenDetail}`;
+    : `${spokenLead} ${nextArrivalCopy} ${spokenDetail}`;
   const cautionaryNotes = [accuracyWarningText, historicalBiasText].filter(Boolean).join(" ");
 
   return {
@@ -201,6 +211,7 @@ export function composeAlertCopy({
 export function getNotificationSpec({
   riskLevel,
   routeNumber,
+  vehicleType = "BUS",
   arrivalsMin,
   urgency,
   riskMessage = "",
@@ -219,6 +230,8 @@ export function getNotificationSpec({
   escalationEnabled = true,
   dndBypass = false,
   preferredSoundPresetId = "",
+  preferredSpeechRate = null,
+  vibrationStrength = 100,
 }) {
   const base = BASE_ALERT_CONFIG[riskLevel] || BASE_ALERT_CONFIG.YELLOW;
   const normalizedDeliveryPriorityClass = String(deliveryPriorityClass || "normal").trim().toLowerCase() || "normal";
@@ -256,14 +269,16 @@ export function getNotificationSpec({
     secondsSinceTrigger,
     stage,
     escalationLabel,
-    vibrationPattern: base.vibrationPattern,
+    vibrationPattern: base.vibrationPattern.map((duration, index) => index % 2 === 0
+      ? Math.round(duration * clamp(Number(vibrationStrength) || 0, 0, 100) / 100) : duration),
     vibrationRepeats,
     volumePercent,
     soundPresetId: preferredSoundPresetId || base.soundPresetId,
     fullScreen,
     criticalBypass,
     speechVolume: criticalCondition || reinforcedDelivery ? 1 : 0.85,
-    speechRate: criticalCondition ? 0.9 : reinforcedDelivery ? 0.95 : 1,
+    speechRate: preferredSpeechRate !== null && Number.isFinite(Number(preferredSpeechRate))
+      ? clamp(Number(preferredSpeechRate), 0.8, 1.3) : criticalCondition ? 0.9 : reinforcedDelivery ? 0.95 : 1,
     speechRepeatCount,
     useMechanicalTone: true,
     mechanicalLoopBoost,
@@ -281,6 +296,7 @@ export function getNotificationSpec({
     stabilityPrecheckLeadMin: Math.max(0, Number(stabilityPrecheckLeadMin) || 0),
     ...composeAlertCopy({
       routeNumber,
+      vehicleType,
       arrivalsMin,
       urgency,
       riskLevel,

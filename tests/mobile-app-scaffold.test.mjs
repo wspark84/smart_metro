@@ -116,9 +116,9 @@ test("mobile Flutter workspace scaffold exists", async () => {
   assert.match(operationsScreen, /String idleStatus = 'No search run yet.'/);
   assert.match(operationsScreen, /Home address matches/);
   assert.match(operationsScreen, /Station candidates/);
-  assert.match(operationsScreen, /Bus ride minutes/);
-  assert.match(operationsScreen, /Estimate walk and commute/);
-  assert.match(operationsScreen, /Commute estimate/);
+  assert.match(operationsScreen, /데모: 탑승 시간/);
+  assert.match(operationsScreen, /정류장·역 → 목적지 경로 조회/);
+  assert.match(operationsScreen, /_buildTransitChoices/);
   assert.match(operationsScreen, /Register device token/);
   assert.match(operationsScreen, /Phone notification runtime/);
   assert.match(operationsScreen, /Enable and register this phone/);
@@ -168,7 +168,7 @@ test("mobile Flutter workspace scaffold exists", async () => {
   assert.match(operationsScreen, /Use the token currently issued by Firebase or APNs on this phone/);
   assert.match(operationsScreen, /Health check, token health, gateway credentials, and preview readiness must all line up before Step 4/);
   assert.match(operationsScreen, /DONE WITH WARNINGS/);
-  assert.doesNotMatch(operationsScreen, /·/);
+  assert.doesNotMatch(operationsScreen, /\uFFFD/);
   assert.match(operationsScreen, /updateBaseUrlAndPersist/);
   assert.match(operationsScreen, /Push launch readiness/);
   assert.match(operationsScreen, /Launch blockers/);

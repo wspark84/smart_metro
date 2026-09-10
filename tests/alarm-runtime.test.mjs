@@ -8,7 +8,7 @@ function clone(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
-test("reconcileAlarmRuntime emits due events for triggers that already passed", () => {
+test("reconcileAlarmRuntime emits only recent due events and consumes expired triggers", () => {
   const state = clone(DEFAULT_STATE);
   state.schedule.startTime = "07:00";
   state.schedule.endTime = "07:06";
@@ -20,8 +20,9 @@ test("reconcileAlarmRuntime emits due events for triggers that already passed", 
   const result = reconcileAlarmRuntime(state, createAlarmRuntimeState(), new Date("2026-04-21T07:04:00+09:00"));
 
   assert.equal(result.runtime.status, "running");
-  assert.equal(result.dueEvents.length, 2);
-  assert.equal(result.runtime.firedCountToday, 2);
+  assert.equal(result.dueEvents.length, 1);
+  assert.equal(result.dueEvents[0].triggerAt, "2026-04-20T22:03:00.000Z");
+  assert.equal(result.runtime.firedCountToday, 1);
   assert.equal(result.runtime.nextTriggerAt, "2026-04-20T22:06:00.000Z");
   assert.equal(result.dueEvents[0].kind, "ALARM_TRIGGERED");
 });
@@ -51,7 +52,7 @@ test("reconcileAlarmRuntime emits one stability precheck before the main morning
   const result = reconcileAlarmRuntime(
     state,
     createAlarmRuntimeState(),
-    new Date("2026-04-21T06:55:00+09:00"),
+    new Date("2026-04-21T06:50:30+09:00"),
     {
       accuracyRuntime: {
         lastHistoricalBiasLevel: "high",

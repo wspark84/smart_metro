@@ -8,18 +8,20 @@ import {
   mergeHolidayDates,
 } from "../logic/commute.js";
 import { buildLiveEtaGuard } from "../logic/live-eta-guard.js";
+import { isLiveConfigured, projectLiveArrivals, resolveCommuteLine, resolveCommuteStop } from "../logic/live-arrivals.js";
 import { buildEscalationTimeline, getNotificationSpec } from "../logic/notification-engine.js";
+import { resolveJourneyDuration } from "../logic/transit-journey.js";
 
 const MINUTE_MS = 60_000;
 
 function getSelectedStop(state) {
-  return STOP_LIBRARY.find((stop) => stop.id === state?.commute?.selectedStopId) || STOP_LIBRARY[0];
+  return resolveCommuteStop(state, STOP_LIBRARY);
 }
 
 function getPrimaryLine(state, stop = getSelectedStop(state)) {
   const selectedLineIds = Array.isArray(state?.commute?.selectedLineIds) ? state.commute.selectedLineIds : [];
   const selected = stop.lines.filter((line) => selectedLineIds.includes(line.id));
-  return selected.find((line) => line.id === state?.commute?.primaryLineId) || selected[0] || stop.lines[0];
+  return resolveCommuteLine(state, selected.find((line) => line.id === state?.commute?.primaryLineId) || selected[0] || stop.lines[0]);
 }
 
 function normalizeEndAt(startAt, endAt) {
@@ -63,7 +65,7 @@ function normalizeArrivals(seedArrivals, headwayMin, elapsedMinutes) {
 function getHolidayDates(state) {
   return mergeHolidayDates(
     state?.holidayDates,
-    Array.isArray(state?.officialHolidays) ? state.officialHolidays.map((holiday) => holiday.date) : [],
+    Array.isArray(state?.officialHolidays) ? state.officialHolidays.filter((holiday) => holiday.isHoliday).map((holiday) => holiday.date) : [],
   );
 }
 
@@ -96,13 +98,14 @@ function getArrivalProjectionSource(state, primaryLine, triggerAt, now) {
     (!liveSnapshot.lineNumber || String(liveSnapshot.lineNumber) === String(primaryLine.number));
 
   if (snapshotMatchesLine) {
-    const seedTime = new Date(liveSnapshot.servedAt || liveSnapshot.fetchedAt || now);
-    const elapsedMinutes = Math.max(0, Math.floor((triggerAt.getTime() - seedTime.getTime()) / MINUTE_MS));
+    const projected = projectLiveArrivals(liveSnapshot, triggerAt);
     return {
-      source: "live-snapshot",
-      arrivalsMin: normalizeArrivals(liveSnapshot.arrivalsMin, primaryLine.headwayMin, elapsedMinutes),
+      source: projected.length ? "live-snapshot" : "live-unavailable",
+      arrivalsMin: projected,
     };
   }
+
+  if (isLiveConfigured(state)) return { source: "live-unavailable", arrivalsMin: [] };
 
   const simulationStartedAt = new Date(state?.meta?.simulationStartedAt || now);
   const elapsedMinutes = Math.max(0, Math.floor((triggerAt.getTime() - simulationStartedAt.getTime()) / MINUTE_MS));
@@ -178,19 +181,18 @@ function buildTriggerEntry({
   triggerLabel = "",
   stabilityPrecheckLeadMin = 0,
 }) {
-  const projection = getArrivalProjectionSource(state, primaryLine, triggerAt, now);
+  // Due alarms use the latest observation time, not a scheduled time in the past.
+  const evaluationAt = triggerAt.getTime() < now.getTime() ? now : triggerAt;
+  const projection = getArrivalProjectionSource(state, primaryLine, evaluationAt, now);
   const liveEtaGuard = buildAccuracyLiveEtaGuard(accuracyRuntime);
-  const effectiveBusRideMin = Math.max(0, Number(state?.commute?.busRideMin) || Number(primaryLine?.rideMin) || 0);
   const risk = evaluateLateRisk({
     requiredArrivalTime: state.user.requiredArrivalTime,
     route: {
-      homeToStopWalkMin: state.commute.homeToStopWalkMin,
-      busRideMin: effectiveBusRideMin,
-      alightToWorkWalkMin: state.commute.alightToWorkWalkMin,
+      ...resolveJourneyDuration(state, evaluationAt),
       etaRiskBufferMin: liveEtaGuard.recommendedRiskBufferMin,
     },
     busArrivalsMin: projection.arrivalsMin,
-    now: triggerAt,
+    now: evaluationAt,
   });
   const deliveryPriority = buildDeliveryPriorityContext({
     triggerAt,
@@ -200,14 +202,17 @@ function buildTriggerEntry({
   });
 
   const notificationContext = {
-    riskLevel: risk.results[0].level,
+    riskLevel: risk.targetResult.level,
     routeNumber: primaryLine.number,
-    arrivalsMin: projection.arrivalsMin,
+    arrivalsMin: risk.notificationArrivalsMin,
+    vehicleType: resolveJourneyDuration(state, evaluationAt).vehicleType,
     urgency: risk.urgency,
     riskMessage: risk.message,
     escalationEnabled: state.notification.escalationEnabled,
     dndBypass: state.notification.dndBypass,
     preferredSoundPresetId: state.notification.soundPresetId,
+    preferredSpeechRate: state.notification.ttsSpeed,
+    vibrationStrength: state.notification.vibrationStrength,
     accuracyRiskBufferMin: risk.etaRiskBufferMin,
     stabilityPrecheck: triggerKind === "stability-precheck",
     stabilityPrecheckLeadMin,
@@ -223,13 +228,15 @@ function buildTriggerEntry({
     triggerLabel: triggerLabel || (triggerKind === "stability-precheck" ? "Stability precheck" : "Alarm"),
     stabilityPrecheckLeadMin: Math.max(0, Number(stabilityPrecheckLeadMin) || 0),
     source: projection.source,
-    arrivalsMin: projection.arrivalsMin,
+    arrivalsMin: risk.notificationArrivalsMin,
+    observedArrivalsMin: projection.arrivalsMin,
+    lastChanceConfirmed: risk.lastChanceConfirmed,
     urgency: risk.urgency,
-    riskLevel: risk.results[0].level,
+    riskLevel: risk.targetResult.level,
     etaRiskBufferMin: risk.etaRiskBufferMin,
     liveEtaGuardMode: liveEtaGuard.mode,
     message: risk.message,
-    arrivalAtWork: risk.results[0].arriveWorkAt.toISOString(),
+    arrivalAtWork: risk.targetResult.arriveWorkAt?.toISOString() || null,
     deliveryPriorityClass: deliveryPriority.deliveryPriorityClass,
     deliveryPriorityReason: deliveryPriority.deliveryPriorityReason,
     notificationSpec,
@@ -327,7 +334,7 @@ export function buildAlarmPlan(state, now = new Date(), options = {}) {
     todayStatus: scheduleState,
     stop: {
       id: stop.id,
-      name: stop.name,
+      name: isLiveConfigured(state) ? state.live.stationName || stop.name : stop.name,
       stopCode: stop.stopCode,
     },
     route: {

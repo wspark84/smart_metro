@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'dart:async';
+import 'dart:convert';
 
 import '../../core/device/native_alarm_preview_service.dart';
 import '../../core/device/native_alarm_preview_spec.dart';
@@ -34,6 +35,7 @@ class _MobileOperationsScreenState extends State<MobileOperationsScreen> {
   String _leaderboardRegion = 'gyeonggi';
   String _setupStatus = '';
   bool _savingSetup = false;
+  bool _changingTodayAlarm = false;
   bool _searchingHomeAddress = false;
   bool _searchingWorkAddress = false;
   bool _searchingStations = false;
@@ -82,6 +84,7 @@ class _MobileOperationsScreenState extends State<MobileOperationsScreen> {
   Map<String, dynamic>? _workLocation;
   Map<String, dynamic>? _selectedStopLocation;
   Map<String, dynamic>? _commuteEstimate;
+  String _transitQuerySnapshot = '';
   Map<String, dynamic>? _realDeviceFlowCheckpoint;
   Map<String, dynamic>? _realDeviceFlowResetBaseline;
 
@@ -288,6 +291,17 @@ class _MobileOperationsScreenState extends State<MobileOperationsScreen> {
       _syncSetupControllers();
       _syncDeviceControllers();
       await _syncRealDeviceCheckpointFromState();
+      if (_deviceLocalBackupEnabled) {
+        await _localAlarmScheduler.scheduleNextDailyBackup(
+          time: _readString(_map(_schedule), 'startTime', fallback: '07:00'),
+          schedule: _map(_schedule),
+          fullScreenRequested: _deviceFullScreenEnabled,
+          dndBypassRequested: _deviceDndOverrideGranted,
+          routeNumber: _routeNumberController.text.trim(),
+        );
+      } else {
+        await _localAlarmScheduler.cancelLocalBackup();
+      }
     } on MobileApiException catch (error) {
       if (error.statusCode == 401) {
         await widget.onSessionExpired();
@@ -314,6 +328,7 @@ class _MobileOperationsScreenState extends State<MobileOperationsScreen> {
   void _syncSetupControllers() {
     final profile = _map(_profile);
     final route = _map(_route);
+    _selectedStopLocation = _coordinateMap(route['stopLocation']);
     final liveBinding = _map(route['liveBinding']);
     final schedule = _map(_schedule);
     final notificationSettings = _map(_notificationSettings);
@@ -1552,71 +1567,84 @@ class _MobileOperationsScreenState extends State<MobileOperationsScreen> {
     });
   }
 
+  Map<String, dynamic> _transitQuery() {
+    return <String, dynamic>{
+      'workLocation': _workLocation,
+      'stopLocation': _selectedStopLocation,
+      'stationName': _stationNameController.text.trim(),
+      'routeNumber': _routeNumberController.text.trim(),
+      'provider': _activeProvider,
+      'stationId': _stationIdController.text.trim().isEmpty
+          ? _nodeIdController.text.trim() : _stationIdController.text.trim(),
+      'routeId': _routeIdController.text.trim(),
+      'order': _orderController.text.trim(),
+      'cityCode': _cityCodeController.text.trim(),
+      'nodeId': _nodeIdController.text.trim(),
+      'arsId': _arsIdController.text.trim(),
+    };
+  }
+
   Future<void> _estimateCommute() async {
-    if (_homeLocation == null || _selectedStopLocation == null) {
+    if (_workLocation == null || _selectedStopLocation == null) {
       setState(() {
-        _commuteEstimateStatus =
-            'Choose a home address and a stop with coordinates before estimating commute.';
+        _commuteEstimateStatus = '탑승 정류장과 목적지를 선택해 주세요. 집 좌표는 필요하지 않습니다.';
       });
       return;
     }
-
+    final query = _transitQuery();
+    final querySnapshot = jsonEncode(query);
     setState(() {
       _estimatingCommute = true;
       _commuteEstimateStatus = '';
     });
-
     try {
-      final payload = await widget.apiClient.estimateCommute(<String, dynamic>{
-        'homeLocation': _homeLocation,
-        'workLocation': _workLocation,
-        'stopLocation': _selectedStopLocation,
-        'busRideMin': int.tryParse(_busRideMinController.text.trim()) ?? 0,
-        'alightToWorkWalkMin':
-            int.tryParse(_alightWalkMinController.text.trim()) ?? 0,
-      });
-
-      if (!mounted) {
-        return;
-      }
-
-      final walkSnapshot = _map(payload['homeToStop']);
-      final walkMinutes =
-          _readString(walkSnapshot, 'walkMinutes', fallback: '');
-
+      final payload = await widget.apiClient.estimateCommute(query);
+      if (!mounted || jsonEncode(_transitQuery()) != querySnapshot) return;
       setState(() {
         _commuteEstimate = payload;
-        _commuteEstimateStatus = _readString(
-          payload,
-          'reason',
-          fallback: 'Commute estimate loaded.',
-        );
-        if (walkMinutes.isNotEmpty && walkMinutes != '-') {
-          _route = <String, dynamic>{
-            ..._map(_route),
-            'homeToStopWalkMin':
-                int.tryParse(walkMinutes) ?? _map(_route)['homeToStopWalkMin'],
-          };
-        }
+        _transitQuerySnapshot = querySnapshot;
+        _commuteEstimateStatus = '경로의 탑승 지점과 방향을 확인한 뒤 선택하고 설정을 저장해 주세요.';
       });
     } on MobileApiException catch (error) {
       if (error.statusCode == 401) {
         await widget.onSessionExpired();
         return;
       }
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _commuteEstimateStatus = error.message;
-      });
+      if (mounted) setState(() { _commuteEstimateStatus = error.message; });
     } finally {
-      if (mounted) {
-        setState(() {
-          _estimatingCommute = false;
-        });
-      }
+      if (mounted) setState(() { _estimatingCommute = false; });
     }
+  }
+
+  Widget _buildTransitChoices() {
+    final choices = _transitQuerySnapshot == jsonEncode(_transitQuery())
+        ? _mapList(_commuteEstimate?['routes']) : <Map<String, dynamic>>[];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        const Text('집 → 탑승 지점의 이동시간은 제외합니다. 경로 시간은 예상치이며 실제 환승 대기·운행 지연은 달라질 수 있습니다.'),
+        for (final choice in choices)
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            title: Text(_readString(choice, 'guidance', fallback: '대중교통 경로')),
+            subtitle: Text(
+              '${choice['boardingStation']} → ${choice['nextStation']} · 탑승 후 약 ${((choice['onboardDurationSec'] as num) / 60).ceil()}분\n'
+              '${choice['compatible'] == true ? choice['warning'] : choice['unavailableReason']}',
+            ),
+            trailing: TextButton(
+              onPressed: choice['compatible'] != true ? null : () {
+                if (_transitQuerySnapshot != jsonEncode(_transitQuery())) return;
+                setState(() {
+                  _route = <String, dynamic>{..._map(_route),
+                    'transitJourney': <String, dynamic>{...choice, 'boardingConfirmed': true}};
+                  _commuteEstimateStatus = '이 탑승 지점·방향의 경로를 선택했습니다. 아래 설정 저장을 눌러 주세요.';
+                });
+              },
+              child: const Text('방향 확인·선택'),
+            ),
+          ),
+      ],
+    );
   }
 
   Future<void> _saveSetup() async {
@@ -1636,6 +1664,8 @@ class _MobileOperationsScreenState extends State<MobileOperationsScreen> {
           'workLocation': _workLocation,
         }),
         widget.apiClient.saveRoute(<String, dynamic>{
+          'stopLocation': _selectedStopLocation,
+          'transitJourney': _route?['transitJourney'],
           'selectedStopId': _stopIdController.text.trim(),
           'selectedLineIds': _splitCsv(_lineIdsController.text),
           'primaryLineId': _primaryLineController.text.trim(),
@@ -1686,6 +1716,11 @@ class _MobileOperationsScreenState extends State<MobileOperationsScreen> {
       if (_deviceLocalBackupEnabled) {
         localAlarmResult = await _localAlarmScheduler.scheduleNextDailyBackup(
           time: _scheduleStartController.text.trim(),
+          schedule: {
+            ..._map(_schedule),
+            'repeatPreset': _repeatPresetController.text.trim(),
+            'skipHolidays': _skipHolidays,
+          },
           fullScreenRequested: _deviceFullScreenEnabled,
           dndBypassRequested: _deviceDndOverrideGranted,
           routeNumber: _routeNumberController.text.trim().isEmpty
@@ -1758,6 +1793,11 @@ class _MobileOperationsScreenState extends State<MobileOperationsScreen> {
     try {
       final result = await _localAlarmScheduler.scheduleNextDailyBackup(
         time: _scheduleStartController.text.trim(),
+        schedule: {
+          ..._map(_schedule),
+          'repeatPreset': _repeatPresetController.text.trim(),
+          'skipHolidays': _skipHolidays,
+        },
         fullScreenRequested: _deviceFullScreenEnabled,
         dndBypassRequested: _deviceDndOverrideGranted,
         routeNumber: _routeNumberController.text.trim().isEmpty
@@ -1846,6 +1886,31 @@ class _MobileOperationsScreenState extends State<MobileOperationsScreen> {
     );
   }
 
+  Future<void> _setTodayAlarmsPaused(bool paused) async {
+    setState(() => _changingTodayAlarm = true);
+    try {
+      if (paused) {
+        await widget.apiClient.performAlarmAction('ACK_DEPARTED');
+        await _nativeAlarmPreviewService.stop();
+        await _localAlarmScheduler.cancelLocalBackup();
+      } else {
+        await widget.apiClient.saveSchedule(<String, dynamic>{'snoozeDate': null});
+      }
+      await _loadAll();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(paused ? '오늘 남은 알람을 종료했습니다. 다음 예정일의 알람은 유지됩니다.' : '오늘 알람을 다시 켰습니다.'),
+      ));
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('알람 설정을 변경하지 못했습니다. 연결 상태를 확인해 주세요: $error'),
+      ));
+    } finally {
+      if (mounted) setState(() => _changingTodayAlarm = false);
+    }
+  }
+
   Widget _buildOverviewTab() {
     final account = _map(_account);
     final runtime = _map(_alarmRuntime?['runtime']);
@@ -1874,6 +1939,9 @@ class _MobileOperationsScreenState extends State<MobileOperationsScreen> {
     final topAttentionQuickAction = _map(topAttention['attentionQuickAction']);
     final topIssueTarget = _map(topIssue['attentionTarget']);
     final topIssueQuickAction = _map(topIssue['attentionQuickAction']);
+    final koreaNow = DateTime.now().toUtc().add(const Duration(hours: 9));
+    final todayKey = '${koreaNow.year}-${koreaNow.month.toString().padLeft(2, '0')}-${koreaNow.day.toString().padLeft(2, '0')}';
+    final todayPaused = _schedule?['snoozeDate'] == todayKey;
 
     return ListView(
       padding: const EdgeInsets.all(20),
@@ -1883,6 +1951,13 @@ class _MobileOperationsScreenState extends State<MobileOperationsScreen> {
           subtitle:
               'First mobile operations view for the Seoul and Gyeonggi iPhone and Android launch.',
         ),
+        const SizedBox(height: 16),
+        FilledButton.icon(
+          onPressed: _changingTodayAlarm ? null : () => _setTodayAlarmsPaused(!todayPaused),
+          icon: Icon(todayPaused ? Icons.notifications_active : Icons.check_circle),
+          label: Text(todayPaused ? '오늘 알람 다시 켜기' : '출발했어요 - 오늘 알람 종료'),
+        ),
+        const Text('오늘만 쉬고 싶을 때도 알람 종료를 누르세요. 다른 날짜의 반복 설정은 유지됩니다.'),
         const SizedBox(height: 16),
         _InfoCard(
           title: 'Reinforced watch today',
@@ -1973,12 +2048,18 @@ class _MobileOperationsScreenState extends State<MobileOperationsScreen> {
           rows: <_InfoRow>[
             _InfoRow('User', _readString(account['user'], 'name')),
             _InfoRow('Email', _readString(account['user'], 'email')),
-            _InfoRow('Session expires',
-                _formatIso(_readString(session, 'expiresAt', fallback: ''))),
             _InfoRow(
-                'Primary route',
-                _readString(account['workspace'], 'primaryRouteNumber',
-                    fallback: '-')),
+              'Session expires',
+              _formatIso(_readString(session, 'expiresAt', fallback: '')),
+            ),
+            _InfoRow(
+              'Primary route',
+              _readString(
+                account['workspace'],
+                'primaryRouteNumber',
+                fallback: '-',
+              ),
+            ),
             _InfoRow(
                 'Retry pending',
                 _readString(account['workspace'], 'retryPending',
@@ -2004,14 +2085,18 @@ class _MobileOperationsScreenState extends State<MobileOperationsScreen> {
           title: 'Instability watch',
           rows: <_InfoRow>[
             _InfoRow('Watch level', watchLevel.toUpperCase()),
-            _InfoRow('Route traces',
-                _readString(stabilityWatch, 'routeTraceCount', fallback: '0')),
             _InfoRow(
-                'Weekday traces',
-                _readString(stabilityWatch, 'weekdayTraceCount',
-                    fallback: '0')),
-            _InfoRow('Precheck lead',
-                '${_readString(stabilityWatch, 'precheckLeadMin', fallback: '0')} min'),
+              'Route traces',
+              _readString(stabilityWatch, 'routeTraceCount', fallback: '0'),
+            ),
+            _InfoRow(
+              'Weekday traces',
+              _readString(stabilityWatch, 'weekdayTraceCount', fallback: '0'),
+            ),
+            _InfoRow(
+              'Precheck lead',
+              '${_readString(stabilityWatch, 'precheckLeadMin', fallback: '0')} min',
+            ),
             _InfoRow(
                 'Precheck trigger',
                 _formatIso(_readString(stabilityWatch, 'precheckTriggerAt',
@@ -2041,10 +2126,14 @@ class _MobileOperationsScreenState extends State<MobileOperationsScreen> {
             _InfoRow(
                 'Route', _readString(topAlert, 'routeNumber', fallback: '-')),
             _InfoRow('Stop', _readString(topAlert, 'stopName', fallback: '-')),
-            _InfoRow('Outcome',
-                _readString(topAlert, 'deliveryOutcomeLabel', fallback: '-')),
             _InfoRow(
-                'Intensity', _readString(topAlert, 'maxScore', fallback: '0')),
+              'Outcome',
+              _readString(topAlert, 'deliveryOutcomeLabel', fallback: '-'),
+            ),
+            _InfoRow(
+              'Intensity',
+              _readString(topAlert, 'maxScore', fallback: '0'),
+            ),
             _InfoRow('Playback plan', _formatPlaybackPlan(topAlertSignal)),
             _InfoRow('Delivery path',
                 _formatStrongestAlertOutcome(topAlert, topAlertSignal)),
@@ -2088,12 +2177,18 @@ class _MobileOperationsScreenState extends State<MobileOperationsScreen> {
           rows: <_InfoRow>[
             _InfoRow('Issue', _readString(topIssue, 'label', fallback: '-')),
             _InfoRow('Spread', _readNestedLabel(topIssue['spreadSummary'])),
-            _InfoRow('Commute pairs',
-                _readString(topIssue, 'routeStopCount', fallback: '0')),
-            _InfoRow('Most severe outcome',
-                _readString(topIssue, 'highestOutcomeLabel', fallback: '-')),
             _InfoRow(
-                'Top routes', _formatTopRouteStops(topIssue['topRouteStops'])),
+              'Commute pairs',
+              _readString(topIssue, 'routeStopCount', fallback: '0'),
+            ),
+            _InfoRow(
+              'Most severe outcome',
+              _readString(topIssue, 'highestOutcomeLabel', fallback: '-'),
+            ),
+            _InfoRow(
+              'Top routes',
+              _formatTopRouteStops(topIssue['topRouteStops']),
+            ),
             _InfoRow('Outcome mix', _formatOutcomeMix(topIssue['outcomeMix'])),
             _InfoRow('Playbook',
                 _readString(topIssue, 'attentionActionCopy', fallback: '-')),
@@ -2276,9 +2371,10 @@ class _MobileOperationsScreenState extends State<MobileOperationsScreen> {
             _buildTextField(_orderController, 'Station order on route'),
             _buildTextField(_cityCodeController, 'TAGO city code (optional)'),
             _buildTextField(_nodeIdController, 'TAGO node id (optional)'),
-            _buildTextField(_busRideMinController, 'Bus ride minutes'),
-            _buildTextField(
-                _alightWalkMinController, 'Walk after exit minutes'),
+            if (_activeProvider == 'none') ...<Widget>[
+              _buildTextField(_busRideMinController, '데모: 탑승 시간 (분)'),
+              _buildTextField(_alightWalkMinController, '데모: 하차 후 도보 (분)'),
+            ],
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
@@ -2286,7 +2382,7 @@ class _MobileOperationsScreenState extends State<MobileOperationsScreen> {
                 child: Text(
                   _estimatingCommute
                       ? 'Estimating commute...'
-                      : 'Estimate walk and commute',
+                      : '정류장·역 → 목적지 경로 조회',
                 ),
               ),
             ),
@@ -2296,39 +2392,7 @@ class _MobileOperationsScreenState extends State<MobileOperationsScreen> {
             ],
             if (_commuteEstimate != null) ...<Widget>[
               const SizedBox(height: 12),
-              _InfoCard(
-                title: 'Commute estimate',
-                rows: <_InfoRow>[
-                  _InfoRow(
-                    'Provider',
-                    _readString(_commuteEstimate, 'provider', fallback: '-'),
-                  ),
-                  _InfoRow(
-                    'Walk to stop',
-                    _readString(
-                      _map(_commuteEstimate?['homeToStop']),
-                      'walkMinutes',
-                      fallback: '-',
-                    ),
-                  ),
-                  _InfoRow(
-                    'Distance meters',
-                    _readString(
-                      _map(_commuteEstimate?['homeToStop']),
-                      'distanceM',
-                      fallback: '-',
-                    ),
-                  ),
-                  _InfoRow(
-                    'Total commute',
-                    _readString(
-                      _commuteEstimate,
-                      'totalCommuteMin',
-                      fallback: '-',
-                    ),
-                  ),
-                ],
-              ),
+              _buildTransitChoices(),
             ],
           ],
         ),
@@ -2440,16 +2504,22 @@ class _MobileOperationsScreenState extends State<MobileOperationsScreen> {
               title:
                   '${_readString(entry, 'routeNumber', fallback: 'Route')} - ${_readString(entry, 'stopName', fallback: 'Stop')}',
               rows: <_InfoRow>[
-                _InfoRow('Recommended provider',
-                    _readString(entry, 'recommendedProvider', fallback: '-')),
-                _InfoRow('Basis',
-                    _readString(entry, 'recommendationBasis', fallback: '-')),
                 _InfoRow(
-                    'Confidence',
-                    _readString(entry, 'recommendationConfidence',
-                        fallback: '-')),
-                _InfoRow('Samples',
-                    _readString(entry, 'sampleCount', fallback: '0')),
+                  'Recommended provider',
+                  _readString(entry, 'recommendedProvider', fallback: '-'),
+                ),
+                _InfoRow(
+                  'Basis',
+                  _readString(entry, 'recommendationBasis', fallback: '-'),
+                ),
+                _InfoRow(
+                  'Confidence',
+                  _readString(entry, 'recommendationConfidence', fallback: '-'),
+                ),
+                _InfoRow(
+                  'Samples',
+                  _readString(entry, 'sampleCount', fallback: '0'),
+                ),
               ],
             ),
           );
@@ -2678,18 +2748,30 @@ class _MobileOperationsScreenState extends State<MobileOperationsScreen> {
         _InfoCard(
           title: 'Push launch readiness',
           rows: <_InfoRow>[
-            _InfoRow('Readiness state',
-                _readString(launchReadiness, 'state', fallback: '-')),
-            _InfoRow('Next step',
-                _readString(launchReadiness, 'nextStep', fallback: '-')),
-            _InfoRow('Adapter lane',
-                _readString(launchReadiness, 'adapterLane', fallback: '-')),
-            _InfoRow('Preview state',
-                _readString(launchReadiness, 'previewState', fallback: '-')),
-            _InfoRow('Gateway attempt',
-                _readString(launchReadiness, 'attemptState', fallback: '-')),
             _InfoRow(
-                'Why', _readString(launchReadiness, 'reason', fallback: '-')),
+              'Readiness state',
+              _readString(launchReadiness, 'state', fallback: '-'),
+            ),
+            _InfoRow(
+              'Next step',
+              _readString(launchReadiness, 'nextStep', fallback: '-'),
+            ),
+            _InfoRow(
+              'Adapter lane',
+              _readString(launchReadiness, 'adapterLane', fallback: '-'),
+            ),
+            _InfoRow(
+              'Preview state',
+              _readString(launchReadiness, 'previewState', fallback: '-'),
+            ),
+            _InfoRow(
+              'Gateway attempt',
+              _readString(launchReadiness, 'attemptState', fallback: '-'),
+            ),
+            _InfoRow(
+              'Why',
+              _readString(launchReadiness, 'reason', fallback: '-'),
+            ),
           ],
           footer: Wrap(
             spacing: 12,
@@ -2847,14 +2929,20 @@ class _MobileOperationsScreenState extends State<MobileOperationsScreen> {
             _InfoRow('Platform',
                 _readString(deviceProfile, 'platform', fallback: '-')),
             _InfoRow('Push enabled', _readBool(_devicePushEnabled)),
-            _InfoRow('Push token health',
-                _readString(tokenHealth, 'deliveryReadiness', fallback: '-')),
-            _InfoRow('Token reason',
-                _readString(tokenHealth, 'reason', fallback: '-')),
             _InfoRow(
-                'Registered at',
-                _formatIso(
-                    _readString(deviceProfile, 'registeredAt', fallback: ''))),
+              'Push token health',
+              _readString(tokenHealth, 'deliveryReadiness', fallback: '-'),
+            ),
+            _InfoRow(
+              'Token reason',
+              _readString(tokenHealth, 'reason', fallback: '-'),
+            ),
+            _InfoRow(
+              'Registered at',
+              _formatIso(
+                _readString(deviceProfile, 'registeredAt', fallback: ''),
+              ),
+            ),
             _InfoRow(
                 'Updated at',
                 _formatIso(
@@ -3019,7 +3107,7 @@ class _MobileOperationsScreenState extends State<MobileOperationsScreen> {
           title: 'Exact local backup alarm',
           children: <Widget>[
             const Text(
-              'This schedules a daily local fallback at the saved schedule start time using Asia/Seoul. Android needs system approval for exact timing, full-screen intent, and DND bypass. iPhone schedules a time-sensitive notification but iOS controls interruption behavior.',
+              '앞으로 30일 중 선택한 요일과 휴일 설정에 맞춰 시작 시각 보조 알람을 예약합니다. 앱을 열면 갱신됩니다. 정확한 시각과 전체 화면 알림은 휴대폰의 권한 허용이 필요합니다. iPhone은 운영체제가 알림 표시 방식을 제한합니다.',
             ),
             const SizedBox(height: 12),
             _buildLabeledValue(
@@ -3056,7 +3144,7 @@ class _MobileOperationsScreenState extends State<MobileOperationsScreen> {
                 child: Text(
                   _schedulingLocalBackup
                       ? 'Scheduling local backup...'
-                      : 'Schedule daily local backup',
+                      : '설정에 맞춰 보조 알람 예약',
                 ),
               ),
             ),
@@ -3148,18 +3236,30 @@ class _MobileOperationsScreenState extends State<MobileOperationsScreen> {
         _InfoCard(
           title: 'FCM auth health',
           rows: <_InfoRow>[
-            _InfoRow('Auth strategy',
-                _readString(fcmAuthStatus, 'authStrategy', fallback: '-')),
-            _InfoRow('Project id',
-                _readString(fcmAuthStatus, 'projectId', fallback: '-')),
-            _InfoRow('Access token status',
-                _readString(fcmAuthStatus, 'accessTokenStatus', fallback: '-')),
-            _InfoRow('Token source',
-                _readString(fcmAuthStatus, 'accessTokenSource', fallback: '-')),
             _InfoRow(
-                'Cache status',
-                _readString(fcmAuthStatus, 'accessTokenCacheStatus',
-                    fallback: '-')),
+              'Auth strategy',
+              _readString(fcmAuthStatus, 'authStrategy', fallback: '-'),
+            ),
+            _InfoRow(
+              'Project id',
+              _readString(fcmAuthStatus, 'projectId', fallback: '-'),
+            ),
+            _InfoRow(
+              'Access token status',
+              _readString(fcmAuthStatus, 'accessTokenStatus', fallback: '-'),
+            ),
+            _InfoRow(
+              'Token source',
+              _readString(fcmAuthStatus, 'accessTokenSource', fallback: '-'),
+            ),
+            _InfoRow(
+              'Cache status',
+              _readString(
+                fcmAuthStatus,
+                'accessTokenCacheStatus',
+                fallback: '-',
+              ),
+            ),
             _InfoRow(
                 'Expires at',
                 _formatIso(_readString(fcmAuthStatus, 'accessTokenExpiresAt',
@@ -3224,20 +3324,34 @@ class _MobileOperationsScreenState extends State<MobileOperationsScreen> {
         _InfoCard(
           title: 'Current push preview',
           rows: <_InfoRow>[
-            _InfoRow('Preview status',
-                _readString(pushPreview, 'status', fallback: '-')),
             _InfoRow(
-                'Adapter', _readString(pushPreview, 'adapter', fallback: '-')),
-            _InfoRow('Dispatch key',
-                _readString(pushPreview, 'dispatchKey', fallback: '-')),
-            _InfoRow('Route',
-                _readString(pushPreview, 'routeNumber', fallback: '-')),
+              'Preview status',
+              _readString(pushPreview, 'status', fallback: '-'),
+            ),
             _InfoRow(
-                'Stop', _readString(pushPreview, 'stopName', fallback: '-')),
+              'Adapter',
+              _readString(pushPreview, 'adapter', fallback: '-'),
+            ),
             _InfoRow(
-                'Reason', _readString(pushPreview, 'reason', fallback: '-')),
-            _InfoRow('Queue total',
-                _readString(_pushPreview, 'queueTotal', fallback: '0')),
+              'Dispatch key',
+              _readString(pushPreview, 'dispatchKey', fallback: '-'),
+            ),
+            _InfoRow(
+              'Route',
+              _readString(pushPreview, 'routeNumber', fallback: '-'),
+            ),
+            _InfoRow(
+              'Stop',
+              _readString(pushPreview, 'stopName', fallback: '-'),
+            ),
+            _InfoRow(
+              'Reason',
+              _readString(pushPreview, 'reason', fallback: '-'),
+            ),
+            _InfoRow(
+              'Queue total',
+              _readString(_pushPreview, 'queueTotal', fallback: '0'),
+            ),
           ],
         ),
         const SizedBox(height: 16),
@@ -3306,13 +3420,21 @@ class _MobileOperationsScreenState extends State<MobileOperationsScreen> {
           title: 'Latest push gateway attempt',
           rows: <_InfoRow>[
             _InfoRow(
-                'Status', _readString(latestAttempt, 'status', fallback: '-')),
+              'Status',
+              _readString(latestAttempt, 'status', fallback: '-'),
+            ),
             _InfoRow(
-                'Origin', _readString(latestAttempt, 'origin', fallback: '-')),
-            _InfoRow('Target readiness',
-                _readString(latestAttempt, 'targetReadiness', fallback: '-')),
-            _InfoRow('Retry profile',
-                _readString(latestAttempt, 'retryProfileLabel', fallback: '-')),
+              'Origin',
+              _readString(latestAttempt, 'origin', fallback: '-'),
+            ),
+            _InfoRow(
+              'Target readiness',
+              _readString(latestAttempt, 'targetReadiness', fallback: '-'),
+            ),
+            _InfoRow(
+              'Retry profile',
+              _readString(latestAttempt, 'retryProfileLabel', fallback: '-'),
+            ),
             _InfoRow(
               'Provider category',
               _readNestedString(
@@ -3338,13 +3460,17 @@ class _MobileOperationsScreenState extends State<MobileOperationsScreen> {
               ),
             ),
             _InfoRow(
-                'Reason', _readString(latestAttempt, 'reason', fallback: '-')),
+              'Reason',
+              _readString(latestAttempt, 'reason', fallback: '-'),
+            ),
             _InfoRow(
-                'Created at',
-                _formatIso(
-                    _readString(latestAttempt, 'createdAt', fallback: ''))),
-            _InfoRow('Attempt count today',
-                _readString(attemptSummary, 'total', fallback: '0')),
+              'Created at',
+              _formatIso(_readString(latestAttempt, 'createdAt', fallback: '')),
+            ),
+            _InfoRow(
+              'Attempt count today',
+              _readString(attemptSummary, 'total', fallback: '0'),
+            ),
           ],
           footer: _readNestedString(
                     latestAttempt['response'],

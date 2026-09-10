@@ -99,13 +99,16 @@ export function reconcileAlarmRuntime(
       continue;
     }
 
+    // A restarted server must not ring the entire morning's expired alarms.
+    const latenessMs = currentNow.getTime() - Date.parse(trigger.triggerAt);
+    nextRuntime.firedTriggerKeys.push(triggerKey);
+    if (latenessMs > 90_000 || currentNow.getTime() > Date.parse(plan.window.endAt) + 90_000) continue;
     const event = buildTriggeredEvent({
       plan,
       trigger,
       now: currentNow,
     });
     dueEvents.push(event);
-    nextRuntime.firedTriggerKeys.push(triggerKey);
     nextRuntime.lastEvent = event;
   }
 
@@ -115,7 +118,7 @@ export function reconcileAlarmRuntime(
   nextRuntime.dateKey = plan.dateKey;
   nextRuntime.lastTickAt = currentNow.toISOString();
   nextRuntime.nextTriggerAt = nextUpcoming?.triggerAt || null;
-  nextRuntime.firedCountToday = nextRuntime.firedTriggerKeys.length;
+  nextRuntime.firedCountToday += dueEvents.length;
   nextRuntime.pendingCount = plan.allTriggers.filter((trigger) => new Date(trigger.triggerAt).getTime() > currentNow.getTime()).length;
   nextRuntime.lastError = "";
 

@@ -1,6 +1,7 @@
 import { DEFAULT_DEVICE_PROFILE, sanitizeDeviceProfile } from "./device-profile.js";
 import { createDefaultLiveBindings, ensureLiveBindingState } from "./logic/live-bindings.js";
 import { STOP_LIBRARY } from "./mock-data.js";
+import { isValidLocation } from "./logic/commute.js";
 
 const STORAGE_KEY = "buswakeup-demo-state";
 
@@ -49,10 +50,12 @@ export const DEFAULT_STATE = {
   },
   commute: {
     selectedStopId: "GWANGHWAMUN",
+    stopLocation: null,
     selectedLineIds: ["1002", "701"],
     primaryLineId: "1002",
     busRideMin: 43,
     homeToStopWalkMin: 5,
+    transitJourney: null,
     alightToWorkWalkMin: 7,
   },
   schedule: {
@@ -133,8 +136,8 @@ function sanitizeLocationState(location, fallbackLabel = "") {
   const lat = Number(location?.lat);
   const lng = Number(location?.lng);
   return {
-    lat: Number.isFinite(lat) ? lat : null,
-    lng: Number.isFinite(lng) ? lng : null,
+    lat: isValidLocation(location) ? lat : null,
+    lng: isValidLocation(location) ? lng : null,
     source: String(location?.source || "manual").trim() || "manual",
     label: String(location?.label || fallbackLabel || "").trim(),
   };
@@ -156,8 +159,8 @@ function sanitizeAddressResults(results) {
         jibunAddress: String(item?.jibunAddress || "").trim(),
         placeName: String(item?.placeName || "").trim(),
         provider: String(item?.provider || "").trim(),
-        lat: Number.isFinite(lat) ? lat : null,
-        lng: Number.isFinite(lng) ? lng : null,
+        lat: isValidLocation(item) ? lat : null,
+        lng: isValidLocation(item) ? lng : null,
       };
     })
     .filter((item) => item.label && item.lat !== null && item.lng !== null);
@@ -166,15 +169,17 @@ function sanitizeAddressResults(results) {
 export function sanitizeState(state) {
   const safe = merge(clone(DEFAULT_STATE), state);
   const stop = STOP_LIBRARY.find((item) => item.id === safe.commute.selectedStopId) || STOP_LIBRARY[0];
-  const validLineIds = stop.lines.map((line) => line.id);
+  const liveRoute = safe.live.provider !== "none" && safe.live.routeNumber;
+  const validLineIds = liveRoute ? [...new Set([String(safe.live.routeNumber), ...safe.commute.selectedLineIds.map(String)])] : stop.lines.map((line) => line.id);
 
-  safe.commute.selectedStopId = stop.id;
+  safe.commute.selectedStopId = safe.live.provider !== "none"
+    ? safe.commute.selectedStopId || safe.live.stationId || safe.live.nodeId : stop.id;
   safe.commute.selectedLineIds = safe.commute.selectedLineIds.filter((lineId) => validLineIds.includes(lineId));
   if (!safe.commute.selectedLineIds.length) {
     safe.commute.selectedLineIds = validLineIds.slice(0, 2);
   }
 
-  if (!validLineIds.includes(safe.commute.primaryLineId)) {
+  if (!safe.commute.selectedLineIds.includes(safe.commute.primaryLineId)) {
     safe.commute.primaryLineId = safe.commute.selectedLineIds[0];
   }
 
@@ -182,9 +187,10 @@ export function sanitizeState(state) {
   safe.commute.homeToStopWalkMin = Math.max(0, Number(safe.commute.homeToStopWalkMin) || 0);
   safe.commute.alightToWorkWalkMin = Math.max(0, Number(safe.commute.alightToWorkWalkMin) || 0);
 
-  if (!Array.isArray(safe.schedule.daysOfWeek) || !safe.schedule.daysOfWeek.length) {
+  if (!Array.isArray(safe.schedule.daysOfWeek)) {
     safe.schedule.daysOfWeek = [1, 2, 3, 4, 5];
   }
+  safe.schedule.daysOfWeek = [...new Set(safe.schedule.daysOfWeek.map(Number).filter((day) => Number.isInteger(day) && day >= 0 && day <= 6))];
 
   if (!/^\d{4}$/.test(String(safe.ui.holidaySyncYear || "").trim())) {
     safe.ui.holidaySyncYear = String(new Date().getFullYear());
@@ -212,6 +218,8 @@ export function sanitizeState(state) {
     : [];
 
   safe.user.homeLocation = sanitizeLocationState(safe.user.homeLocation, safe.user.homeAddress);
+  safe.commute.stopLocation = isValidLocation(safe.commute.stopLocation)
+    ? sanitizeLocationState(safe.commute.stopLocation) : null;
   safe.user.workLocation = sanitizeLocationState(safe.user.workLocation, safe.user.workAddress);
   safe.ui.homeAddressSearchResults = sanitizeAddressResults(safe.ui.homeAddressSearchResults);
   safe.ui.workAddressSearchResults = sanitizeAddressResults(safe.ui.workAddressSearchResults);

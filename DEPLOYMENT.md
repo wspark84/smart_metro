@@ -1,5 +1,7 @@
 # BusWakeUp Deployment Guide
 
+> Vercel deployment warning (2026-09-09): this repository still writes account and alarm data into local `data/` files and runs a 15-second in-process timer. The existing Vercel function packaging serves the application but does not provide durable storage or a continuously running alarm worker. Do not treat a successful Vercel page load as production readiness. Use a persistent single-instance pilot server as described below, or migrate storage and scheduling before production deployment. See `REVIEW_REPORT_2026-09-09.md`.
+
 This configuration runs the current **single-process, file-backed prototype** in a Docker container. It is appropriate for a controlled pilot and staging environment. It is not a multi-server production architecture: one Docker volume holds all account, alarm, and delivery data, so do not start multiple replicas against separate volumes.
 
 ## 1. Prepare the server

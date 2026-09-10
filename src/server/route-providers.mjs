@@ -2,8 +2,10 @@ import {
   buildAddressAwareRouteEstimate,
   estimateWalkMinutes,
   haversineDistanceMeters,
+  isValidLocation,
 } from "../logic/commute.js";
 import { fetchWithTimeout } from "./upstream-fetch.mjs";
+import { getTransitApiConfig } from "./transit-providers.mjs";
 
 const KAKAO_WALKING_DIRECTIONS_URL = "https://apis-navi.kakaomobility.com/affiliate/walking/v1/directions";
 
@@ -33,7 +35,7 @@ function resolveKakaoMobilityRestApiKey(env = {}) {
 function normalizePoint(point, label = "point") {
   const lat = Number(point?.lat);
   const lng = Number(point?.lng);
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+  if (!isValidLocation(point)) {
     throw new Error(`A valid ${label} with lat/lng is required.`);
   }
 
@@ -59,6 +61,7 @@ export function getRouteApiConfig(env = {}) {
   const kakao = resolveKakaoMobilityRestApiKey(env);
   return {
     providers: {
+      kakaoTransit: getTransitApiConfig(env),
       kakaoWalking: {
         id: "kakaoWalking",
         label: "Kakao Mobility Walking Directions",

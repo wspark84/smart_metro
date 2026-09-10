@@ -64,6 +64,7 @@ export function determineLateRiskLevel(deltaMinutes) {
 
 export function getRiskMeta(level) {
   return {
+    UNKNOWN: { tone: "neutral", label: "정보 없음", chip: "도착 정보 확인 필요" },
     GREEN: { tone: "green", label: "여유", chip: "여유 있음" },
     YELLOW: { tone: "yellow", label: "정시", chip: "정시 가능" },
     ORANGE: { tone: "orange", label: "위험", chip: "서둘러야 함" },
@@ -71,38 +72,33 @@ export function getRiskMeta(level) {
   }[level];
 }
 
-function composeMessage(primaryResult, secondaryResult, route) {
-  if (!primaryResult.catchable) {
-    return `정류장까지 ${route.homeToStopWalkMin}분이 필요해서 이번 버스는 현실적으로 놓치게 됩니다. 다음 차 기준으로 움직이는 편이 안전합니다.`;
-  }
-
-  if (["GREEN", "YELLOW"].includes(primaryResult.level) && secondaryResult && ["ORANGE", "RED"].includes(secondaryResult.level)) {
-    return `이번 버스를 놓치면 ${Math.abs(secondaryResult.deltaMinutes)}분 이상 늦을 수 있습니다. 이번 버스를 꼭 타야 합니다.`;
-  }
-
-  if (primaryResult.level === "RED") {
-    return `현재 기준으로 ${Math.abs(primaryResult.deltaMinutes)}분 늦을 가능성이 높습니다. 더 강한 알림과 빠른 출발이 필요한 상태입니다.`;
-  }
-
-  if (primaryResult.level === "ORANGE") {
-    return "지금 출발하면 맞출 수는 있지만 여유가 거의 없습니다. 바로 움직이는 편이 좋습니다.";
-  }
-
-  return "지금 움직이면 출근 시간 안에 무난하게 도착할 수 있습니다.";
-}
-
 export function evaluateLateRisk({ requiredArrivalTime, route, busArrivalsMin, now }) {
   const requiredAt = combineDateAndTime(now, requiredArrivalTime);
   const etaRiskBufferMin = Math.max(0, Number(route?.etaRiskBufferMin) || 0);
+  const rawDuration = route?.onboardToDestinationMin ??
+    (Number(route?.busRideMin) + Number(route?.alightToWorkWalkMin));
+  const durationKnown = route?.durationAvailable !== false && rawDuration !== null &&
+    rawDuration !== "" && Number.isFinite(Number(rawDuration)) && Number(rawDuration) > 0;
+  const vehicle = route?.vehicleType === "SUBWAY" ? "지하철" : "버스";
 
-  const results = busArrivalsMin.slice(0, 2).map((arrivalMinutes, index) => {
-    const catchWindowMin = arrivalMinutes - route.homeToStopWalkMin;
-    const catchable = catchWindowMin >= 0;
+  const arrivals = (Array.isArray(busArrivalsMin) ? busArrivalsMin : [])
+    .filter((value) => value !== null && value !== "" && Number.isFinite(Number(value)) && Number(value) >= 0)
+    .map(Number).sort((a, b) => a - b);
+  const results = Array.from({ length: Math.max(2, arrivals.length) }, (_, index) => {
+    const arrivalMinutes = arrivals[index];
+    if (arrivalMinutes === undefined || !durationKnown) return {
+      index, arrivalMinutes: arrivalMinutes ?? null, catchWindowMin: null, catchable: false,
+      arriveWorkAt: null, deltaMinutes: null, etaRiskBufferMin,
+      level: "UNKNOWN", risk: getRiskMeta("UNKNOWN"),
+    };
+    // The rider decides how to reach the boarding point. Never subtract access walking.
+    const catchWindowMin = arrivalMinutes;
+    const catchable = true;
     const arriveWorkAt = addMinutes(
       now,
-      arrivalMinutes + route.busRideMin + route.alightToWorkWalkMin + etaRiskBufferMin,
+      arrivalMinutes + Number(rawDuration) + etaRiskBufferMin,
     );
-    const deltaMinutes = Math.round((requiredAt.getTime() - arriveWorkAt.getTime()) / MINUTE_MS);
+    const deltaMinutes = Math.floor((requiredAt.getTime() - arriveWorkAt.getTime()) / MINUTE_MS);
     const level = determineLateRiskLevel(deltaMinutes);
 
     return {
@@ -118,16 +114,27 @@ export function evaluateLateRisk({ requiredArrivalTime, route, busArrivalsMin, n
     };
   });
 
-  const [primaryResult, secondaryResult] = results;
-  const message = composeMessage(primaryResult, secondaryResult, route);
-
+  const primaryResult = results[0];
+  const onTime = results.filter((result) => result.level !== "UNKNOWN" && result.deltaMinutes >= 0);
+  const targetResult = onTime.at(-1) || primaryResult;
+  const followingResult = results[targetResult.index + 1] || null;
+  const lastChanceConfirmed = onTime.length > 0 && followingResult?.level !== "UNKNOWN" &&
+    followingResult?.deltaMinutes < 0;
   let urgency = "RELAXED";
-  if (!primaryResult.catchable) {
-    urgency = "NEXT_ONLY";
-  } else if (["GREEN", "YELLOW"].includes(primaryResult.level) && secondaryResult && ["ORANGE", "RED"].includes(secondaryResult.level)) {
+  let message;
+  if (primaryResult.level === "UNKNOWN") {
+    urgency = "UNKNOWN";
+    message = !durationKnown
+      ? "목적지까지의 경로 시간이 확인되지 않아 지각 여부를 판단할 수 없습니다. 대중교통 경로를 조회하고 선택해 주세요."
+      : "현재 교통편 도착 정보를 확인할 수 없습니다. 실시간 정보를 다시 확인해 주세요.";
+  } else if (lastChanceConfirmed) {
     urgency = "MUST_CATCH";
-  } else if (["ORANGE", "RED"].includes(primaryResult.level)) {
+    message = `선택한 노선 기준, ${Math.ceil(targetResult.arrivalMinutes)}분 후 오는 ${vehicle}를 놓치면 다음 차는 목적지에 약 ${Math.abs(followingResult.deltaMinutes)}분 늦을 것으로 예상됩니다.`;
+  } else if (!onTime.length) {
     urgency = "HURRY";
+    message = `가장 먼저 오는 ${vehicle}를 타도 목적지에 약 ${Math.abs(primaryResult.deltaMinutes)}분 늦을 것으로 예상됩니다. 다른 이동 방법을 확인해 주세요.`;
+  } else {
+    message = `조회된 교통편 중 ${Math.ceil(targetResult.arrivalMinutes)}분 후 오는 ${vehicle}까지 정시 도착이 예상됩니다. 그 이후 차 정보가 없어 마지막 기회인지는 아직 확인할 수 없습니다.`;
   }
 
   return {
@@ -136,6 +143,12 @@ export function evaluateLateRisk({ requiredArrivalTime, route, busArrivalsMin, n
     urgency,
     message,
     etaRiskBufferMin,
+    targetResult,
+    followingResult,
+    lastChanceConfirmed: Boolean(lastChanceConfirmed),
+    notificationArrivalsMin: arrivals.slice(targetResult.index),
+    onboardToDestinationMin: durationKnown ? Number(rawDuration) : null,
+    scope: "selected-route",
   };
 }
 
@@ -234,6 +247,7 @@ export function formatLongDate(date, locale = "ko-KR") {
 }
 
 export function haversineDistanceMeters(from, to) {
+  if (!isValidLocation(from) || !isValidLocation(to)) return null;
   const fromLat = Number(from?.lat);
   const fromLng = Number(from?.lng);
   const toLat = Number(to?.lat);
@@ -254,12 +268,19 @@ export function haversineDistanceMeters(from, to) {
 }
 
 export function estimateWalkMinutes(distanceMeters, metersPerMinute = DEFAULT_WALK_METERS_PER_MINUTE) {
+  if (distanceMeters === null || distanceMeters === undefined || distanceMeters === "") return null;
   const distance = Number(distanceMeters);
   if (!Number.isFinite(distance) || distance < 0) {
     return null;
   }
 
-  return Math.max(1, Math.round(distance / metersPerMinute));
+  return Math.max(1, Math.ceil(distance / metersPerMinute));
+}
+
+export function isValidLocation(point) {
+  return Boolean(point && [point.lat, point.lng].every((value) =>
+    value !== null && value !== undefined && String(value).trim() !== "" && Number.isFinite(Number(value))) &&
+    Math.abs(Number(point.lat)) <= 90 && Math.abs(Number(point.lng)) <= 180);
 }
 
 export function rankLocationsByDistance(origin, locations = [], limit = 3) {

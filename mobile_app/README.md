@@ -4,6 +4,9 @@ This folder contains the first Flutter mobile-app workspace for the BusWakeUp pr
 
 ## What is inside
 
+- Local backup scheduling now reserves only eligible start-time alarms over the next 30 days, respecting weekdays/custom days, holidays, and today-only cancellation. Opening the app refreshes these reservations; logout cancels them. This is not an offline reservation of every repeat interval and does not guarantee background TTS.
+- The Overview screen now includes departure/today-off and restore-today actions linked to the server and local backup calendar.
+
 - Cross-platform app shell for Android and iPhone targets
   - The mobile API client now auto-adds `http://` to bare LAN host inputs like `192.168.0.10:4173`, validates malformed server URLs early, and times out network checks instead of hanging indefinitely
 - Email sign-in and sign-up flow against the existing local server

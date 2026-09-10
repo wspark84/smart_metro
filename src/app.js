@@ -1,6 +1,5 @@
 ﻿import {
   addMinutes,
-  buildAddressAwareRouteEstimate,
   buildSchedulePreview,
   dateOnlyKey,
   describeScheduleState,
@@ -9,10 +8,13 @@
   formatLongDate,
   mergeHolidayDates,
   rankLocationsByDistance,
+  isValidLocation,
 } from "./logic/commute.js";
 import { buildConservativeReliabilityReport, buildConservativeWatchlistHighlight } from "./logic/conservative-report.js";
 import { buildDeliveryIntensityReport } from "./logic/delivery-intensity-report.js";
 import { buildLiveEtaGuard } from "./logic/live-eta-guard.js";
+import { resolveJourneyDuration, transitQueryForState, transitQueryKey } from "./logic/transit-journey.js";
+import { isLiveConfigured, projectLiveArrivals, resolveCommuteLine, resolveCommuteStop } from "./logic/live-arrivals.js";
 import { buildEscalationTimeline, getNotificationSpec } from "./logic/notification-engine.js";
 import {
   DAY_OPTIONS,
@@ -84,6 +86,7 @@ import { loadState, resetState, sanitizeState, saveState } from "./state.js";
 const app = document.querySelector("#app");
 let state = loadState();
 let audioContext = null;
+let visibleTransitRefreshPending = false;
 let remoteSaveTimer = null;
 let remoteSaveToken = 0;
 let domainSyncTimer = null;
@@ -1227,9 +1230,9 @@ function resolvePreferredKoreanVoice(voices) {
     return null;
   }
 
-  if (preferred.includes("male")) {
+  if (preferred === "ko-male") {
     return (
-      koreanVoices.find((voice) => /male|man|남/u.test(`${voice.name} ${voice.voiceURI}`)) ||
+      koreanVoices.find((voice) => /\bmale\b|\bman\b|남/iu.test(`${voice.name} ${voice.voiceURI}`)) ||
       koreanVoices[0]
     );
   }
@@ -1274,6 +1277,7 @@ function playNotificationSpec(notificationSpec) {
   if (state.device.soundEnabled && browserPlaybackMeta.primed) {
     playSoundPreset(notificationSpec.soundPresetId, {
       extraLoops: (notificationSpec.stage || 0) + (notificationSpec.mechanicalLoopBoost || 0),
+      volumePercent: notificationSpec.volumePercent,
     });
     playedSound = true;
   }
@@ -2020,7 +2024,7 @@ function loadLiveRoutesForSelectedStop() {
 function getSelectedStopLocation(stop = getSelectedStop()) {
   const lat = Number(stop?.lat);
   const lng = Number(stop?.lng);
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+  if (!isValidLocation(stop)) {
     return null;
   }
 
@@ -2047,33 +2051,11 @@ function getRecommendedStops(limit = 2) {
   );
 }
 
-function getRouteEstimate(stop = getSelectedStop(), primaryLine = getPrimaryLine(stop)) {
-  const effectiveBusRideMin = Math.max(0, Number(state.commute.busRideMin) || Number(primaryLine.rideMin) || 0);
-  const localEstimate = buildAddressAwareRouteEstimate({
-    homeLocation: state.user.homeLocation,
-    workLocation: state.user.workLocation,
-    stopLocation: getSelectedStopLocation(stop),
-    busRideMin: effectiveBusRideMin,
-    alightToWorkWalkMin: state.commute.alightToWorkWalkMin,
-  });
-
-  const walkSnapshot = commuteEstimateMeta.snapshot?.homeToStop || null;
-  if (!walkSnapshot?.walkMinutes) {
-    return localEstimate;
-  }
-
-  return {
-    ...localEstimate,
-    homeToStopDistanceM: Number.isFinite(Number(walkSnapshot.distanceM))
-      ? Number(walkSnapshot.distanceM)
-      : localEstimate.homeToStopDistanceM,
-    homeToStopWalkMin: Number(walkSnapshot.walkMinutes),
-    totalCommuteMin:
-      Number(walkSnapshot.walkMinutes) + effectiveBusRideMin + Math.max(0, Number(state.commute.alightToWorkWalkMin) || 0),
-    provider: commuteEstimateMeta.snapshot?.provider || "straight-line",
-    fallback: Boolean(commuteEstimateMeta.snapshot?.fallback),
-    providerReason: commuteEstimateMeta.snapshot?.reason || "",
-  };
+function getRouteEstimate() {
+  const journey = resolveJourneyDuration(state, new Date());
+  return { homeToStopDistanceM: null, homeToStopWalkMin: null,
+    totalCommuteMin: journey.onboardToDestinationMin,
+    provider: journey.source, fallback: false };
 }
 
 function syncHomeToStopWalkEstimate(stop = getSelectedStop(), primaryLine = getPrimaryLine(stop)) {
@@ -2112,10 +2094,10 @@ function applyAddressResult(targetKey, result) {
   }
 
   resetAddressSearchState(safeTarget);
-  const estimate = syncHomeToStopWalkEstimate();
+  syncHomeToStopWalkEstimate();
   pushHistory(
     safeTarget === "home" ? "집 주소 선택" : "회사 주소 선택",
-    `${addressText} 좌표를 저장했고, 정류장 기준 도보 예상 ${estimate.homeToStopWalkMin ?? "-"}분으로 다시 계산했습니다.`,
+    `${addressText} 좌표를 저장했습니다. 집에서 탑승 지점까지의 이동시간은 지각 판단에 사용하지 않습니다.`,
   );
 }
 
@@ -2161,64 +2143,47 @@ function runAddressSearch(targetKey) {
     });
 }
 
-function buildCommuteEstimatePayload(stop = getSelectedStop(), primaryLine = getPrimaryLine(stop)) {
-  const stopLocation = getSelectedStopLocation(stop);
-  if (!stopLocation || state.user.homeLocation.lat === null || state.user.homeLocation.lng === null) {
-    return null;
-  }
-
-  return {
-    homeLocation: state.user.homeLocation,
-    workLocation: state.user.workLocation,
-    stopLocation,
-    busRideMin: Math.max(0, Number(state.commute.busRideMin) || Number(primaryLine.rideMin) || 0),
-    alightToWorkWalkMin: state.commute.alightToWorkWalkMin,
-  };
+function buildCommuteEstimatePayload() {
+  const query = transitQueryForState(state);
+  return isValidLocation(query.stopLocation) && isValidLocation(query.workLocation) ? query : null;
 }
 
-function refreshCommuteEstimate(options = {}) {
-  const { announce = false } = options;
+async function refreshCommuteEstimate() {
   const payload = buildCommuteEstimatePayload();
   if (!payload) {
     commuteEstimateMeta.status = "blocked";
-    commuteEstimateMeta.lastError = "집 좌표와 정류장 좌표가 있어야 서버 도보 계산을 할 수 있습니다.";
+    commuteEstimateMeta.lastError = "탑승 정류장과 목적지를 먼저 선택해 주세요. 집 좌표는 필요하지 않습니다.";
     commuteEstimateMeta.snapshot = null;
-    render();
-    return;
+    return render();
   }
-
-  commuteEstimateMeta.status = commuteEstimateMeta.snapshot ? "refreshing" : "loading";
+  const queryKey = transitQueryKey(payload);
+  const requestUserId = authMeta.user?.id;
+  commuteEstimateMeta.status = "loading";
   commuteEstimateMeta.lastError = "";
   render();
-
-  fetchCommuteEstimate(payload)
-    .then((result) => {
-      commuteEstimateMeta.status = "ready";
-      commuteEstimateMeta.snapshot = result;
-      commuteEstimateMeta.lastLoadedAt = result.fetchedAt || new Date().toISOString();
-      commuteEstimateMeta.lastError = "";
-      if (Number.isFinite(Number(result.homeToStop?.walkMinutes))) {
-        state.commute.homeToStopWalkMin = Number(result.homeToStop.walkMinutes);
-        persist();
-      }
-      if (announce) {
-        pushHistory(
-          "출근 도보 시간 갱신",
-          `${result.provider} 기준으로 정류장까지 ${result.homeToStop?.walkMinutes ?? "-"}분, 총 ${result.totalCommuteMin ?? "-"}분으로 계산했습니다.`,
-        );
-      } else {
-        render();
-      }
-    })
-    .catch((error) => {
-      commuteEstimateMeta.status = "error";
-      commuteEstimateMeta.lastError = error instanceof Error ? error.message : "출근 경로 계산 중 알 수 없는 오류가 발생했습니다.";
-      if (announce) {
-        pushHistory("출근 도보 계산 실패", commuteEstimateMeta.lastError, "ERROR");
-      } else {
-        render();
-      }
-    });
+  try {
+    const result = await fetchCommuteEstimate(payload);
+    if (authMeta.user?.id !== requestUserId || transitQueryKey(transitQueryForState(state)) !== queryKey) return;
+    commuteEstimateMeta.status = "ready";
+    commuteEstimateMeta.snapshot = result;
+    commuteEstimateMeta.lastLoadedAt = result.fetchedAt;
+    const previous = state.commute.transitJourney;
+    const current = previous?.boardingConfirmed && previous.queryKey === queryKey
+      ? result.routes.find((route) => route.id === previous.id && route.compatible) : null;
+    state.commute.transitJourney = current ? { ...current, boardingConfirmed: true } : null;
+    persist();
+  } catch (error) {
+    if (authMeta.user?.id !== requestUserId || transitQueryKey(transitQueryForState(state)) !== queryKey) return;
+    commuteEstimateMeta.status = "error";
+    commuteEstimateMeta.lastError = error instanceof Error ? error.message : "대중교통 경로 조회 실패";
+  } finally {
+    if (authMeta.user?.id === requestUserId && transitQueryKey(transitQueryForState(state)) !== queryKey) {
+      commuteEstimateMeta.status = "idle";
+      commuteEstimateMeta.snapshot = null;
+      render();
+    }
+  }
+  render();
 }
 
 function hasUsableLiveSnapshot(primaryLine) {
@@ -2241,6 +2206,35 @@ function goTo(screen) {
     window.location.hash = `#/${screen}`;
   } else {
     render();
+  }
+}
+
+async function refreshVisibleTransit() {
+  if (!isAuthenticated() || !isLiveConfigured(state) || visibleTransitRefreshPending ||
+      !busApiConfig.providers?.[state.live.provider]?.configured || !state.live.routeNumber) return;
+  const binding = getLiveBinding();
+  const key = JSON.stringify(binding);
+  const userId = authMeta.user.id;
+  visibleTransitRefreshPending = true;
+  try {
+    const payload = await fetchLiveArrivals(binding);
+    if (!isAuthenticated() || authMeta.user.id !== userId || JSON.stringify(getLiveBinding()) !== key) return;
+    state.live.snapshot = payload;
+    state.live.status = "ready";
+    state.live.lastError = "";
+    state.live.lastSyncedAt = payload.fetchedAt;
+    const age = Date.now() - Date.parse(state.commute.transitJourney?.fetchedAt || "");
+    if (state.commute.transitJourney?.boardingConfirmed && age > 5 * 60_000 && commuteEstimateMeta.status !== "loading") {
+      await refreshCommuteEstimate();
+    }
+  } catch (error) {
+    if (!isAuthenticated() || authMeta.user.id !== userId || JSON.stringify(getLiveBinding()) !== key) return;
+    state.live.snapshot = null;
+    state.live.status = "error";
+    state.live.lastError = error instanceof Error ? error.message : "실시간 도착정보 조회 실패";
+  } finally {
+    visibleTransitRefreshPending = false;
+    if (isAuthenticated()) render();
   }
 }
 
@@ -2315,7 +2309,7 @@ function flushPendingPanelFocus() {
 }
 
 function getSelectedStop() {
-  return STOP_LIBRARY.find((stop) => stop.id === state.commute.selectedStopId) || STOP_LIBRARY[0];
+  return resolveCommuteStop(state, STOP_LIBRARY);
 }
 
 function getAccuracyStopKey() {
@@ -2351,7 +2345,7 @@ function getSelectedLines(stop = getSelectedStop()) {
 
 function getPrimaryLine(stop = getSelectedStop()) {
   const selected = getSelectedLines(stop);
-  return selected.find((line) => line.id === state.commute.primaryLineId) || selected[0] || stop.lines[0];
+  return resolveCommuteLine(state, selected.find((line) => line.id === state.commute.primaryLineId) || selected[0] || stop.lines[0]);
 }
 
 function getProjectedArrivals(line) {
@@ -2372,7 +2366,7 @@ function getProjectedArrivals(line) {
 function getEffectiveHolidayDates() {
   return mergeHolidayDates(
     state.holidayDates,
-    state.officialHolidays.map((holiday) => holiday.date),
+    state.officialHolidays.filter((holiday) => holiday.isHoliday).map((holiday) => holiday.date),
   );
 }
 
@@ -2435,27 +2429,24 @@ function getDashboardModel() {
   const stop = getSelectedStop();
   const primaryLine = getPrimaryLine(stop);
   const routeEstimate = getRouteEstimate(stop, primaryLine);
-  const effectiveHomeToStopWalkMin = routeEstimate.homeToStopWalkMin ?? state.commute.homeToStopWalkMin;
-  const effectiveBusRideMin = Math.max(0, Number(state.commute.busRideMin) || Number(primaryLine.rideMin) || 0);
   const liveSnapshot = hasUsableLiveSnapshot(primaryLine) ? state.live.snapshot : null;
-  const arrivalsMin = liveSnapshot?.arrivalsMin || getProjectedArrivals(primaryLine);
+  const arrivalsMin = liveSnapshot ? projectLiveArrivals(liveSnapshot, now)
+    : isLiveConfigured(state) ? [] : getProjectedArrivals(primaryLine);
   const effectiveHolidayDates = getEffectiveHolidayDates();
   const liveEtaGuard = getLiveEtaGuard();
   const risk = evaluateLateRisk({
     requiredArrivalTime: state.user.requiredArrivalTime,
     route: {
-      homeToStopWalkMin: effectiveHomeToStopWalkMin,
-      alightToWorkWalkMin: state.commute.alightToWorkWalkMin,
-      busRideMin: effectiveBusRideMin,
+      ...resolveJourneyDuration(state, now),
       etaRiskBufferMin: liveEtaGuard.recommendedRiskBufferMin,
     },
     busArrivalsMin: arrivalsMin,
     now,
   });
   const notificationContext = {
-    riskLevel: risk.results[0].level,
+    riskLevel: risk.targetResult.level,
     routeNumber: primaryLine.number,
-    arrivalsMin,
+    arrivalsMin: risk.notificationArrivalsMin,
     urgency: risk.urgency,
     riskMessage: risk.message,
     liveEtaDisagreementLevel: accuracyMeta.runtime?.lastObservedDisagreementLevel || "",
@@ -2470,6 +2461,8 @@ function getDashboardModel() {
     escalationEnabled: state.notification.escalationEnabled,
     dndBypass: state.notification.dndBypass,
     preferredSoundPresetId: state.notification.soundPresetId,
+    preferredSpeechRate: state.notification.ttsSpeed,
+    vibrationStrength: state.notification.vibrationStrength,
   };
 
   return {
@@ -2481,7 +2474,7 @@ function getDashboardModel() {
     risk,
     liveEtaGuard,
     liveSnapshot,
-    dataSource: liveSnapshot ? "LIVE" : "DEMO",
+    dataSource: liveSnapshot && arrivalsMin.length ? "LIVE" : isLiveConfigured(state) || liveSnapshot ? "UNAVAILABLE" : "DEMO",
     liveProviderConfigured: Boolean(busApiConfig.providers?.[state.live.provider]?.configured),
     holidayApiConfigured: Boolean(holidayApiConfig.configured),
     placeApiConfigured: Boolean(placeApiConfig.providers?.kakao?.configured),
@@ -2489,7 +2482,7 @@ function getDashboardModel() {
     notificationSpec: getNotificationSpec(notificationContext),
     notificationTimeline: buildEscalationTimeline(notificationContext),
     scheduleState: describeScheduleState(state.schedule, now, effectiveHolidayDates),
-    leaveBy: addMinutes(now, Math.max(arrivalsMin[0] - effectiveHomeToStopWalkMin, 0)),
+    targetBoardingAt: risk.targetResult.arrivalMinutes === null ? null : addMinutes(now, risk.targetResult.arrivalMinutes),
     forecast: buildSchedulePreview(state.schedule, now, effectiveHolidayDates, 7),
     upcomingOfficialHolidays: state.officialHolidays.filter((holiday) => holiday.date >= dateOnlyKey(now)).slice(0, 6),
   };
@@ -2675,7 +2668,7 @@ function renderAuthScreen() {
           <h1>${escapeHtml(heading)}</h1>
           <p>${escapeHtml(copy)}</p>
         </section>
-        <section class="stack-panel">
+        <section class="stack-panel auth-panel">
           <div class="stack-title"><span class="material-symbols-outlined">verified_user</span>Account Access</div>
           <div class="live-sync-copy">${escapeHtml(statusCopy)}</div>
           <div class="choice-grid two-cols">
@@ -2687,7 +2680,7 @@ function renderAuthScreen() {
               authMeta.mode === "register"
                 ? `<label class="field-card">
                     <span>Name</span>
-                    <input class="text-field-input" type="text" data-auth-field="name" value="${escapeHtml(authDraft.name)}" placeholder="대표님 이름 또는 닉네임" />
+                    <input class="text-field-input" type="text" data-auth-field="name" value="${escapeHtml(authDraft.name)}" placeholder="이름 또는 닉네임" />
                   </label>`
                 : ""
             }
@@ -2696,7 +2689,7 @@ function renderAuthScreen() {
                 ? ""
                 : `<label class="field-card">
                     <span>Email</span>
-                    <input class="text-field-input" type="email" data-auth-field="email" value="${escapeHtml(authDraft.email)}" placeholder="founder@example.com" />
+                    <input class="text-field-input" type="email" data-auth-field="email" value="${escapeHtml(authDraft.email)}" placeholder="name@example.com" />
                   </label>`
             }
             ${
@@ -2757,7 +2750,7 @@ function renderStatusCard(model) {
           : "cloud_done"
       : "experiment";
   const bannerText =
-    liveEtaGuard.mode === "conservative"
+    model.dataSource === "UNAVAILABLE" ? "버스 도착 정보를 확인할 수 없습니다. 실시간 정보를 새로 조회해 주세요." : liveEtaGuard.mode === "conservative"
       ? liveEtaGuard.reasonCode === "eta-watch-history-high"
         ? `Providers are only about ${liveEtaGuard.spreadMin ?? "-"} min apart right now, but this route has been unstable on recent mornings. Leave conservatively and keep a ${liveEtaGuard.recommendedRiskBufferMin} min safety buffer anyway.`
         : `Providers are currently about ${liveEtaGuard.spreadMin ?? "-"} min apart. Leave conservatively, do not wait for the tighter ETA, and score late risk with a ${liveEtaGuard.recommendedRiskBufferMin} min safety buffer.`
@@ -2851,41 +2844,28 @@ function renderStatusCard(model) {
 }
 
 function renderGauge(model) {
-  const liveEtaGuard = model.liveEtaGuard || getLiveEtaGuard();
-  const walkMin = model.routeEstimate.homeToStopWalkMin ?? state.commute.homeToStopWalkMin;
-  const progress = Math.min(100, Math.max(12, (model.arrivalsMin[0] / 25) * 100));
-  const leaveBy =
-    liveEtaGuard.recommendedLeaveBufferMin > 0
-      ? addMinutes(model.leaveBy, -liveEtaGuard.recommendedLeaveBufferMin)
-      : model.leaveBy;
-  const caption =
-    liveEtaGuard.mode === "conservative"
-      ? liveEtaGuard.reasonCode === "eta-watch-history-high"
-        ? `This route has been shaky on recent mornings, so leave about ${liveEtaGuard.recommendedLeaveBufferMin} min earlier and aim for ${formatClock(leaveBy)} even though the live spread is only moderate right now.`
-        : `Live ETA is unstable, so leave about ${liveEtaGuard.recommendedLeaveBufferMin} min earlier and aim for ${formatClock(leaveBy)}.`
-      : liveEtaGuard.mode === "watch"
-        ? liveEtaGuard.reasonCode === "eta-watch-history-elevated"
-          ? `Provider ETAs are slightly split, and this route has been shaky on recent mornings. Keep the current source and aim to leave by ${formatClock(leaveBy)}.`
-          : `Provider ETAs are slightly split right now. Re-check live data and aim to leave by ${formatClock(leaveBy)}.`
-        : `Walk ${walkMin} min to the stop and leave by ${formatClock(leaveBy)}.`;
+  const target = model.risk.targetResult;
+  const minutes = target.arrivalMinutes;
+  const hasArrival = minutes !== null;
+  const progress = hasArrival ? Math.min(100, Math.max(0, minutes / 25 * 100)) : 0;
+  const label = model.risk.lastChanceConfirmed ? "놓치면 늦는 차 도착까지" :
+    target.level === "UNKNOWN" ? "교통편 도착까지 · 판단 대기" :
+    model.risk.urgency === "HURRY" ? "가장 빠른 차 도착까지" : "조회된 정시 가능 차 도착까지";
   return `
     <section class="gauge-section">
-      <div class="gauge-shell">
-        <div class="gauge-ring" style="--progress:${progress}%;">
-          <div class="gauge-center">
-            <div class="gauge-number">${walkMin}</div>
-            <div class="gauge-label">min to stop</div>
-          </div>
-        </div>
-      </div>
-      <div class="gauge-caption">
-        ${escapeHtml(caption)}
+      <div class="gauge-shell"><div class="gauge-ring" style="--progress:${progress}%;">
+        <div class="gauge-center"><div class="gauge-number">${hasArrival ? Math.ceil(minutes) : "—"}</div>
+        <div class="gauge-label">분 후 도착</div></div>
+      </div></div>
+      <div class="gauge-caption"><strong>${escapeHtml(label)}</strong><br>
+        ${escapeHtml(model.risk.message)}<br>집에서 정류장·역까지 이동시간은 계산하지 않습니다.
       </div>
     </section>
   `;
 }
 
 function renderBusCard(result, title, primaryLine, toneOverride = "") {
+  if (result.level === "UNKNOWN") return `<article class="bus-card neutral"><div class="bus-card-left"><div class="bus-chip">${title === "this" ? "이번 버스" : "다음 버스"}</div><div class="bus-minutes">—</div><div class="bus-line-copy">도착 정보가 없습니다. 실시간 정보를 다시 확인해 주세요.</div></div></article>`;
   const tone = toneOverride || result.risk.tone;
   const lateText = result.deltaMinutes >= 0 ? `${result.deltaMinutes} min early` : `${Math.abs(result.deltaMinutes)} min late risk`;
   const riskCopy =
@@ -2899,7 +2879,7 @@ function renderBusCard(result, title, primaryLine, toneOverride = "") {
           ${
             title === "this"
               ? result.catchable
-                ? "MUST CATCH"
+                ? result.risk.chip
                 : "MISS RISK"
               : result.level === "RED"
                 ? "LATE"
@@ -2907,13 +2887,13 @@ function renderBusCard(result, title, primaryLine, toneOverride = "") {
           }
         </div>
         <div class="bus-minutes-row">
-          <div class="bus-minutes">${result.arrivalMinutes}</div>
+          <div class="bus-minutes">${Math.ceil(result.arrivalMinutes)}</div>
           <div class="bus-minutes-unit">min</div>
         </div>
         <div class="bus-line-copy">${escapeHtml(primaryLine.number)}번 ${escapeHtml(primaryLine.label)} · ${escapeHtml(primaryLine.destination)} 방면</div>
       </div>
       <div class="bus-card-right">
-        <div class="bus-right-label">?뚯궗 ?꾩갑 ?덉긽</div>
+        <div class="bus-right-label">회사 도착 예상</div>
         <div class="bus-arrival-time">${escapeHtml(formatClock(result.arriveWorkAt))}</div>
         <div class="bus-risk-copy">${escapeHtml(riskCopy)}</div>
       </div>
@@ -2922,74 +2902,38 @@ function renderBusCard(result, title, primaryLine, toneOverride = "") {
 }
 
 function renderCommuteSummary(model) {
-  const totalCommuteCopy =
-    model.routeEstimate.totalCommuteMin !== null
-      ? `${model.routeEstimate.totalCommuteMin} min total`
-      : "Search an address to estimate the walk.";
-  return `
-    <section class="info-grid">
-      <article class="info-card">
-        <div class="info-label">Required arrival</div>
-        <div class="info-value">${escapeHtml(state.user.requiredArrivalTime)}</div>
-        <div class="info-copy">${escapeHtml(state.user.workAddress)}</div>
-      </article>
-      <article class="info-card">
-        <div class="info-label">Boarding stop</div>
-        <div class="info-value">${escapeHtml(model.stop.name)}</div>
-        <div class="info-copy">${escapeHtml(totalCommuteCopy)}</div>
-      </article>
-    </section>
-  `;
+  const duration = model.risk.onboardToDestinationMin;
+  return `<section class="info-grid">
+    <article class="info-card"><div class="info-label">목적지 도착 목표</div>
+      <div class="info-value">${escapeHtml(state.user.requiredArrivalTime)}</div>
+      <div class="info-copy">${escapeHtml(state.user.workAddress)}</div></article>
+    <article class="info-card"><div class="info-label">선택한 탑승 지점</div>
+      <div class="info-value">${escapeHtml(model.stop.name)}</div>
+      <div class="info-copy">${duration === null ? "목적지까지 경로 확인 필요" : `탑승 후 약 ${Math.ceil(duration)}분 · 예상시간`}</div></article>
+    </section>`;
 }
 
-function renderCommuteEstimatePanel(routeEstimate, stop, primaryLine) {
-  const providerLabel =
-    commuteEstimateMeta.snapshot?.provider === "kakao-walking"
-      ? "KAKAO WALK"
-      : commuteEstimateMeta.snapshot?.provider === "straight-line-fallback"
-        ? "FALLBACK"
-        : commuteEstimateMeta.snapshot?.provider === "straight-line"
-          ? "STRAIGHT"
-          : commuteApiConfig.providers?.kakaoWalking?.configured
-            ? "READY"
-            : "DEMO";
-  const statusCopy =
-    commuteEstimateMeta.status === "loading"
-      ? "서버가 정류장까지 도보 경로를 계산하고 있습니다."
-      : commuteEstimateMeta.status === "refreshing"
-        ? "최신 주소와 정류장 기준으로 도보 시간을 다시 계산하고 있습니다."
-        : commuteEstimateMeta.status === "error"
-          ? commuteEstimateMeta.lastError || "도보 시간 계산에 실패했습니다."
-          : commuteEstimateMeta.snapshot?.reason ||
-            (commuteApiConfig.providers?.kakaoWalking?.configured
-              ? "공식 Kakao 도보 API를 사용할 준비가 됐습니다."
-              : "Kakao 키가 없어서 현재는 직선거리 fallback으로 계산합니다.");
-
-  return `
-    <section class="stack-panel">
-      <div class="stack-title"><span class="material-symbols-outlined">directions_walk</span>Walk estimate</div>
-      <div class="live-sync-grid">
-        <article class="live-sync-card">
-          <div class="live-sync-label">Provider</div>
-          <div class="live-sync-value">${escapeHtml(providerLabel)}</div>
-          <div class="live-sync-copy">${escapeHtml(statusCopy)}</div>
-        </article>
-        <article class="live-sync-card">
-          <div class="live-sync-label">Home → stop</div>
-          <div class="live-sync-value">${routeEstimate.homeToStopWalkMin !== null ? escapeHtml(String(routeEstimate.homeToStopWalkMin)) : "-"}</div>
-          <div class="live-sync-copy">${escapeHtml(`${routeEstimate.homeToStopDistanceM ?? "-"}m to ${stop.name}`)}</div>
-        </article>
-        <article class="live-sync-card">
-          <div class="live-sync-label">Total commute</div>
-          <div class="live-sync-value">${routeEstimate.totalCommuteMin !== null ? escapeHtml(String(routeEstimate.totalCommuteMin)) : "-"}</div>
-          <div class="live-sync-copy">${escapeHtml(`도보 ${routeEstimate.homeToStopWalkMin ?? "-"}분 + 버스 ${Math.max(0, Number(state.commute.busRideMin) || Number(primaryLine.rideMin) || 0)}분 + 하차 후 ${state.commute.alightToWorkWalkMin}분`)}</div>
-        </article>
-      </div>
-      <button class="soft-button wide" data-action="refresh-commute-estimate" ${commuteEstimateMeta.status === "loading" || commuteEstimateMeta.status === "refreshing" ? "disabled" : ""}>
-        ${commuteEstimateMeta.status === "loading" || commuteEstimateMeta.status === "refreshing" ? "Refreshing..." : "Refresh walk estimate"}
-      </button>
-    </section>
-  `;
+function renderCommuteEstimatePanel() {
+  const queryKey = transitQueryKey(transitQueryForState(state));
+  const routes = commuteEstimateMeta.snapshot?.queryKey === queryKey ? commuteEstimateMeta.snapshot.routes || [] : [];
+  const selected = state.commute.transitJourney;
+  const busy = commuteEstimateMeta.status === "loading";
+  return `<section class="stack-panel">
+    <div class="stack-title"><span class="material-symbols-outlined">route</span>정류장·역 → 목적지 경로</div>
+    <p class="field-help">집에서 탑승 지점까지의 시간은 제외합니다. 먼저 실시간 정류장·노선을 선택한 뒤 경로를 조회해 주세요.</p>
+    <p class="field-help">카카오 경로는 예상시간이며, 버스 도착정보는 선택한 공식 제공처에서 따로 조회합니다. 다른 노선 전체와 비교한 결과가 아닙니다.</p>
+    ${commuteEstimateMeta.lastError ? `<p role="alert">${escapeHtml(commuteEstimateMeta.lastError)}</p>` : ""}
+    ${selected?.queryKey === queryKey ? `<p>선택한 경로: ${escapeHtml(selected.guidance)} · 탑승 후 약 ${Math.ceil(selected.onboardDurationSec / 60)}분</p>` : ""}
+    <button class="soft-button wide" data-action="refresh-commute-estimate" ${busy ? "disabled" : ""}>${busy ? "경로 조회 중…" : "대중교통 경로 조회"}</button>
+    ${routes.map((route) => `<article class="history-item">
+      <div><strong>${escapeHtml(route.guidance || route.boardingStation)}</strong>
+      <p>탑승 후 약 ${Math.ceil(route.onboardDurationSec / 60)}분 · 환승 ${route.transfers}회</p>
+      <p>탑승: ${escapeHtml(route.boardingStation)} → 다음 정류장: ${escapeHtml(route.nextStation || "정보 없음")}</p>
+      <p>${escapeHtml(route.compatible ? route.warning : route.unavailableReason)}</p>
+      <button class="mini-button" data-action="select-transit-route" data-route-id="${escapeHtml(route.id)}" ${!route.compatible ? "disabled" : ""}>이 탑승 지점·방향이 맞습니다</button></div>
+    </article>`).join("")}
+    ${commuteEstimateMeta.status === "ready" && !routes.length ? "<p>사용 가능한 경로가 없습니다. 정류장과 목적지를 확인해 주세요.</p>" : ""}
+  </section>`;
 }
 
 function renderHistoryPanel() {
@@ -5006,8 +4950,7 @@ function renderHome(screen, model) {
           </div>
           <button class="ghost-link" data-action="goto" data-screen="onboarding">Edit commute</button>
         </div>
-        ${renderBusCard(model.risk.results[0], "this", model.primaryLine, model.risk.urgency === "MUST_CATCH" ? "orange" : "")}
-        ${renderBusCard(model.risk.results[1], "next", model.primaryLine, model.risk.results[1].level === "RED" ? "red" : "")}
+        ${model.risk.results.map((result, index) => renderBusCard(result, index === model.risk.targetResult.index ? "this" : "next", model.primaryLine, model.risk.lastChanceConfirmed && index === model.risk.targetResult.index ? "orange" : "")).join("")}
       </section>
       <section class="message-panel">
         <div class="message-icon"><span class="material-symbols-outlined">tips_and_updates</span></div>
@@ -5143,34 +5086,12 @@ function renderOnboarding() {
             <span>Required arrival time</span>
             <input class="text-field-input time-field-input" type="time" value="${escapeHtml(state.user.requiredArrivalTime)}" data-field="user.requiredArrivalTime" />
           </label>
-          <label class="field-block compact">
-            <span>Walk after getting off the bus (min)</span>
+          <label class="field-block compact" ${isLiveConfigured(state) ? 'hidden' : ''}>
+            <span>데모 전용: 하차 후 도보 시간 (분)</span>
             <input class="text-field-input" type="number" min="1" max="30" value="${escapeHtml(state.commute.alightToWorkWalkMin)}" data-field="commute.alightToWorkWalkMin" />
           </label>
         </div>
-        <div class="live-sync-grid">
-          <article class="live-sync-card">
-            <div class="live-sync-label">Walk to stop</div>
-            <div class="live-sync-value">${routeEstimate.homeToStopWalkMin !== null ? escapeHtml(String(routeEstimate.homeToStopWalkMin)) : "-"}</div>
-            <div class="live-sync-copy">
-              ${
-                routeEstimate.homeToStopDistanceM !== null
-                  ? escapeHtml(`${routeEstimate.homeToStopDistanceM}m estimated from the selected home address to ${stop.name}.`)
-                  : "집 주소 좌표가 있어야 계산됩니다."
-              }
-            </div>
-          </article>
-          <article class="live-sync-card">
-            <div class="live-sync-label">Bus ride</div>
-            <div class="live-sync-value">${escapeHtml(String(Math.max(0, Number(state.commute.busRideMin) || Number(primaryLine.rideMin) || 0)))}</div>
-            <div class="live-sync-copy">${escapeHtml(`${primaryLine.number}번 기준 탑승 시간`)} </div>
-          </article>
-          <article class="live-sync-card">
-            <div class="live-sync-label">Total commute</div>
-            <div class="live-sync-value">${routeEstimate.totalCommuteMin !== null ? escapeHtml(String(routeEstimate.totalCommuteMin)) : "-"}</div>
-            <div class="live-sync-copy">${escapeHtml(`도보 ${routeEstimate.homeToStopWalkMin ?? "-"}분 + 버스 ${Math.max(0, Number(state.commute.busRideMin) || Number(primaryLine.rideMin) || 0)}분 + 하차 후 ${state.commute.alightToWorkWalkMin}분`)}</div>
-          </article>
-        </div>
+        <p class="field-help">집 주소는 선택 사항입니다. 지각 판단은 선택한 정류장·역에 오는 교통편의 도착시간을 기준으로 합니다.</p>
       </section>
       ${renderCommuteEstimatePanel(routeEstimate, stop, primaryLine)}
       <section class="stack-panel">
@@ -5761,7 +5682,7 @@ function renderSettings(screen, model) {
           <div class="slider-scale"><span>0.8x</span><span>Normal</span><span>1.3x</span></div>
         </div>
         <button class="soft-button wide" data-action="preview-tts">Listen to Sample</button>
-        <div class="sample-copy">"좋은 아침입니다. ${escapeHtml(model.primaryLine.number)}번 버스는 ${model.risk.results[0].arrivalMinutes}분 후 도착합니다."</div>
+        <div class="sample-copy">${escapeHtml(model.notificationSpec.spokenText)}</div>
       </section>
       <section class="stack-panel">
         <div class="stack-title"><span class="material-symbols-outlined">crisis_alert</span>Escalation Preview</div>
@@ -5862,7 +5783,6 @@ function toggleDay(dayValue) {
   state.schedule.daysOfWeek = exists
     ? state.schedule.daysOfWeek.filter((value) => value !== day)
     : [...state.schedule.daysOfWeek, day].sort((a, b) => a - b);
-  if (!state.schedule.daysOfWeek.length) state.schedule.daysOfWeek = [1];
   persist();
   render();
 }
@@ -5888,7 +5808,7 @@ function playSoundPreset(presetId, options = {}) {
       oscillator.type = tone.type || "sine";
       oscillator.frequency.value = tone.frequency;
       gainNode.gain.setValueAtTime(0.0001, loopBase + tone.offset);
-      gainNode.gain.exponentialRampToValueAtTime(tone.gain, loopBase + tone.offset + 0.01);
+      gainNode.gain.exponentialRampToValueAtTime(Math.max(0.0001, tone.gain * Math.min(100, Math.max(0, Number(options.volumePercent ?? 100))) / 100), loopBase + tone.offset + 0.01);
       gainNode.gain.exponentialRampToValueAtTime(0.0001, loopBase + tone.offset + tone.duration);
       oscillator.connect(gainNode);
       gainNode.connect(audioContext.destination);
@@ -5910,7 +5830,7 @@ function previewTts() {
   utterance.rate = Number(model.notificationSpec.speechRate || state.notification.ttsSpeed);
   utterance.volume = Number(model.notificationSpec.speechVolume || 1);
   const voices = window.speechSynthesis.getVoices();
-  const koreanVoice = voices.find((voice) => voice.lang.toLowerCase().startsWith("ko"));
+  const koreanVoice = resolvePreferredKoreanVoice(voices);
   if (koreanVoice) utterance.voice = koreanVoice;
   window.speechSynthesis.cancel();
   window.speechSynthesis.speak(utterance);
@@ -6174,6 +6094,13 @@ app.addEventListener("click", (event) => {
     refreshCommuteEstimate({ announce: true });
     return;
   }
+  if (action === "select-transit-route") {
+    const route = commuteEstimateMeta.snapshot?.routes?.find((item) => item.id === target.dataset.routeId);
+    if (!route?.compatible || route.queryKey !== transitQueryKey(transitQueryForState(state))) return;
+    state.commute.transitJourney = { ...route, boardingConfirmed: true };
+    persist();
+    return render();
+  }
   if (action === "refresh-commute-estimate") {
     refreshCommuteEstimate({ announce: true });
     return;
@@ -6237,6 +6164,13 @@ app.addEventListener("click", (event) => {
     return render();
   }
   if (action === "select-live-stop") {
+    const candidate = state.ui.liveSearchResults.find((item) => String(item.stationId) === target.dataset.stationId);
+    const location = { lat: candidate?.posY ?? candidate?.lat, lng: candidate?.posX ?? candidate?.lng };
+    state.commute.stopLocation = isValidLocation(location)
+      ? { lat: Number(location.lat), lng: Number(location.lng) } : null;
+    state.commute.selectedStopId = target.dataset.stationId || "";
+    commuteEstimateMeta.snapshot = null;
+    state.commute.transitJourney = null;
     state.live.stationId = target.dataset.stationId || "";
     state.live.stationName = target.dataset.stationName || "";
     state.live.arsId = target.dataset.arsId || "";
@@ -6562,6 +6496,7 @@ window.addEventListener("visibilitychange", () => {
     return;
   }
   if (document.visibilityState === "visible") {
+    void refreshVisibleTransit();
     queueAlarmPlanRefresh(0);
     queueAlarmRuntimeRefresh(0);
     void runAutoBusAccuracyProbeCycle();
@@ -6580,6 +6515,7 @@ window.setInterval(() => {
   queueAlarmRuntimeRefresh(0);
   void runAutoBusAccuracyProbeCycle();
   if (routeToScreen(window.location.hash) === "home") render();
+  if (routeToScreen(window.location.hash) === "home") void refreshVisibleTransit();
 }, 15_000);
 window.addEventListener("keydown", (event) => {
   void primeAlarmPlayback();
