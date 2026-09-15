@@ -246,7 +246,7 @@ test("normalizeGyeonggiStationRoutes extracts official route candidates for a st
   ]);
 });
 
-test("normalizeTagoArrival filters rows by route number and returns first two arrivals", () => {
+test("normalizeTagoArrival filters rows by route number and preserves second precision", () => {
   const normalized = normalizeTagoArrival(
     {
       response: {
@@ -278,7 +278,7 @@ test("normalizeTagoArrival filters rows by route number and returns first two ar
 
   assert.equal(normalized.lineNumber, "5");
   assert.equal(normalized.stopName, "North Gate");
-  assert.deepEqual(normalized.arrivalsMin, [14, 26]);
+  assert.deepEqual(normalized.arrivalsMin, [13.6, 25.7]);
 });
 
 test("getBusApiConfig uses accuracy-first provider priority and prefers TAGO first for Gyeonggi", () => {
@@ -296,8 +296,9 @@ test("getBusApiConfig uses accuracy-first provider priority and prefers TAGO fir
   assert.equal(config.providers.tago.label, "TAGO (Accuracy-first candidate)");
   assert.equal(config.providers.tago.role, "national-candidate");
   assert.deepEqual(config.providers.tago.recommendedRegions, ["national", "gyeonggi"]);
-  assert.equal(config.providers.tago.setup.bindingMode, "manual");
-  assert.equal(config.providers.tago.setup.stationSearchSupported, false);
-  assert.equal(config.providers.tago.setup.stationRouteSearchSupported, false);
-  assert.match(config.providers.tago.setup.guidance, /Accuracy matters more than API ownership/);
+  assert.equal(config.providers.tago.setup.bindingMode, "search-assisted");
+  assert.equal(config.providers.tago.setup.stationSearchSupported, true);
+  assert.equal(config.providers.tago.setup.stationRouteSearchSupported, true);
+  assert.equal(config.providers.tago.setup.cityCodeLookupSupported, true);
+  assert.match(config.providers.tago.setup.guidance, /자동 입력/);
 });

@@ -103,12 +103,13 @@ export function ensureLiveBindingState(liveState) {
 }
 
 export function syncActiveLiveBinding(liveState) {
-  ensureLiveBindingState(liveState);
+  liveState.bindings = normalizeLiveBindings(liveState.bindings);
   if (!MANAGED_LIVE_PROVIDERS.includes(liveState.provider)) {
     return liveState;
   }
 
-  liveState.bindings[liveState.provider] = mergeBindingValues(pickTopLevelBinding(liveState), liveState.bindings[liveState.provider]);
+  // Active fields are authoritative, including deliberate clears after changing stops.
+  liveState.bindings[liveState.provider] = pickTopLevelBinding(liveState);
   return liveState;
 }
 

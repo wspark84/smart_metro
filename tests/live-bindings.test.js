@@ -57,3 +57,19 @@ test("switchLiveProvider preserves each provider binding and restores it when to
   assert.equal(liveState.nodeId, "GGB218000118");
   assert.equal(liveState.routeNumber, "8109");
 });
+
+test("cleared active route and stop fields never reappear from older saved bindings", () => {
+  const state = ensureLiveBindingState({ provider: "tago", cityCode: "25", nodeId: "OLD", routeId: "OLD_ROUTE", routeNumber: "5" });
+  state.nodeId = "NEW";
+  state.routeId = "";
+  state.routeNumber = "";
+  syncActiveLiveBinding(state);
+  ensureLiveBindingState(state);
+  assert.equal(state.routeId, "");
+  assert.equal(state.routeNumber, "");
+  assert.equal(state.nodeId, "NEW");
+  switchLiveProvider(state, "seoul");
+  switchLiveProvider(state, "tago");
+  assert.equal(state.routeId, "");
+  assert.equal(state.nodeId, "NEW");
+});

@@ -1,4 +1,6 @@
 import { fetchWithTimeout } from "./upstream-fetch.mjs";
+import { fetchTagoArrivalRows, searchTagoStations, searchTagoStationRoutes } from "./tago-api.mjs";
+export { fetchTagoCities } from "./tago-api.mjs";
 
 function xmlDecode(value) {
   return String(value ?? "")
@@ -332,26 +334,35 @@ export function normalizeGyeonggiStationRoutes(payload, { routeNumber = "" } = {
   return filteredRows;
 }
 
-export function normalizeTagoArrival(payload, routeNumber = "") {
+export function normalizeTagoArrival(payload, selection = "") {
   const items = payload?.response?.body?.items?.item;
-  const rows = asArray(items);
+  const options = typeof selection === "object" && selection !== null ? selection : { routeNumber: selection };
+  const routeNumber = String(options.routeNumber ?? "").trim();
+  const routeId = String(options.routeId ?? "").trim();
+  const nodeId = String(options.nodeId ?? "").trim();
+  const rows = asArray(items).filter((row) => !nodeId || String(row.nodeid ?? "").trim() === nodeId);
 
   if (!rows.length) {
     throw new Error("TAGO API returned no arrival rows.");
   }
 
-  const normalizedRouteNumber = String(routeNumber || "").trim();
-  const matched =
-    rows.find((row) => String(row.routeno || "").trim() === normalizedRouteNumber) ||
-    rows.find((row) => String(row.routeid || "").trim() === normalizedRouteNumber) ||
-    (!normalizedRouteNumber ? rows[0] : null);
+  let candidates = routeId
+    ? rows.filter((row) => String(row.routeid ?? "").trim() === routeId)
+    : routeNumber ? rows.filter((row) => String(row.routeno ?? "").trim() === routeNumber) : rows;
+  // Keep compatibility with legacy bindings that stored a route ID in routeNumber.
+  if (!routeId && routeNumber && !candidates.length) {
+    candidates = rows.filter((row) => String(row.routeid ?? "").trim() === routeNumber);
+  }
+  const matched = candidates[0];
   if (!matched) throw new Error("TAGO API returned no arrivals for the selected route.");
-
-  const arrivals = normalizeArrivalMinutes(
-    rows
-      .filter((row) => String(row.routeno || "").trim() === String(matched.routeno || "").trim())
-      .map((row) => toMinutesFromSeconds(row.arrtime)),
-  );
+  const identities = new Set(candidates.map((row) => `${String(row.nodeid ?? "").trim()}|${String(row.routeid ?? row.routeno ?? "").trim()}`));
+  if (identities.size > 1) throw new Error("TAGO 노선이 여러 개입니다. 정확한 nodeId와 routeId를 선택해 주세요.");
+  // arrtime is seconds; retain fractions and every vehicle for deadline decisions.
+  const seconds = candidates.map((row) => ["string", "number"].includes(typeof row.arrtime) ? toFiniteNumber(row.arrtime) : null);
+  if (seconds.some((value) => value === null || !Number.isSafeInteger(value) || value < 0)) {
+    throw new Error("TAGO API row did not include valid arrival seconds.");
+  }
+  const arrivals = seconds.map((value) => value / 60).sort((a, b) => a - b);
 
   if (!arrivals.length) {
     throw new Error("TAGO API row did not include valid arrival minutes.");
@@ -499,7 +510,7 @@ export async function searchGyeonggiStationRoutes({ serviceKey, stationId, route
   return normalizeGyeonggiStationRoutes(payload, { routeNumber });
 }
 
-export async function fetchTagoArrival({ serviceKey, cityCode, nodeId, routeNumber, fetchImpl = fetch }) {
+export async function fetchTagoArrival({ serviceKey, cityCode, nodeId, routeId, routeNumber, fetchImpl = fetch }) {
   if (!serviceKey) {
     throw new Error("TAGO_SERVICE_KEY is not configured.");
   }
@@ -508,21 +519,11 @@ export async function fetchTagoArrival({ serviceKey, cityCode, nodeId, routeNumb
     throw new Error("TAGO live binding requires cityCode and nodeId.");
   }
 
-  const url = new URL("http://apis.data.go.kr/1613000/ArvlInfoInqireService/getSttnAcctoArvlPrearngeInfoList");
-  url.searchParams.set("serviceKey", serviceKey);
-  url.searchParams.set("pageNo", "1");
-  url.searchParams.set("numOfRows", "30");
-  url.searchParams.set("_type", "json");
-  url.searchParams.set("cityCode", cityCode);
-  url.searchParams.set("nodeId", nodeId);
-
-  const response = await fetchWithTimeout(url, {}, { fetchImpl });
-  if (!response.ok) {
-    throw new Error(`TAGO API request failed with ${response.status}.`);
+  if (!String(routeId ?? "").trim() && !String(routeNumber ?? "").trim()) {
+    throw new Error("TAGO live binding requires routeId or routeNumber.");
   }
-
-  const payload = await response.json();
-  return normalizeTagoArrival(payload, routeNumber);
+  const rows = await fetchTagoArrivalRows({ serviceKey, cityCode, nodeId, routeId, fetchImpl });
+  return normalizeTagoArrival({ response: { body: { items: { item: rows } } } }, { routeId, routeNumber, nodeId });
 }
 
 export function getBusApiConfig() {
@@ -585,19 +586,20 @@ export function getBusApiConfig() {
         recommendedRegions: ["national", "gyeonggi"],
         note: "Current ETA-first rule treats TAGO as the first candidate for Gyeonggi and the default national coverage source.",
         setup: {
-          bindingMode: "manual",
-          stationSearchSupported: false,
-          stationRouteSearchSupported: false,
+          bindingMode: "search-assisted",
+          cityCodeLookupSupported: true,
+          stationSearchSupported: true,
+          stationRouteSearchSupported: true,
           guidance:
-            "Accuracy matters more than API ownership. If TAGO is the most accurate source for this commute, keep it selected and enter city code, node id, route id, route number, and stop order manually below.",
+            "도시를 선택하고 정류장을 검색한 다음 경유노선을 선택하세요. 정류장·노선 고유번호는 자동 입력됩니다. 집에서 정류장까지의 이동시간은 지각 계산에 넣지 않습니다.",
           stationSearchIdleHint:
-            "Manual TAGO binding: station search is disabled for this provider in the current mobile shell.",
+            "TAGO 도시코드와 정류장 이름을 입력해 검색하세요.",
           stationSearchEmptyLabel:
-            "TAGO does not load station candidates here. Enter the live binding fields manually below.",
+            "도시 선택 후 정류장 이름 또는 번호로 검색하세요.",
           routeSearchIdleHint:
-            "Manual TAGO binding: route candidate lookup is disabled for this provider in the current mobile shell.",
+            "정류장을 선택하면 경유노선을 조회할 수 있습니다.",
           routeSearchEmptyLabel:
-            "TAGO does not load route candidates here. Enter route id, route number, stop order, city code, and node id manually below.",
+            "정류장을 선택하고 이용할 버스 번호와 기점·종점을 확인하세요.",
         },
       },
     },
@@ -636,6 +638,7 @@ export async function fetchLiveArrival(binding) {
         serviceKey: process.env.TAGO_SERVICE_KEY,
         cityCode: binding.cityCode,
         nodeId: binding.nodeId,
+        routeId: binding.routeId,
         routeNumber: binding.routeNumber,
       })),
     };
@@ -645,6 +648,10 @@ export async function fetchLiveArrival(binding) {
 }
 
 export async function searchLiveStations(binding) {
+  if (binding.provider === "tago") {
+    return { provider: "tago", stations: await searchTagoStations({ serviceKey: process.env.TAGO_SERVICE_KEY,
+      cityCode: binding.cityCode, keyword: binding.keyword }) };
+  }
   if (binding.provider === "seoul") {
     return {
       provider: "seoul",
@@ -669,6 +676,10 @@ export async function searchLiveStations(binding) {
 }
 
 export async function searchLiveStationRoutes(binding) {
+  if (binding.provider === "tago") {
+    return { provider: "tago", routes: await searchTagoStationRoutes({ serviceKey: process.env.TAGO_SERVICE_KEY,
+      cityCode: binding.cityCode, nodeId: binding.nodeId, routeNumber: binding.routeNumber }) };
+  }
   if (binding.provider === "seoul") {
     return {
       provider: "seoul",

@@ -1374,9 +1374,47 @@ class _MobileOperationsScreenState extends State<MobileOperationsScreen> {
     });
   }
 
+  Future<void> _chooseTagoCity() async {
+    try {
+      final payload = await widget.apiClient.fetchTagoCities();
+      if (!mounted || _activeProvider != 'tago') return;
+      final cities = _mapList(payload['cities']);
+      final selected = await showDialog<String>(
+        context: context,
+        builder: (dialogContext) => SimpleDialog(
+          title: const Text('TAGO 도시 선택'),
+          children: cities.map((city) => SimpleDialogOption(
+            onPressed: () => Navigator.pop(dialogContext, city['cityCode'].toString()),
+            child: Text('${city['cityName']} (${city['cityCode']})'),
+          )).toList(),
+        ),
+      );
+      if (!mounted || selected == null || _activeProvider != 'tago') return;
+      setState(() {
+        _cityCodeController.text = selected;
+        _nodeIdController.clear();
+        _stationIdController.clear();
+        _stationNameController.clear();
+        _arsIdController.clear();
+        _stopIdController.clear();
+        _routeIdController.clear();
+        _routeNumberController.clear();
+        _orderController.clear();
+        _selectedStopLocation = null;
+        _stationResults = <Map<String, dynamic>>[];
+        _routeResults = <Map<String, dynamic>>[];
+        _stationSearchStatus = '도시를 선택했습니다. 정류장을 검색하세요.';
+      });
+    } on MobileApiException catch (error) {
+      if (error.statusCode == 401) { await widget.onSessionExpired(); return; }
+      if (mounted) setState(() => _stationSearchStatus = error.message);
+    }
+  }
+
   Future<void> _searchStations() async {
     final provider = _activeProvider;
     final keyword = _stationKeywordController.text.trim();
+    final cityCode = _cityCodeController.text.trim();
 
     if (!_supportsLiveStationSearch(provider)) {
       setState(() {
@@ -1394,6 +1432,10 @@ class _MobileOperationsScreenState extends State<MobileOperationsScreen> {
       });
       return;
     }
+    if (provider == 'tago' && cityCode.isEmpty) {
+      setState(() => _stationSearchStatus = 'TAGO 도시를 먼저 선택해 주세요.');
+      return;
+    }
 
     setState(() {
       _searchingStations = true;
@@ -1406,10 +1448,12 @@ class _MobileOperationsScreenState extends State<MobileOperationsScreen> {
       final payload = await widget.apiClient.searchStations(
         provider: provider,
         keyword: keyword,
+        cityCode: provider == 'tago' ? cityCode : '',
       );
       final results = _mapList(payload['stations']);
 
-      if (!mounted) {
+      if (!mounted || _activeProvider != provider || _stationKeywordController.text.trim() != keyword ||
+          (provider == 'tago' && _cityCodeController.text.trim() != cityCode)) {
         return;
       }
 
@@ -1457,6 +1501,13 @@ class _MobileOperationsScreenState extends State<MobileOperationsScreen> {
       _stationNameController.text = stationName;
       _stationKeywordController.text = stationName;
       _stationIdController.text = stationId;
+      if (_activeProvider == 'tago') {
+        _nodeIdController.text = _readString(station, 'nodeId', fallback: stationId);
+        _cityCodeController.text = _readString(station, 'cityCode', fallback: _cityCodeController.text);
+      }
+      _routeIdController.clear();
+      _routeNumberController.clear();
+      _orderController.clear();
       _arsIdController.text = arsId;
       _stopIdController.text = stationId;
       _selectedStopLocation = stopLocation;
@@ -1472,6 +1523,8 @@ class _MobileOperationsScreenState extends State<MobileOperationsScreen> {
     final provider = _activeProvider;
     final stationId = _stationIdController.text.trim();
     final arsId = _arsIdController.text.trim();
+    final cityCode = _cityCodeController.text.trim();
+    final nodeId = _nodeIdController.text.trim();
 
     if (!_supportsLiveStationRouteSearch(provider)) {
       setState(() {
@@ -1482,7 +1535,7 @@ class _MobileOperationsScreenState extends State<MobileOperationsScreen> {
       return;
     }
 
-    if (stationId.isEmpty && arsId.isEmpty) {
+    if (provider == 'tago' ? (cityCode.isEmpty || nodeId.isEmpty) : (stationId.isEmpty && arsId.isEmpty)) {
       setState(() {
         _routeSearchStatus =
             'Choose a station first so the app knows which live stop to inspect.';
@@ -1502,10 +1555,13 @@ class _MobileOperationsScreenState extends State<MobileOperationsScreen> {
         stationId: stationId,
         arsId: arsId,
         routeNumber: _routeNumberController.text.trim(),
+        cityCode: provider == 'tago' ? cityCode : '',
+        nodeId: provider == 'tago' ? nodeId : '',
       );
       final results = _mapList(payload['routes']);
 
-      if (!mounted) {
+      if (!mounted || _activeProvider != provider || _stationIdController.text.trim() != stationId ||
+          (provider == 'tago' && (_cityCodeController.text.trim() != cityCode || _nodeIdController.text.trim() != nodeId))) {
         return;
       }
 
@@ -2308,6 +2364,8 @@ class _MobileOperationsScreenState extends State<MobileOperationsScreen> {
                   _providerController.text = selection.first;
                   _stationSearchStatus = '';
                   _routeSearchStatus = '';
+                  _stationResults = <Map<String, dynamic>>[];
+                  _routeResults = <Map<String, dynamic>>[];
                 });
               },
             ),
@@ -2316,6 +2374,10 @@ class _MobileOperationsScreenState extends State<MobileOperationsScreen> {
               padding: const EdgeInsets.only(bottom: 12),
               child: Text(_providerRouteGuidance(_activeProvider)),
             ),
+            if (_activeProvider == 'tago') ...<Widget>[
+              OutlinedButton(onPressed: _chooseTagoCity, child: const Text('TAGO 도시 선택')),
+              Text('선택 도시코드: ${_cityCodeController.text.isEmpty ? "미선택" : _cityCodeController.text}'),
+            ],
             _buildSearchField(
               controller: _stationKeywordController,
               label: 'Station search keyword',
@@ -2369,8 +2431,11 @@ class _MobileOperationsScreenState extends State<MobileOperationsScreen> {
                 _lineIdsController, 'Selected line ids (comma separated)'),
             _buildTextField(_routeIdController, 'Official route id'),
             _buildTextField(_orderController, 'Station order on route'),
-            _buildTextField(_cityCodeController, 'TAGO city code (optional)'),
-            _buildTextField(_nodeIdController, 'TAGO node id (optional)'),
+            if (_activeProvider != 'tago') ...<Widget>[
+              _buildTextField(_cityCodeController, 'TAGO city code (optional)'),
+              _buildTextField(_nodeIdController, 'TAGO node id (optional)'),
+            ] else
+              Text('TAGO 정류장 고유번호: ${_nodeIdController.text.isEmpty ? "정류장을 선택하세요" : _nodeIdController.text}'),
             if (_activeProvider == 'none') ...<Widget>[
               _buildTextField(_busRideMinController, '데모: 탑승 시간 (분)'),
               _buildTextField(_alightWalkMinController, '데모: 하차 후 도보 (분)'),

@@ -66,7 +66,7 @@ import { createDispatchExecutionState, reconcileDispatchExecutions } from "./src
 import { readDispatchExecutionState, writeDispatchExecutionState } from "./src/server/dispatch-execution-store.mjs";
 import { buildAlarmPlan } from "./src/server/alarm-plan.mjs";
 import { refreshAlarmArrivals, isAlarmRefreshWindow } from "./src/server/alarm-arrival-refresh.mjs";
-import { fetchLiveArrival, getBusApiConfig, searchLiveStationRoutes, searchLiveStations } from "./src/server/bus-providers.mjs";
+import { fetchLiveArrival, fetchTagoCities, getBusApiConfig, searchLiveStationRoutes, searchLiveStations } from "./src/server/bus-providers.mjs";
 import { createDispatchQueueState, reconcileDispatchQueue } from "./src/server/dispatch-engine.mjs";
 import { readDispatchQueueState, writeDispatchQueueState } from "./src/server/dispatch-queue-store.mjs";
 import { readDeviceProfile, writeDeviceProfile } from "./src/server/device-profile-store.mjs";
@@ -795,11 +795,12 @@ function buildAutoBusAccuracyContext(appState) {
   }
 
   const tagoBinding = liveBindings.tago || {};
-  if (tagoBinding.cityCode && tagoBinding.nodeId && (tagoBinding.routeNumber || primaryRouteNumber)) {
+  if (tagoBinding.cityCode && tagoBinding.nodeId && (tagoBinding.routeId || tagoBinding.routeNumber || primaryRouteNumber)) {
     candidates.push({
       provider: "tago",
       cityCode: tagoBinding.cityCode,
       nodeId: tagoBinding.nodeId,
+      routeId: tagoBinding.routeId,
       routeNumber: tagoBinding.routeNumber || primaryRouteNumber,
       regionHint: policy.regionPriority?.gyeonggi?.[0] === "tago" ? "gyeonggi" : "national",
       stopName: tagoBinding.stationName || fallbackStopName,
@@ -3421,11 +3422,31 @@ async function handleRequest(request, response) {
     }
   }
 
+  if (requestUrl.pathname === "/api/bus/cities" && request.method === "GET") {
+    try {
+      if (requestUrl.searchParams.get("provider") !== "tago") throw new Error("도시코드 조회는 TAGO만 지원합니다.");
+      const service = requestUrl.searchParams.get("service") || "arrivals";
+      if (!["arrivals", "stops"].includes(service)) throw new Error("지원하지 않는 TAGO 서비스입니다.");
+      const result = await loadWithCache({
+        key: ["tago-cities", service],
+        ttlMs: 24 * 60 * 60 * 1000,
+        loader: () => fetchTagoCities({ serviceKey: process.env.TAGO_SERVICE_KEY, service }),
+      });
+      response.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+      response.end(JSON.stringify({ provider: "tago", cities: result.value, fetchedAt: result.fetchedAt, stale: result.stale }));
+    } catch (error) {
+      response.writeHead(400, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+      response.end(JSON.stringify({ error: error instanceof Error ? error.message : "도시코드 조회에 실패했습니다." }));
+    }
+    return;
+  }
+
   if (requestUrl.pathname === "/api/bus/stations") {
     try {
       const payload = await searchLiveStations({
         provider: requestUrl.searchParams.get("provider") || "",
         keyword: requestUrl.searchParams.get("keyword") || "",
+        cityCode: requestUrl.searchParams.get("cityCode") || "",
       });
 
       response.writeHead(200, {
@@ -3461,6 +3482,8 @@ async function handleRequest(request, response) {
         arsId: requestUrl.searchParams.get("arsId") || "",
         stationId: requestUrl.searchParams.get("stationId") || "",
         routeNumber: requestUrl.searchParams.get("routeNumber") || "",
+        cityCode: requestUrl.searchParams.get("cityCode") || "",
+        nodeId: requestUrl.searchParams.get("nodeId") || "",
       });
 
       response.writeHead(200, {

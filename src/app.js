@@ -72,6 +72,7 @@ import {
   fetchBusAccuracyLeaderboard,
   fetchBusAccuracySummary,
   fetchBusApiConfig,
+  fetchTagoCityList,
   fetchLiveArrivals,
   recordActualBusArrival,
   runBusAccuracyAutoProbe,
@@ -1532,11 +1533,16 @@ function getLiveBinding() {
   };
 }
 
+const tagoCitiesMeta = { cities: [], status: "idle", error: "" };
+let liveStationRequest = 0;
+let liveRouteRequest = 0;
+
 function getLiveSearchBinding() {
   state.live = ensureLiveBindingState(state.live);
   return {
     provider: state.live.provider,
     keyword: state.ui.liveSearchKeyword,
+    cityCode: state.live.provider === "tago" ? state.live.cityCode : "",
   };
 }
 
@@ -1547,16 +1553,20 @@ function getLiveRouteBinding() {
     arsId: state.live.arsId,
     stationId: state.live.stationId,
     routeNumber: state.live.routeNumber,
+    cityCode: state.live.provider === "tago" ? state.live.cityCode : "",
+    nodeId: state.live.provider === "tago" ? state.live.nodeId : "",
   };
 }
 
 function resetLiveSearchState() {
+  liveStationRequest += 1;
   state.ui.liveSearchStatus = "idle";
   state.ui.liveSearchError = "";
   state.ui.liveSearchResults = [];
 }
 
 function resetLiveRouteSearchState() {
+  liveRouteRequest += 1;
   state.ui.liveRouteSearchStatus = "idle";
   state.ui.liveRouteSearchError = "";
   state.ui.liveRouteSearchResults = [];
@@ -1564,6 +1574,23 @@ function resetLiveRouteSearchState() {
 
 function syncLiveBindingState() {
   state.live = syncActiveLiveBinding(state.live);
+}
+
+function invalidateTagoStopSelection(path) {
+  if (state.live.provider !== "tago" || !["live.cityCode", "live.nodeId"].includes(path)) return;
+  if (path === "live.cityCode") state.live.nodeId = "";
+  state.live.stationId = state.live.nodeId;
+  state.live.stationName = "";
+  state.live.arsId = "";
+  state.live.routeId = "";
+  state.live.routeNumber = "";
+  state.live.order = "";
+  state.commute.selectedStopId = state.live.nodeId;
+  state.commute.stopLocation = null;
+  state.commute.transitJourney = null;
+  commuteEstimateMeta.snapshot = null;
+  resetLiveSearchState();
+  resetLiveRouteSearchState();
 }
 
 function getLiveProviderMeta(provider = state.live.provider) {
@@ -1653,11 +1680,12 @@ function getAccuracyProbeCandidates() {
   }
 
   const tagoBinding = liveBindings.tago || {};
-  if (tagoBinding.cityCode && tagoBinding.nodeId && (tagoBinding.routeNumber || primaryLine.number)) {
+  if (tagoBinding.cityCode && tagoBinding.nodeId && (tagoBinding.routeId || tagoBinding.routeNumber || primaryLine.number)) {
     candidates.push({
       provider: "tago",
       cityCode: tagoBinding.cityCode,
       nodeId: tagoBinding.nodeId,
+      routeId: tagoBinding.routeId,
       routeNumber: tagoBinding.routeNumber || primaryLine.number,
       regionHint: busApiConfig.policy?.regionPriority?.gyeonggi?.[0] === "tago" ? "gyeonggi" : "national",
     });
@@ -1989,8 +2017,9 @@ function describeAutoProbeReason(reason, nextEligibleAt = null) {
 function loadLiveRoutesForSelectedStop() {
   const canLoadSeoulRoutes = state.live.provider === "seoul" && state.live.arsId;
   const canLoadGyeonggiRoutes = state.live.provider === "gyeonggi" && state.live.stationId;
+  const canLoadTagoRoutes = state.live.provider === "tago" && state.live.cityCode && state.live.nodeId;
 
-  if (!canLoadSeoulRoutes && !canLoadGyeonggiRoutes) {
+  if (!canLoadSeoulRoutes && !canLoadGyeonggiRoutes && !canLoadTagoRoutes) {
     resetLiveRouteSearchState();
     render();
     return;
@@ -2001,11 +2030,15 @@ function loadLiveRoutesForSelectedStop() {
   state.ui.liveRouteSearchResults = [];
   render();
 
-  searchLiveStationRoutes(getLiveRouteBinding())
+  const requestId = ++liveRouteRequest;
+  const binding = getLiveRouteBinding();
+  const isCurrent = () => requestId === liveRouteRequest && JSON.stringify(binding) === JSON.stringify(getLiveRouteBinding());
+  searchLiveStationRoutes(binding)
     .then((payload) => {
+      if (!isCurrent()) return;
       state.ui.liveRouteSearchStatus = "ready";
       state.ui.liveRouteSearchError = "";
-      state.ui.liveRouteSearchResults = Array.isArray(payload.routes) ? payload.routes.slice(0, 20) : [];
+      state.ui.liveRouteSearchResults = Array.isArray(payload.routes) ? payload.routes : [];
       pushHistory(
         "Official routes loaded",
         `${state.ui.liveRouteSearchResults.length} ${payload.provider} route candidates were returned for the selected stop.`,
@@ -2131,6 +2164,7 @@ function runAddressSearch(targetKey) {
       render();
     })
     .catch((error) => {
+      if (!isCurrent()) return;
       state.ui[`${safeTarget}AddressSearchStatus`] = "error";
       state.ui[`${safeTarget}AddressSearchResults`] = [];
       state.ui[`${safeTarget}AddressSearchError`] = error instanceof Error ? error.message : "주소 검색 중 알 수 없는 오류가 발생했습니다.";
@@ -4994,7 +5028,7 @@ function renderOnboarding() {
       </section>
       <section class="panel">
         <div class="panel-title">Commute basics</div>
-        <div class="field-help">주소 검색은 현재 ${escapeHtml(placeProviderLabel)} 기준으로 동작합니다. 검색 결과를 선택하면 좌표를 저장하고 집에서 정류장까지 걷는 시간을 다시 계산합니다.</div>
+        <div class="field-help">주소 검색은 현재 ${escapeHtml(placeProviderLabel)} 기준으로 동작합니다. 선택한 좌표는 지도와 목적지 경로 조회에 사용합니다. 집에서 정류장까지의 시간은 지각 계산에서 제외합니다.</div>
         <div class="field-stack">
           <div class="holiday-form">
             <input class="text-field-input" type="text" placeholder="집 주소나 건물명 검색" value="${escapeHtml(state.ui.homeAddressKeyword)}" data-field="ui.homeAddressKeyword" />
@@ -5328,14 +5362,33 @@ function renderOnboarding() {
           ${
             state.live.provider === "tago"
               ? `
-                <div class="field-help">TAGO is the current ETA-first choice for Gyeonggi in this prototype because accuracy matters more than which API owns the data.</div>
+                <div class="field-help">도시 → 정류장 → 이용할 버스 순서로 선택하세요. 집에서 정류장까지 걸리는 시간은 계산하지 않습니다.</div>
+                <button class="mini-button" data-action="load-tago-cities" ${tagoCitiesMeta.status === "loading" ? "disabled" : ""}>${tagoCitiesMeta.status === "loading" ? "도시목록 조회 중…" : "TAGO 도시목록 불러오기"}</button>
+                ${tagoCitiesMeta.error ? `<div class="empty-copy">${escapeHtml(tagoCitiesMeta.error)}</div>` : ""}
+                ${tagoCitiesMeta.cities.length ? `<label class="field-block compact"><span>도시 선택</span><select class="text-field-input" data-field="live.cityCode"><option value="">도시를 선택하세요</option>${tagoCitiesMeta.cities.map((city) => `<option value="${escapeHtml(city.cityCode)}" ${String(state.live.cityCode) === String(city.cityCode) ? "selected" : ""}>${escapeHtml(city.cityName)} (${escapeHtml(city.cityCode)})</option>`).join("")}</select></label>` : ""}
                 <label class="field-block compact">
-                  <span>City code</span>
+                  <span>도시코드 (직접 입력 가능)</span>
                   <input class="text-field-input" type="text" value="${escapeHtml(state.live.cityCode)}" data-field="live.cityCode" />
                 </label>
+                <label class="field-block compact"><span>정류장 이름 또는 안내판 번호</span><input class="text-field-input" type="text" placeholder="예: 더샵광교레이크시티" value="${escapeHtml(state.ui.liveSearchKeyword)}" data-field="ui.liveSearchKeyword" /></label>
+                <button class="mini-button" data-action="search-live-stops" ${!state.live.cityCode || state.ui.liveSearchStatus === "loading" ? "disabled" : ""}>${state.ui.liveSearchStatus === "loading" ? "정류장 검색 중…" : "정류장 검색"}</button>
+                ${state.ui.liveSearchError ? `<div class="empty-copy">${escapeHtml(state.ui.liveSearchError)}</div>` : ""}
+                ${state.ui.liveSearchStatus === "ready" && !state.ui.liveSearchResults.length ? `<div class="empty-copy">검색 결과가 없습니다. 도시를 확인하거나 정류장 이름 일부로 검색해 주세요.</div>` : ""}
+                <div class="holiday-list">${state.ui.liveSearchResults.map((item) => `<article class="holiday-item"><div><div class="holiday-date">${escapeHtml(item.stationName)}</div><div class="holiday-copy">${escapeHtml([item.stationNumber, item.stationId].filter(Boolean).join(" · "))}</div></div><button class="mini-button" data-action="select-live-stop" data-station-id="${escapeHtml(item.stationId)}" data-station-name="${escapeHtml(item.stationName)}">이 정류장 선택</button></article>`).join("")}</div>
+                <div class="field-help">같은 이름의 반대편 정류장이 있을 수 있습니다. 정류장 번호와 위치를 확인한 뒤 선택하세요.</div>
+                <button class="mini-button" data-action="load-live-routes" ${!state.live.nodeId || state.ui.liveRouteSearchStatus === "loading" ? "disabled" : ""}>경유노선 다시 조회</button>
+                ${state.ui.liveRouteSearchStatus === "loading" ? `<div class="empty-copy">경유노선 조회 중…</div>` : ""}
+                ${state.ui.liveRouteSearchError ? `<div class="empty-copy">${escapeHtml(state.ui.liveRouteSearchError)}</div>` : ""}
+                ${state.ui.liveRouteSearchStatus === "ready" && !state.ui.liveRouteSearchResults.length ? `<div class="empty-copy">조회된 경유노선이 없습니다.</div>` : ""}
+                <div class="holiday-list">${state.ui.liveRouteSearchResults.map((item) => `<article class="holiday-item"><div><div class="holiday-date">${escapeHtml(item.routeNumber)}</div><div class="holiday-copy">${escapeHtml([item.startStationName, item.destinationName, item.routeId].filter(Boolean).join(" · "))}</div></div><button class="mini-button" data-action="select-live-route" data-route-id="${escapeHtml(item.routeId)}" data-route-number="${escapeHtml(item.routeNumber)}">이 버스 선택</button></article>`).join("")}</div>
+                <div class="field-help">기점·종점은 노선 정보이며 현재 운행 방향을 확정하는 정보는 아닙니다.</div>
                 <label class="field-block compact">
                   <span>Node ID</span>
                   <input class="text-field-input" type="text" value="${escapeHtml(state.live.nodeId)}" data-field="live.nodeId" />
+                </label>
+                <label class="field-block compact">
+                  <span>노선 고유번호 (routeId, 권장)</span>
+                  <input class="text-field-input" type="text" value="${escapeHtml(state.live.routeId)}" data-field="live.routeId" />
                 </label>
                 <label class="field-block compact">
                   <span>Route number</span>
@@ -5346,8 +5399,9 @@ function renderOnboarding() {
           }
         </div>
       </section>
+      ${!isLiveConfigured(state) ? `
       <section class="panel">
-        <div class="panel-title">Where do you board?</div>
+        <div class="panel-title">Where do you board? (Demo)</div>
         ${
           recommendedStops.length
             ? `
@@ -5430,6 +5484,7 @@ function renderOnboarding() {
             .join("")}
         </div>
       </section>
+      ` : `<section class="panel"><div class="panel-title">선택한 실시간 교통편</div><p>${escapeHtml(state.live.stationName || "정류장 선택 필요")}</p><p>${escapeHtml(state.live.routeNumber ? `${state.live.routeNumber}번 · ${state.live.routeId || "노선 고유번호 미입력"}` : "이용할 버스 선택 필요")}</p></section>`}
       <footer class="action-bar action-bar-static">
         <button class="secondary-button" data-action="goto" data-screen="home">Back</button>
         <button class="primary-button" data-action="goto" data-screen="schedule">
@@ -6127,21 +6182,46 @@ app.addEventListener("click", (event) => {
     resetLiveRouteSearchState();
     persist();
     render();
-    searchLiveStations(getLiveSearchBinding())
+    const requestId = ++liveStationRequest;
+    const binding = getLiveSearchBinding();
+    const isCurrent = () => requestId === liveStationRequest && JSON.stringify(binding) === JSON.stringify(getLiveSearchBinding());
+    searchLiveStations(binding)
       .then((payload) => {
+        if (!isCurrent()) return;
         state.ui.liveSearchStatus = "ready";
         state.ui.liveSearchError = "";
-        state.ui.liveSearchResults = Array.isArray(payload.stations) ? payload.stations.slice(0, 8) : [];
+        state.ui.liveSearchResults = Array.isArray(payload.stations) ? payload.stations : [];
         pushHistory("Official stops loaded", `${state.ui.liveSearchResults.length} ${payload.provider} stop candidates were returned.`);
         render();
       })
       .catch((error) => {
+        if (!isCurrent()) return;
         state.ui.liveSearchStatus = "error";
         state.ui.liveSearchResults = [];
         state.ui.liveSearchError = error instanceof Error ? error.message : "Unknown stop search error.";
         pushHistory("Official stop search failed", state.ui.liveSearchError, "ERROR");
         render();
       });
+    return;
+  }
+  if (action === "load-tago-cities") {
+    tagoCitiesMeta.status = "loading";
+    tagoCitiesMeta.error = "";
+    render();
+    fetchTagoCityList().then((payload) => {
+      tagoCitiesMeta.cities = Array.isArray(payload.cities) ? payload.cities : [];
+      tagoCitiesMeta.status = "ready";
+      if (!tagoCitiesMeta.cities.length) tagoCitiesMeta.error = "조회된 도시가 없습니다.";
+      render();
+    }).catch((error) => {
+      tagoCitiesMeta.status = "error";
+      tagoCitiesMeta.error = error instanceof Error ? error.message : "도시목록 조회 실패";
+      render();
+    });
+    return;
+  }
+  if (action === "load-live-routes") {
+    loadLiveRoutesForSelectedStop();
     return;
   }
   if (action === "apply-bus-accuracy-recommendation") {
@@ -6165,6 +6245,7 @@ app.addEventListener("click", (event) => {
   }
   if (action === "select-live-stop") {
     const candidate = state.ui.liveSearchResults.find((item) => String(item.stationId) === target.dataset.stationId);
+    if (!candidate) return;
     const location = { lat: candidate?.posY ?? candidate?.lat, lng: candidate?.posX ?? candidate?.lng };
     state.commute.stopLocation = isValidLocation(location)
       ? { lat: Number(location.lat), lng: Number(location.lng) } : null;
@@ -6173,6 +6254,10 @@ app.addEventListener("click", (event) => {
     state.commute.transitJourney = null;
     state.live.stationId = target.dataset.stationId || "";
     state.live.stationName = target.dataset.stationName || "";
+    if (state.live.provider === "tago") {
+      state.live.nodeId = candidate.nodeId || candidate.stationId;
+      state.live.cityCode = candidate.cityCode || state.live.cityCode;
+    }
     state.live.arsId = target.dataset.arsId || "";
     state.live.routeId = "";
     if (state.live.provider !== "gyeonggi") {
@@ -6189,7 +6274,8 @@ app.addEventListener("click", (event) => {
     persist();
     if (
       (state.live.provider === "seoul" && state.live.arsId) ||
-      (state.live.provider === "gyeonggi" && state.live.stationId)
+      (state.live.provider === "gyeonggi" && state.live.stationId) ||
+      (state.live.provider === "tago" && state.live.cityCode && state.live.nodeId)
     ) {
       loadLiveRoutesForSelectedStop();
       return;
@@ -6204,6 +6290,9 @@ app.addEventListener("click", (event) => {
     state.live.snapshot = null;
     state.live.lastError = "";
     syncLiveBindingState();
+    state.commute.transitJourney = null;
+    commuteEstimateMeta.snapshot = null;
+    persist();
     pushHistory("Official route selected", `${state.live.routeNumber || state.live.routeId} was linked to the live route binding.`);
     return render();
   }
@@ -6357,6 +6446,7 @@ app.addEventListener("input", (event) => {
     resetLiveRouteSearchState();
   }
   if (path.startsWith("live.")) {
+    invalidateTagoStopSelection(path);
     state.live.snapshot = null;
     state.live.lastError = "";
     syncLiveBindingState();
@@ -6434,6 +6524,7 @@ app.addEventListener("change", (event) => {
     resetLiveRouteSearchState();
   }
   if (path.startsWith("live.")) {
+    invalidateTagoStopSelection(path);
     state.live.snapshot = null;
     state.live.lastError = "";
     syncLiveBindingState();

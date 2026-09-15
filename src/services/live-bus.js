@@ -7,6 +7,13 @@ export async function fetchBusApiConfig() {
   return response.json();
 }
 
+export async function fetchTagoCityList() {
+  const response = await fetch("/api/bus/cities?provider=tago&service=stops");
+  const payload = await response.json();
+  if (!response.ok) throw new Error(payload.error || "TAGO 도시목록 조회에 실패했습니다.");
+  return payload;
+}
+
 export async function fetchLiveArrivals(binding) {
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(binding)) {

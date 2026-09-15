@@ -253,6 +253,7 @@ class MobileApiClient {
   Future<Map<String, dynamic>> searchStations({
     required String provider,
     required String keyword,
+    String cityCode = '',
   }) {
     return _request(
       'GET',
@@ -260,6 +261,7 @@ class MobileApiClient {
       queryParameters: <String, String>{
         'provider': provider,
         'keyword': keyword,
+        'cityCode': cityCode,
       },
     );
   }
@@ -269,6 +271,8 @@ class MobileApiClient {
     String stationId = '',
     String arsId = '',
     String routeNumber = '',
+    String cityCode = '',
+    String nodeId = '',
   }) {
     return _request(
       'GET',
@@ -278,8 +282,15 @@ class MobileApiClient {
         'stationId': stationId,
         'arsId': arsId,
         'routeNumber': routeNumber,
+        'cityCode': cityCode,
+        'nodeId': nodeId,
       }),
     );
+  }
+
+  Future<Map<String, dynamic>> fetchTagoCities() {
+    return _request('GET', '/api/bus/cities',
+        queryParameters: <String, String>{'provider': 'tago', 'service': 'stops'});
   }
 
   Future<Map<String, dynamic>> fetchCommuteConfig() {
