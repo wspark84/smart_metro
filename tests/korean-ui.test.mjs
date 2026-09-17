@@ -13,6 +13,8 @@ test('Korean labels do not mutate machine codes or user-entered text', () => {
   assert.deepEqual(translated.providers, ['google']);
   assert.equal(original.label, 'DELIVERED');
   assert.equal(formatUiLabel('android'), '안드로이드');
+  assert.equal(formatUiMessage('Alarm window 07:00 - 07:45'), '알람 시간대 07:00 - 07:45');
+  assert.equal(localizeDisplayFields({weekdayLabel:'Thu'}).weekdayLabel, '목요일');
   assert.match(formatUiMessage('No Android push token has been provided yet.'), /등록되지/);
   assert.match(userErrorMessage(new Error('Failed to fetch')), /인터넷 연결/);
 });

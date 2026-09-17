@@ -2862,7 +2862,7 @@ function renderLiveSyncPanel(model) {
 }
 
 function renderBusAccuracyPanel() {
-  const summary = accuracyMeta.summary;
+  const summary = localizeDisplayFields(accuracyMeta.summary);
   const configuredCandidates = getAccuracyProbeCandidates();
   const runtime = accuracyMeta.runtime;
   const liveEtaGuard = getLiveEtaGuard(runtime);
@@ -3034,7 +3034,7 @@ function renderBusAccuracyPanel() {
 }
 
 function renderBusAccuracyLeaderboardPanel() {
-  const leaderboard = accuracyMeta.leaderboard;
+  const leaderboard = localizeDisplayFields(accuracyMeta.leaderboard);
   const entries = Array.isArray(leaderboard?.entries) ? leaderboard.entries : [];
   const regionLabel = leaderboard?.region ? formatUiLabel(String(leaderboard.region)) : "ALL";
   const timeSlice = leaderboard?.timeSlice || null;
@@ -3084,7 +3084,7 @@ function renderBusAccuracyLeaderboardPanel() {
                     <article class="history-item">
                       <div class="history-main">
                         <div class="history-title">${escapeHtml(`${entry.routeNumber} · ${entry.stopName}`)}</div>
-                        <div class="history-detail">${escapeHtml(`추천 제공처 ${formatUiLabel(String(entry.recommendedProvider || "-"))} · ${formatUiLabel(String(entry.recommendationConfidence || "low"))} 신뢰도 · ${entry.recommendationScope === "schedule-window-weekday" ? `${entry.timeSlice?.weekdayLabel || ""} ${entry.timeSlice?.label || "요일·시간대"}`.trim() : entry.recommendationScope === "schedule-window" ? entry.timeSlice?.label || "window" : "all-day"} · 오차 차이 ${entry.measuredLeaderGapMin ?? "-"}분 · 최근 유효 기록 ${entry.activeRecentSampleCount ?? entry.recentSampleCount} / 전체 ${entry.sampleCount}`)}</div>
+                        <div class="history-detail">${escapeHtml(`추천 제공처 ${formatUiLabel(String(entry.recommendedProvider || "-"))} · ${formatUiLabel(String(entry.recommendationConfidence || "low"))} 신뢰도 · ${entry.recommendationScope === "schedule-window-weekday" ? `${entry.timeSlice?.weekdayLabel || ""} ${entry.timeSlice?.label || "요일·시간대"}`.trim() : entry.recommendationScope === "schedule-window" ? entry.timeSlice?.label || "알람 시간대" : "하루 전체"} · 오차 차이 ${entry.measuredLeaderGapMin ?? "-"}분 · 최근 유효 기록 ${entry.activeRecentSampleCount ?? entry.recentSampleCount} / 전체 ${entry.sampleCount}`)}</div>
                       </div>
                       <div class="history-time">${escapeHtml(entry.lastActualArrivalAt ? formatClock(new Date(entry.lastActualArrivalAt)) : "-")}</div>
                     </article>

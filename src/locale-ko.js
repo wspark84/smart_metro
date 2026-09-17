@@ -23,6 +23,7 @@ const labels = {
   'PUSH NOTIFICATION': '푸시 알림', 'FULL-SCREEN ALARM': '전체 화면 알람', 'DND OVERRIDE': '방해금지 우회', 'ALARM SOUND': '알람 소리', 'TTS VOICE': '음성 안내', 'LOCAL BACKUP ALARM': '기기 내 예비 알람',
   'HISTORICAL-INSTABILITY-PRECHECK': '최근 변동에 따른 사전 점검', 'HIGH-WATCH-FIRST-MAIN-ALARM': '주의 노선의 첫 알람 강화',
   CONCENTRATED: '한 경로에 집중', MIXED: '여러 경로에서 발생', SPREADING: '여러 경로로 확산',
+  SUN: '일요일', MON: '월요일', TUE: '화요일', WED: '수요일', THU: '목요일', FRI: '금요일', SAT: '토요일',
 };
 
 export function formatUiLabel(value) {
@@ -32,6 +33,8 @@ export function formatUiLabel(value) {
 
 export function formatUiMessage(value) {
   const text = String(value ?? '');
+  const alarmWindow = /^Alarm window (\d{2}:\d{2}) - (\d{2}:\d{2})$/.exec(text);
+  if (alarmWindow) return `알람 시간대 ${alarmWindow[1]} - ${alarmWindow[2]}`;
   return KOREAN_COPY[text] || formatUiLabel(text);
 }
 
