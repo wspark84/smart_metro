@@ -1143,7 +1143,8 @@ button {
 }
 
 .screen-form .soft-button,
-.screen-form .primary-cta {
+.screen-form .primary-cta,
+.screen-form .add-button {
   font-size: var(--font-size-control);
   line-height: 1.5;
 }
@@ -1451,12 +1452,15 @@ button {
 }
 
 .text-field-input {
+  min-width: 0;
   min-height: 52px;
   border-radius: 16px;
   border: 0;
   background: var(--surface-low);
   padding: 0 14px;
-  font-size: 1rem;
+  font-size: var(--font-size-control);
+  line-height: 1.5;
+  letter-spacing: normal;
   font-family: var(--font-body);
   font-weight: 500;
   color: var(--surface-ink);
@@ -1464,10 +1468,10 @@ button {
 }
 
 .time-field-input {
-  font-family: var(--font-headline);
-  font-size: 1.5rem;
-  font-weight: 800;
-  letter-spacing: -0.04em;
+  font-family: var(--font-body);
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: normal;
   color: var(--primary);
 }
 

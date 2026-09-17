@@ -13,4 +13,10 @@ test('form controls share readable sizing instead of oversized clock typography'
   assert.match(controls, /font-weight:\s*500/);
   assert.doesNotMatch(controls, /font-size:\s*2rem|font-weight:\s*800/);
   assert.match(css, /\.field-block input\[type="time"\]\s*\{[^}]*font-size:\s*1\.25rem/);
+  const address = /\.text-field-input\s*\{([^}]+)\}/.exec(css)?.[1];
+  assert.match(address, /font-size:\s*var\(--font-size-control\)/);
+  assert.match(address, /min-width:\s*0/);
+  const time = /\.time-field-input\s*\{([^}]+)\}/.exec(css)?.[1];
+  assert.match(time, /font-size:\s*1\.25rem/);
+  assert.match(time, /font-weight:\s*600/);
 });
