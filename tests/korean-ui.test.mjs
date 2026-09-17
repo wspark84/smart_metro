@@ -43,7 +43,7 @@ test('all four web screens render Korean controls without changing input values'
     vm.runInContext(`window.location.hash='#/${screen}'; render();`,context);
     const visible = app.innerHTML.replace(/<span[^>]*class="material-symbols-outlined[^>]*>[\s\S]*?<\/span>/g,'').replace(/<[^>]*>/g,'');
     for (const word of visible.match(/[A-Za-z][A-Za-z _-]{2,}/g) || []) {
-      assert.ok(['TAGO', 'FCM', 'API'].includes(word.trim()), `${screen}: untranslated copy: ${word}`);
+      assert.ok(['TAGO', 'FCM', 'APNs', 'API'].includes(word.trim()), `${screen}: untranslated copy: ${word}`);
     }
     if (process.env.KOREAN_COPY_AUDIT) {
       console.log(screen, [...new Set(visible.match(/[A-Za-z][A-Za-z _-]{2,}/g) || [])]);

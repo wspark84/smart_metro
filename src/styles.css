@@ -24,6 +24,9 @@
   --radius-md: 18px;
   --font-headline: "Manrope", "Segoe UI", sans-serif;
   --font-body: "Inter", "Segoe UI", sans-serif;
+  --font-size-label: 0.875rem;
+  --font-size-control: 1rem;
+  --font-size-section: 1.125rem;
 }
 
 * {
@@ -845,7 +848,8 @@ button {
 .panel-title,
 .stack-title,
 .warning-head {
-  font-size: 1.2rem;
+  font-size: var(--font-size-section);
+  line-height: 1.4;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -1095,23 +1099,65 @@ button {
 .field-block {
   display: flex;
   flex-direction: column;
+  min-width: 0;
   gap: 8px;
   color: var(--surface-muted);
-  font-size: 0.9rem;
+  font-size: var(--font-size-label);
+  line-height: 1.5;
   font-weight: 600;
 }
 
-.field-block input {
-  min-height: 58px;
-  border-radius: 18px;
+.field-block input,
+.field-block select {
+  width: 100%;
+  min-width: 0;
+  min-height: 52px;
+  border-radius: 16px;
   border: 0;
   background: var(--surface-low);
-  padding: 0 16px;
-  font-family: var(--font-headline);
-  font-size: 2rem;
-  font-weight: 800;
-  letter-spacing: -0.05em;
+  padding: 12px 14px;
+  font-family: var(--font-body);
+  font-size: var(--font-size-control);
+  line-height: 1.5;
+  font-weight: 500;
+  letter-spacing: normal;
+  color: var(--surface-ink);
+}
+
+.field-block input::placeholder {
+  color: var(--surface-muted);
+  font-weight: 400;
+  opacity: 1;
+}
+
+.field-block input:focus-visible,
+.field-block select:focus-visible {
+  outline: 2px solid var(--primary-strong);
+  outline-offset: 2px;
+}
+
+.field-block input[type="time"] {
+  font-size: 1.25rem;
+  font-weight: 600;
   color: var(--primary);
+}
+
+.screen-form .soft-button,
+.screen-form .primary-cta {
+  font-size: var(--font-size-control);
+  line-height: 1.5;
+}
+
+.screen-form .field-help,
+.screen-form .sample-copy {
+  font-size: var(--font-size-label);
+  line-height: 1.6;
+  font-style: normal;
+  overflow-wrap: anywhere;
+}
+
+#device-delivery-panel > .field-block {
+  margin-top: 16px;
 }
 
 .choice-grid {

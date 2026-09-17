@@ -4538,7 +4538,8 @@ function renderDeviceDeliveryPanel() {
           type="text"
           value="${escapeHtml(state.device.pushToken)}"
           data-field="device.pushToken"
-          placeholder="휴대폰의 FCM 또는 APNs 푸시 토큰"
+          placeholder="푸시 토큰을 붙여넣으세요"
+          aria-describedby="device-token-help"
         />
       </label>
       <div class="quick-actions">
@@ -4563,7 +4564,7 @@ function renderDeviceDeliveryPanel() {
           ${deviceMeta.pushGatewayDispatchStatus === "sending" ? "시험 알림 전송 중…" : "시험 알림 보내기"}
         </button>
       </div>
-      <div class="sample-copy">${escapeUiMessage(tokenActionCopy)}</div>
+      <div class="sample-copy" id="device-token-help">${escapeUiMessage(tokenActionCopy)} FCM 또는 APNs 토큰을 사용합니다.</div>
       <div class="toggle-row inset">
         <div>
           <div class="toggle-title">푸시 알림</div>
