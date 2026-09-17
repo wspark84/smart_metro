@@ -198,7 +198,7 @@ export function composeAlertCopy({
   const cautionaryNotes = [accuracyWarningText, historicalBiasText].filter(Boolean).join(" ");
 
   return {
-    title: stabilityPrecheck ? `Stability precheck · ${title}` : title,
+    title: stabilityPrecheck ? `도착정보 사전 점검 · ${title}` : title,
     body: cautionaryNotes ? `${body} ${cautionaryNotes}` : body,
     spokenText: cautionaryNotes ? `${spokenText} ${cautionaryNotes}` : spokenText,
     alertPhraseKo: criticalCondition ? repeatedCriticalPhrase : guidance,
@@ -258,7 +258,7 @@ export function getNotificationSpec({
     : stageVibrationRepeats;
   const fullScreen = base.fullScreen || (stage >= 2 && riskLevel === "RED");
   const criticalBypass = Boolean(dndBypass && (riskLevel === "RED" || stage >= 1));
-  const escalationLabel = stage === 0 ? "Initial" : stage === 1 ? "Escalated" : "Critical";
+  const escalationLabel = stage === 0 ? "첫 알림" : stage === 1 ? "강화 알림" : "긴급 알림";
   const criticalCondition = urgency === "MUST_CATCH" || urgency === "HURRY" || riskLevel === "RED";
   const mechanicalLoopBoost = reinforcedDelivery ? 2 : 0;
   const speechRepeatCount = reinforcedDelivery ? 2 : 1;

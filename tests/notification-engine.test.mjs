@@ -98,7 +98,7 @@ test("notification spec marks a stability precheck and prefixes the title", () =
 
   assert.equal(spec.stabilityPrecheck, true);
   assert.equal(spec.stabilityPrecheckLeadMin, 10);
-  assert.match(spec.title, /^Stability precheck · /);
+  assert.match(spec.title, /^도착정보 사전 점검 · /);
 });
 
 test("boosted first alarm raises sound and vibration intensity even before red escalation", () => {
@@ -136,9 +136,9 @@ test("buildEscalationTimeline returns initial, escalated, and critical stages", 
   assert.deepEqual(
     timeline.map((item) => [item.secondsSinceTrigger, item.stage, item.escalationLabel]),
     [
-      [0, 0, "Initial"],
-      [15, 1, "Escalated"],
-      [30, 2, "Critical"],
+      [0, 0, "첫 알림"],
+      [15, 1, "강화 알림"],
+      [30, 2, "긴급 알림"],
     ],
   );
 });

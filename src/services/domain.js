@@ -6,7 +6,7 @@ export async function loadDomainSnapshot() {
 
   const payload = await response.json();
   if (!response.ok) {
-    throw new Error(payload.error || `Failed to load domain snapshot (${response.status}).`);
+    throw new Error(payload.error || `계정 설정 조회 실패 (응답 코드 ${response.status}).`);
   }
 
   return payload;
@@ -23,7 +23,7 @@ export async function syncDomainSnapshot(state) {
 
   const payload = await response.json();
   if (!response.ok) {
-    throw new Error(payload.error || `Failed to sync domain snapshot (${response.status}).`);
+    throw new Error(payload.error || `계정 설정 저장 실패 (응답 코드 ${response.status}).`);
   }
 
   return payload;

@@ -67,7 +67,7 @@ test("buildAlarmPlan adds one stability precheck before the morning window for h
   assert.equal(plan.nextTrigger?.triggerKind, "stability-precheck");
   assert.equal(plan.nextTrigger?.stabilityPrecheckLeadMin, 10);
   assert.equal(plan.stabilityWatch.level, "high");
-  assert.match(plan.nextTrigger?.notificationSpec.title || "", /^Stability precheck · /);
+  assert.match(plan.nextTrigger?.notificationSpec.title || "", /^도착정보 사전 점검 · /);
   const firstMainAlarm = plan.allTriggers.find((trigger) => trigger.triggerKind === "alarm");
   assert.equal(firstMainAlarm?.deliveryPriorityClass, "boosted");
   assert.equal(firstMainAlarm?.deliveryPriorityReason, "high-watch-first-main-alarm");

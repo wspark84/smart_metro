@@ -1,7 +1,7 @@
 export async function fetchBusApiConfig() {
   const response = await fetch("/api/bus/config");
   if (!response.ok) {
-    throw new Error(`Failed to load API config (${response.status}).`);
+    throw new Error(`정보 제공처 설정 조회 실패 (응답 코드 ${response.status}).`);
   }
 
   return response.json();
@@ -25,7 +25,7 @@ export async function fetchLiveArrivals(binding) {
   const response = await fetch(`/api/bus/arrivals?${params.toString()}`);
   const payload = await response.json();
   if (!response.ok) {
-    throw new Error(payload.error || `Live bus fetch failed (${response.status}).`);
+    throw new Error(payload.error || `실시간 버스 조회 실패 (응답 코드 ${response.status}).`);
   }
 
   return payload;
@@ -42,7 +42,7 @@ export async function searchLiveStations(binding) {
   const response = await fetch(`/api/bus/stations?${params.toString()}`);
   const payload = await response.json();
   if (!response.ok) {
-    throw new Error(payload.error || `Live station search failed (${response.status}).`);
+    throw new Error(payload.error || `정류장 검색 실패 (응답 코드 ${response.status}).`);
   }
 
   return payload;
@@ -59,7 +59,7 @@ export async function searchLiveStationRoutes(binding) {
   const response = await fetch(`/api/bus/station-routes?${params.toString()}`);
   const payload = await response.json();
   if (!response.ok) {
-    throw new Error(payload.error || `Live station-route search failed (${response.status}).`);
+    throw new Error(payload.error || `경유 노선 검색 실패 (응답 코드 ${response.status}).`);
   }
 
   return payload;
@@ -77,7 +77,7 @@ export async function fetchBusAccuracySummary(filters = {}) {
   const response = await fetch(`/api/bus/accuracy${query ? `?${query}` : ""}`);
   const payload = await response.json();
   if (!response.ok) {
-    throw new Error(payload.error || `Bus accuracy summary fetch failed (${response.status}).`);
+    throw new Error(payload.error || `버스 정확도 조회 실패 (응답 코드 ${response.status}).`);
   }
 
   return payload;
@@ -95,7 +95,7 @@ export async function fetchBusAccuracyLeaderboard(filters = {}) {
   const response = await fetch(`/api/bus/accuracy/leaderboard${query ? `?${query}` : ""}`);
   const payload = await response.json();
   if (!response.ok) {
-    throw new Error(payload.error || `Bus accuracy leaderboard fetch failed (${response.status}).`);
+    throw new Error(payload.error || `버스 정확도 순위 조회 실패 (응답 코드 ${response.status}).`);
   }
 
   return payload;
@@ -111,7 +111,7 @@ export async function runBusAccuracyProbe(payload) {
   });
   const result = await response.json();
   if (!response.ok) {
-    throw new Error(result.error || `Bus accuracy probe failed (${response.status}).`);
+    throw new Error(result.error || `도착시간 비교 실패 (응답 코드 ${response.status}).`);
   }
 
   return result;
@@ -127,7 +127,7 @@ export async function recordActualBusArrival(payload) {
   });
   const result = await response.json();
   if (!response.ok) {
-    throw new Error(result.error || `Actual bus arrival logging failed (${response.status}).`);
+    throw new Error(result.error || `실제 도착 기록 실패 (응답 코드 ${response.status}).`);
   }
 
   return result;
@@ -139,7 +139,7 @@ export async function runBusAccuracyAutoProbe() {
   });
   const result = await response.json();
   if (!response.ok) {
-    throw new Error(result.error || `Automatic bus accuracy probe failed (${response.status}).`);
+    throw new Error(result.error || `자동 도착시간 비교 실패 (응답 코드 ${response.status}).`);
   }
 
   return result;

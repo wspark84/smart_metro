@@ -1,6 +1,6 @@
 export const DEFAULT_DEVICE_PROFILE = {
   deviceId: "primary-device",
-  deviceName: "Primary Phone",
+  deviceName: "기본 휴대폰",
   platform: "android",
   pushEnabled: false,
   pushToken: "",

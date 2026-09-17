@@ -3,12 +3,12 @@ self.addEventListener("push", (event) => {
   try {
     payload = event.data ? event.data.json() : {};
   } catch {
-    payload = { body: event.data ? event.data.text() : "BusWakeUp alarm" };
+    payload = { body: event.data ? event.data.text() : "스마트 메트로 알람" };
   }
 
-  const title = String(payload.title || "BusWakeUp commute alarm");
+  const title = String(payload.title || "스마트 메트로 이동 알람");
   const options = {
-    body: String(payload.body || "Your commute alarm needs attention."),
+    body: String(payload.body || "이동 알람을 확인해 주세요."),
     tag: String(payload.tag || "buswakeup-alarm"),
     renotify: Boolean(payload.renotify),
     requireInteraction: Boolean(payload.requireInteraction),

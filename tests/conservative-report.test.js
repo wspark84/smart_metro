@@ -43,7 +43,7 @@ test("buildConservativeReliabilityReport aggregates recent conservative traces a
     ],
     dispatchBundles: [
       {
-        title: "Dispatch bundle",
+        title: "알림 전송 묶음",
         routeNumber: "1002",
         stopName: "Gwanghwamun",
         createdAt: "2026-05-17T07:01:05+09:00",
@@ -54,7 +54,7 @@ test("buildConservativeReliabilityReport aggregates recent conservative traces a
     ],
     dispatchExecutions: [
       {
-        title: "Dispatch execution",
+        title: "알림 전송 처리",
         routeNumber: "1002",
         stopName: "Gwanghwamun",
         executedAt: "2026-05-17T07:01:07+09:00",
@@ -65,7 +65,7 @@ test("buildConservativeReliabilityReport aggregates recent conservative traces a
     ],
     pushGatewayAttempts: [
       {
-        title: "Push gateway attempt",
+        title: "푸시 전송 시도",
         routeNumber: "1002",
         stopName: "Gwanghwamun",
         createdAt: "2026-05-17T07:01:09+09:00",
@@ -122,7 +122,7 @@ test("buildConservativeReliabilityReport aggregates recent conservative traces a
   assert.equal(report.weekdayWindow.windowLabel, "07:00 - 07:45");
   assert.equal(report.weekdayWindow.inWindowCount, 6);
   assert.equal(report.weekdayWindow.outOfWindowCount, 0);
-  assert.equal(report.weekdayWindow.topWeekday.weekdayLabel, "Sun");
+  assert.equal(report.weekdayWindow.topWeekday.weekdayLabel, "일요일");
 });
 
 test("buildConservativeReliabilityReport separates alarm-window traces from outside-window traces by weekday", () => {
@@ -165,12 +165,12 @@ test("buildConservativeReliabilityReport separates alarm-window traces from outs
   assert.equal(report.totalSignals, 3);
   assert.equal(report.weekdayWindow.inWindowCount, 2);
   assert.equal(report.weekdayWindow.outOfWindowCount, 1);
-  assert.equal(report.weekdayWindow.topWeekday.weekdayLabel, "Mon");
+  assert.equal(report.weekdayWindow.topWeekday.weekdayLabel, "월요일");
   assert.deepEqual(
     report.weekdayWindow.rows.map((item) => [item.weekdayLabel, item.inWindowCount, item.outOfWindowCount]),
     [
-      ["Mon", 1, 1],
-      ["Tue", 1, 0],
+      ["월요일", 1, 1],
+      ["화요일", 1, 0],
     ],
   );
 });

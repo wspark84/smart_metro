@@ -9,12 +9,12 @@ async function parsePayload(response, fallbackMessage) {
 
 export async function fetchAuthSession() {
   const response = await fetch("/api/auth/session");
-  return parsePayload(response, `Auth session fetch failed (${response.status}).`);
+  return parsePayload(response, `로그인 상태 확인 실패 (응답 코드 ${response.status}).`);
 }
 
 export async function fetchAuthProviders() {
   const response = await fetch("/api/auth/providers");
-  return parsePayload(response, `Auth providers fetch failed (${response.status}).`);
+  return parsePayload(response, `로그인 제공처 조회 실패 (응답 코드 ${response.status}).`);
 }
 
 export async function registerAuth(payload) {
@@ -26,7 +26,7 @@ export async function registerAuth(payload) {
     body: JSON.stringify(payload),
   });
 
-  return parsePayload(response, `Auth register failed (${response.status}).`);
+  return parsePayload(response, `회원 가입 실패 (응답 코드 ${response.status}).`);
 }
 
 export async function loginAuth(payload) {
@@ -38,7 +38,7 @@ export async function loginAuth(payload) {
     body: JSON.stringify(payload),
   });
 
-  return parsePayload(response, `Auth login failed (${response.status}).`);
+  return parsePayload(response, `로그인 실패 (응답 코드 ${response.status}).`);
 }
 
 export async function logoutAuth() {
@@ -46,7 +46,7 @@ export async function logoutAuth() {
     method: "POST",
   });
 
-  return parsePayload(response, `Auth logout failed (${response.status}).`);
+  return parsePayload(response, `로그아웃 실패 (응답 코드 ${response.status}).`);
 }
 
 export async function requestPasswordReset(payload) {
@@ -58,7 +58,7 @@ export async function requestPasswordReset(payload) {
     body: JSON.stringify(payload),
   });
 
-  return parsePayload(response, `Password reset request failed (${response.status}).`);
+  return parsePayload(response, `비밀번호 재설정 요청 실패 (응답 코드 ${response.status}).`);
 }
 
 export async function confirmPasswordReset(payload) {
@@ -70,7 +70,7 @@ export async function confirmPasswordReset(payload) {
     body: JSON.stringify(payload),
   });
 
-  return parsePayload(response, `Password reset failed (${response.status}).`);
+  return parsePayload(response, `비밀번호 재설정 실패 (응답 코드 ${response.status}).`);
 }
 
 export async function startSocialAuth(payload) {
@@ -82,12 +82,12 @@ export async function startSocialAuth(payload) {
     body: JSON.stringify(payload),
   });
 
-  return parsePayload(response, `Social auth start failed (${response.status}).`);
+  return parsePayload(response, `소셜 로그인 연결 실패 (응답 코드 ${response.status}).`);
 }
 
 export async function fetchAccountSummary() {
   const response = await fetch("/api/account");
-  return parsePayload(response, `Account summary fetch failed (${response.status}).`);
+  return parsePayload(response, `계정 정보 조회 실패 (응답 코드 ${response.status}).`);
 }
 
 export async function updateAccountProfile(payload) {
@@ -99,7 +99,7 @@ export async function updateAccountProfile(payload) {
     body: JSON.stringify(payload),
   });
 
-  return parsePayload(response, `Account profile update failed (${response.status}).`);
+  return parsePayload(response, `프로필 저장 실패 (응답 코드 ${response.status}).`);
 }
 
 export async function updateAccountPassword(payload) {
@@ -111,7 +111,7 @@ export async function updateAccountPassword(payload) {
     body: JSON.stringify(payload),
   });
 
-  return parsePayload(response, `Account password update failed (${response.status}).`);
+  return parsePayload(response, `비밀번호 변경 실패 (응답 코드 ${response.status}).`);
 }
 
 export async function resendAccountEmailVerification() {
@@ -119,5 +119,5 @@ export async function resendAccountEmailVerification() {
     method: "POST",
   });
 
-  return parsePayload(response, `Email verification request failed (${response.status}).`);
+  return parsePayload(response, `이메일 인증 요청 실패 (응답 코드 ${response.status}).`);
 }

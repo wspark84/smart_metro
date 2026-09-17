@@ -12,7 +12,7 @@ export async function fetchAlarmPlanPreview(state, now) {
 
   const payload = await response.json();
   if (!response.ok) {
-    throw new Error(payload.error || `Alarm plan preview failed (${response.status}).`);
+    throw new Error(payload.error || `알람 계획 조회 실패 (응답 코드 ${response.status}).`);
   }
 
   return payload;

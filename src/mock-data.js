@@ -69,7 +69,7 @@ export const STOP_LIBRARY = [
 export const SOUND_PRESETS = [
   {
     id: "mechanical",
-    name: "Mechanical Siren",
+    name: "기계식 사이렌",
     detail: "기계식 경고음이 짧고 강하게 반복됩니다.",
     loopCount: 4,
     loopGap: 0.08,
@@ -82,7 +82,7 @@ export const SOUND_PRESETS = [
   },
   {
     id: "energetic",
-    name: "Energetic Melody",
+    name: "활기찬 멜로디",
     detail: "밝고 빠르게 울리는 일반 알림음입니다.",
     loopCount: 1,
     loopGap: 0,
@@ -94,7 +94,7 @@ export const SOUND_PRESETS = [
   },
   {
     id: "calm",
-    name: "Calm Chime",
+    name: "잔잔한 차임벨",
     detail: "부드럽게 울리는 차임 소리입니다.",
     loopCount: 1,
     loopGap: 0,
@@ -105,7 +105,7 @@ export const SOUND_PRESETS = [
   },
   {
     id: "strong",
-    name: "Strong Alarm",
+    name: "강한 알람",
     detail: "낮은 톤으로 강하게 울리는 일반 경고음입니다.",
     loopCount: 2,
     loopGap: 0.12,

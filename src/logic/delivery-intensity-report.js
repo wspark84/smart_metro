@@ -1,9 +1,9 @@
 const SOURCE_LABELS = {
-  server_event: "Server event",
-  dispatch_bundle: "Dispatch bundle",
-  dispatch_execution: "Dispatch execution",
-  push_attempt: "Push gateway",
-  retry_queue: "Retry queue",
+  server_event: "서버 기록",
+  dispatch_bundle: "알림 전송 묶음",
+  dispatch_execution: "알림 전송 처리",
+  push_attempt: "푸시 전송",
+  retry_queue: "재시도 대기열",
 };
 
 const DELIVERY_OUTCOME_RANK = {
@@ -45,15 +45,15 @@ const ISSUE_SPREAD_LABELS = {
 const ATTENTION_QUICK_ACTIONS = {
   blocked: {
     action: "register-device-token",
-    buttonLabel: "Register Current Token",
+    buttonLabel: "현재 토큰 등록",
   },
   failed: {
     action: "run-push-gateway",
-    buttonLabel: "Run Gateway Dry Run",
+    buttonLabel: "전송 요청 모의 실행",
   },
   retry_pending: {
     action: "run-push-retry-simulation",
-    buttonLabel: "Run Due Retry Demo",
+    buttonLabel: "대기 중인 재시도 시험",
   },
 };
 
@@ -62,19 +62,19 @@ const ATTENTION_TARGETS = {
     screen: "settings",
     panelId: "device-delivery-panel",
     panelItemId: "device-push-token-input",
-    buttonLabel: "Open Push Token",
+    buttonLabel: "푸시 토큰 설정 열기",
   },
   failed: {
     screen: "home",
     panelId: "push-gateway-panel",
     panelItemKind: "push-attempt",
-    buttonLabel: "Open Failed Attempt",
+    buttonLabel: "실패한 전송 확인",
   },
   retry_pending: {
     screen: "home",
     panelId: "push-gateway-panel",
     panelItemKind: "retry-queue",
-    buttonLabel: "Open Retry Queue",
+    buttonLabel: "재시도 대기열 열기",
   },
 };
 
@@ -205,8 +205,8 @@ function describeDeliveryOutcome(signals) {
       code: "delivered",
       label: "DELIVERED",
       copy: latestPushAttempt?.createdAt
-        ? `The push gateway recorded a SENT handoff at ${new Date(latestPushAttempt.createdAt).toISOString()}.`
-        : "The push gateway recorded a successful SENT handoff.",
+        ? `푸시 요청 수락 기록: ${new Date(latestPushAttempt.createdAt).toISOString()}.`
+        : "푸시 제공처가 전송 요청을 수락한 기록이 있습니다.",
     };
   }
 
@@ -219,8 +219,8 @@ function describeDeliveryOutcome(signals) {
       code: "retry_pending",
       label: "RETRY PENDING",
       copy: nextRetry
-        ? `A stronger retry is still queued for ${nextRetry.toISOString()}.`
-        : "A stronger retry is still queued for this alert.",
+        ? `강화 재시도 예정: ${nextRetry.toISOString()}.`
+        : "이 알림의 강화 재시도가 대기 중입니다.",
     };
   }
 
@@ -229,8 +229,8 @@ function describeDeliveryOutcome(signals) {
       code: "failed",
       label: "FAILED",
       copy: latestPushAttempt?.detail
-        ? `The latest push handoff failed: ${latestPushAttempt.detail}`
-        : "The latest push handoff failed and no retry is currently queued.",
+        ? `최근 푸시 전송 실패: ${latestPushAttempt.detail}`
+        : "최근 푸시 전송에 실패했으며 예정된 재시도가 없습니다.",
     };
   }
 
@@ -239,8 +239,8 @@ function describeDeliveryOutcome(signals) {
       code: "blocked",
       label: "BLOCKED",
       copy: latestPushAttempt?.detail
-        ? `The push handoff is blocked: ${latestPushAttempt.detail}`
-        : "The push handoff is blocked by token or gateway configuration.",
+        ? `푸시 전송 차단: ${latestPushAttempt.detail}`
+        : "토큰 또는 전송 설정 문제로 푸시 전송이 차단되었습니다.",
     };
   }
 
@@ -248,7 +248,7 @@ function describeDeliveryOutcome(signals) {
     return {
       code: "preview_ready",
       label: "PREVIEW ONLY",
-      copy: "This alert reached the push preview layer, but the gateway is still in preview mode.",
+      copy: "푸시 요청 미리보기까지 처리됐으나 실제 전송 모드는 아닙니다.",
     };
   }
 
@@ -256,7 +256,7 @@ function describeDeliveryOutcome(signals) {
     return {
       code: "simulated",
       label: "SIMULATED",
-      copy: "This alert reached dispatch execution simulation, but no real push outcome is recorded yet.",
+      copy: "전송 모의 실행까지 처리됐으며 실제 푸시 전송 결과는 없습니다.",
     };
   }
 
@@ -264,7 +264,7 @@ function describeDeliveryOutcome(signals) {
     return {
       code: "queued",
       label: "QUEUED",
-      copy: "This alert reached dispatch planning, but no downstream delivery result is stored yet.",
+      copy: "전송 계획은 생성됐으나 이후 전송 결과는 없습니다.",
     };
   }
 
@@ -272,14 +272,14 @@ function describeDeliveryOutcome(signals) {
     return {
       code: "triggered",
       label: "TRIGGERED",
-      copy: "Only the server-side alarm trigger has been recorded so far.",
+      copy: "현재 서버의 알람 발생 기록만 있습니다.",
     };
   }
 
   return {
     code: "unknown",
     label: "UNKNOWN",
-    copy: "No delivery trace is connected to this alert yet.",
+    copy: "이 알림에 연결된 전송 기록이 없습니다.",
   };
 }
 
@@ -288,20 +288,20 @@ function buildAttentionActionCopy(alert) {
   const nextRetryAt = resolveDateValue(alert?.nextRetryAt);
 
   if (outcomeCode === "blocked") {
-    return "Check the device token, notification permission, and push gateway credentials now. A blocked alert will not recover with retry until the delivery path is unblocked.";
+    return "기기 토큰, 알림 권한과 푸시 인증 설정을 확인하세요. 차단 원인을 해결해야 재시도가 가능합니다.";
   }
 
   if (outcomeCode === "failed") {
-    return "Check the latest push failure detail now. This alert failed without a queued retry, so it needs manual follow-up before the next commute window.";
+    return "최근 푸시 실패 내용을 확인하세요. 예정된 재시도가 없어 다음 알람 시간대 전에 직접 점검해야 합니다.";
   }
 
   if (outcomeCode === "retry_pending") {
     return nextRetryAt
-      ? `Keep the device reachable and watch the next retry at ${nextRetryAt.toISOString()}. This alert is still waiting for another push handoff.`
-      : "Keep the device reachable and watch the retry queue. This alert is still waiting for another push handoff.";
+      ? `휴대폰 연결을 유지하세요. 다음 푸시 재시도 예정: ${nextRetryAt.toISOString()}.`
+      : "휴대폰의 네트워크 연결을 유지하고 재시도 대기열을 확인하세요.";
   }
 
-  return "Review the latest delivery trace for this alert and confirm that the push path is still healthy.";
+  return "최근 알림 전송 기록을 확인하고 푸시 설정이 정상인지 점검하세요.";
 }
 
 function buildAttentionTarget(alert) {
@@ -337,13 +337,12 @@ function buildAttentionCause(alert) {
   const outcomeCode = String(alert?.deliveryOutcomeCode || "").trim().toLowerCase();
   const pushDetail = String(alert?.latestPushAttemptDetail || "").trim().toLowerCase();
   const retryDetail = String(alert?.latestRetryDetail || "").trim().toLowerCase();
-  const attentionStatusValue = String(alert?.attentionStatus?.value || "").trim().toLowerCase();
 
   if (outcomeCode === "blocked") {
     if (pushDetail.includes("token")) {
       return {
-        label: "Token blocked",
-        copy: "The latest blocked handoff points to a device-token or token-format problem.",
+        label: "토큰 문제로 차단",
+        copy: "최근 전송이 기기 토큰 또는 토큰 형식 문제로 차단되었습니다.",
       };
     }
 
@@ -354,56 +353,56 @@ function buildAttentionCause(alert) {
       pushDetail.includes("auth")
     ) {
       return {
-        label: "Credentials missing",
-        copy: "The latest blocked handoff points to missing gateway credentials or push-project configuration.",
+        label: "인증 정보 없음",
+        copy: "최근 전송이 인증 정보 또는 푸시 프로젝트 설정 누락으로 차단되었습니다.",
       };
     }
 
     return {
-      label: "Push path blocked",
-      copy: "The latest handoff is blocked before delivery can start.",
+      label: "푸시 전송 차단",
+      copy: "최근 요청은 전송을 시작하기 전에 차단되었습니다.",
     };
   }
 
   if (outcomeCode === "failed") {
     if (pushDetail.includes("temporary") || pushDetail.includes("429") || pushDetail.includes("5xx")) {
       return {
-        label: "Temporary provider failure",
-        copy: "The provider reported a temporary failure and the current handoff did not complete.",
+        label: "제공처 일시 오류",
+        copy: "제공처의 일시 오류로 현재 전송을 완료하지 못했습니다.",
       };
     }
 
     if (pushDetail.includes("rejected")) {
       return {
-        label: "Provider rejected request",
-        copy: "The provider rejected the current handoff request, so this alert stopped at the gateway stage.",
+        label: "제공처가 요청 거부",
+        copy: "제공처가 요청을 거부해 알림 전송이 중단되었습니다.",
       };
     }
 
     return {
-      label: "Push handoff failed",
-      copy: "The latest provider handoff failed and no active retry is attached to this alert.",
+      label: "푸시 전송 실패",
+      copy: "최근 전송에 실패했으며 진행 중인 재시도가 없습니다.",
     };
   }
 
   if (outcomeCode === "retry_pending") {
-    if (attentionStatusValue.startsWith("overdue")) {
+    if (alert?.attentionStatus?.isOverdue) {
       return {
-        label: "Retry overdue",
-        copy: "A retry is still pending even though its scheduled replay time has already passed.",
+        label: "재시도 시각 지남",
+        copy: "예정된 시각이 지났지만 재시도가 아직 대기 중입니다.",
       };
     }
 
     if (retryDetail.includes("temporary")) {
       return {
-        label: "Waiting on temporary-failure retry",
-        copy: "The queued retry came from a temporary provider failure and is waiting for the next replay.",
+        label: "일시 오류 재시도 대기",
+        copy: "제공처의 일시 오류로 인한 재시도가 다음 실행을 기다립니다.",
       };
     }
 
     return {
-      label: "Queued retry pending",
-      copy: "The alert is still waiting in the retry queue for another push handoff.",
+      label: "재시도 대기",
+      copy: "이 알림은 재시도 대기열에서 다음 전송을 기다립니다.",
     };
   }
 
@@ -422,19 +421,19 @@ function formatShortRelativeTime(targetValue, nowValue) {
   const seconds = Math.max(1, Math.round(absMs / 1000));
 
   if (absMs < 1000) {
-    return "now";
+    return "지금";
   }
   if (seconds < 60) {
-    return diffMs >= 0 ? `in ${seconds}s` : `${seconds}s ago`;
+    return diffMs >= 0 ? `${seconds}초 후` : `${seconds}초 전`;
   }
 
   const minutes = Math.round(seconds / 60);
   if (minutes < 60) {
-    return diffMs >= 0 ? `in ${minutes}m` : `${minutes}m ago`;
+    return diffMs >= 0 ? `${minutes}분 후` : `${minutes}분 전`;
   }
 
   const hours = Math.round(minutes / 60);
-  return diffMs >= 0 ? `in ${hours}h` : `${hours}h ago`;
+  return diffMs >= 0 ? `${hours}시간 후` : `${hours}시간 전`;
 }
 
 function buildAttentionStatus(alert, nowValue) {
@@ -446,35 +445,36 @@ function buildAttentionStatus(alert, nowValue) {
     const relativeValue = formatShortRelativeTime(nextRetryAt, now);
     const isOverdue = nextRetryAt && now && nextRetryAt.getTime() < now.getTime();
     return {
-      label: "Next retry",
+      label: "다음 재시도",
+      isOverdue: Boolean(isOverdue),
       value: isOverdue
-        ? `overdue by ${String(relativeValue || "").replace(/\s*ago$/, "").trim()}`
+        ? `${String(relativeValue || "").replace(/\s*전$/, "").trim()} 지남`
         : relativeValue || "-",
       copy: alert?.nextRetryAt
         ? isOverdue
-          ? `Queued retry was scheduled for ${String(alert.nextRetryAt).trim()} and is now overdue.`
-          : `Queued retry is scheduled for ${String(alert.nextRetryAt).trim()}.`
-        : "A retry is pending, but the scheduled time is missing.",
+          ? `${String(alert.nextRetryAt).trim()}로 예정된 재시도 시각이 지났습니다.`
+          : `재시도 예정: ${String(alert.nextRetryAt).trim()}.`
+        : "재시도가 대기 중이지만 예정 시각 정보가 없습니다.",
     };
   }
 
   if (outcomeCode === "failed") {
     return {
-      label: "Last failure",
+      label: "최근 실패",
       value: formatShortRelativeTime(alert?.latestAt, nowValue) || "-",
       copy: alert?.latestAt
-        ? `Latest failed handoff was recorded at ${String(alert.latestAt).trim()}.`
-        : "A failed handoff is recorded, but the latest failure time is missing.",
+        ? `최근 실패 시각: ${String(alert.latestAt).trim()}.`
+        : "전송 실패 기록은 있으나 최근 실패 시각 정보가 없습니다.",
     };
   }
 
   if (outcomeCode === "blocked") {
     return {
-      label: "Last blocked",
+      label: "최근 차단",
       value: formatShortRelativeTime(alert?.latestAt, nowValue) || "-",
       copy: alert?.latestAt
-        ? `Latest blocked handoff was recorded at ${String(alert.latestAt).trim()}.`
-        : "A blocked handoff is recorded, but the latest blocked time is missing.",
+        ? `최근 차단 시각: ${String(alert.latestAt).trim()}.`
+        : "전송 차단 기록은 있으나 최근 차단 시각 정보가 없습니다.",
     };
   }
 
@@ -493,8 +493,8 @@ function buildIssueSpreadSummary({ count = 0, routeStopCount = 0, topRouteStops 
       label: ISSUE_SPREAD_LABELS.concentrated,
       copy:
         totalRouteStops <= 1
-          ? "This issue is currently concentrated in one commute pair."
-          : "Most of today's issue volume is concentrated in one commute pair.",
+          ? "현재 이 문제는 한 노선·정류장 조합에 집중되어 있습니다."
+          : "오늘 발생한 문제 대부분이 한 노선·정류장 조합에 집중되어 있습니다.",
     };
   }
 
@@ -502,14 +502,14 @@ function buildIssueSpreadSummary({ count = 0, routeStopCount = 0, topRouteStops 
     return {
       code: "spreading",
       label: ISSUE_SPREAD_LABELS.spreading,
-      copy: "This issue is spread across several commute pairs rather than one dominant route-stop pair.",
+      copy: "이 문제는 한 곳에 집중되지 않고 여러 노선·정류장에서 발생합니다.",
     };
   }
 
   return {
     code: "mixed",
     label: ISSUE_SPREAD_LABELS.mixed,
-    copy: "This issue is shared across multiple commute pairs, but one route-stop pair still leads the cluster.",
+    copy: "여러 노선·정류장에서 발생하지만 특정 조합에 더 많이 집중되어 있습니다.",
   };
 }
 
@@ -549,7 +549,7 @@ function normalizeIntensitySignal({
 
   return {
     source,
-    sourceLabel: SOURCE_LABELS[source] || "Trace",
+    sourceLabel: SOURCE_LABELS[source] || "처리 기록",
     title: String(title || "").trim(),
     detail: String(detail || "").trim(),
     routeNumber: String(routeNumber || "").trim(),

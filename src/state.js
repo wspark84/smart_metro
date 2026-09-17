@@ -31,7 +31,7 @@ export const DEFAULT_STATE = {
     simulationStartedAt: new Date().toISOString(),
   },
   user: {
-    name: "Demo User",
+    name: "예시 사용자",
     requiredArrivalTime: "09:00",
     homeAddress: "서울 종로구 세종대로 175",
     workAddress: "경기 성남시 분당구 판교역로 166",

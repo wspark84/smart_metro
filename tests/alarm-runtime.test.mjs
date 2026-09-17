@@ -66,7 +66,7 @@ test("reconcileAlarmRuntime emits one stability precheck before the main morning
   assert.equal(result.dueEvents[0].kind, "ALARM_PRECHECK");
   assert.equal(result.dueEvents[0].triggerKind, "stability-precheck");
   assert.equal(result.dueEvents[0].stabilityPrecheckLeadMin, 10);
-  assert.match(result.dueEvents[0].title, /^Stability precheck · /);
+  assert.match(result.dueEvents[0].title, /^도착정보 사전 점검 · /);
 });
 
 test("reconcileAlarmRuntime carries conservative ETA buffer context into triggered events", () => {

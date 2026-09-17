@@ -114,7 +114,7 @@ test("reconcileDispatchQueue creates a new bundle when the escalation stage adva
   assert.equal(escalated.newBundles.length, 1);
   assert.equal(escalated.queue.bundles.length, 2);
   assert.equal(escalated.queue.bundles[0].stage, 1);
-  assert.equal(escalated.queue.bundles[0].escalationLabel, "Escalated");
+  assert.equal(escalated.queue.bundles[0].escalationLabel, "강화 알림");
 });
 
 test("reconcileDispatchQueue clears stale bundles when the date key changes", () => {

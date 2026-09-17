@@ -26,6 +26,7 @@ import {
 import { applyDomainSnapshotToState } from "./domain-model.js";
 import { DEFAULT_DEVICE_PROFILE } from "./device-profile.js";
 import { ensureLiveBindingState, switchLiveProvider, syncActiveLiveBinding } from "./logic/live-bindings.js";
+import { formatUiLabel, formatUiMessage, localizeDisplayFields, userErrorMessage } from "./locale-ko.js";
 import {
   fetchAccountSummary,
   fetchAuthProviders,
@@ -102,30 +103,30 @@ let busApiConfig = {
       national: ["tago"],
     },
     guidance:
-      "For time-sensitive alarms, choose the provider that has shown the most accurate ETA for that region. API ownership matters less than observed accuracy.",
+      "지역별 실제 도착시간 정확도를 비교해 정보 제공처를 선택합니다.",
     observations: {
       gyeonggi:
-        "Current product rule: treat TAGO as the first ETA candidate for Gyeonggi until another provider proves more accurate in measured checks.",
+        "경기 지역은 다른 제공처가 더 정확하다고 확인되기 전까지 TAGO를 우선 사용합니다.",
     },
   },
   providers: {
     seoul: {
       configured: false,
-      label: "Seoul Direct",
+      label: "서울시 버스정보",
       role: "regional-candidate",
-      note: "Keep Seoul Direct as the primary candidate for Seoul stops unless another source measures better.",
+      note: "서울 정류장은 다른 제공처가 더 정확하다고 확인되기 전까지 서울시 정보를 우선 사용합니다.",
     },
     gyeonggi: {
       configured: false,
-      label: "Gyeonggi Direct (Compare Accuracy)",
+      label: "경기도 버스정보(정확도 비교용)",
       role: "regional-candidate",
-      note: "Keep this as a comparison source for Gyeonggi and promote it only when it measures more accurate than TAGO.",
+      note: "경기도 정보는 비교용으로 사용하며, TAGO보다 정확하다고 확인되면 우선 사용합니다.",
     },
     tago: {
       configured: false,
-      label: "TAGO (Accuracy-first candidate)",
+      label: "국토교통부 TAGO",
       role: "national-candidate",
-      note: "Current ETA-first rule treats TAGO as the first candidate for Gyeonggi and the default national coverage source.",
+      note: "경기 지역과 전국 버스정보의 기본 제공처로 TAGO를 사용합니다.",
     },
   },
 };
@@ -485,7 +486,7 @@ async function hydrateAuthSession() {
     authMeta.status = "error";
     authMeta.user = null;
     authMeta.session = null;
-    authMeta.submitError = error instanceof Error ? error.message : "Unknown auth session error.";
+    authMeta.submitError = userErrorMessage(error, "로그인 상태 확인 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.");
     return false;
   }
 }
@@ -497,7 +498,7 @@ async function hydrateAuthProviders() {
     return payload;
   } catch (error) {
     authMeta.providerConfig = null;
-    authMeta.submitError = error instanceof Error ? error.message : "Unknown auth provider load error.";
+    authMeta.submitError = userErrorMessage(error, "로그인 제공처 조회 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.");
     return null;
   }
 }
@@ -532,7 +533,7 @@ async function hydrateAccountSummary() {
     return payload;
   } catch (error) {
     accountMeta.status = "error";
-    accountMeta.lastError = error instanceof Error ? error.message : "Unknown account summary error.";
+    accountMeta.lastError = userErrorMessage(error, "계정 정보 조회 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.");
     return null;
   }
 }
@@ -551,7 +552,7 @@ async function beginSocialAuth(provider) {
     window.location.assign(payload.authorizationUrl);
   } catch (error) {
     authMeta.submitStatus = "error";
-    authMeta.submitError = error instanceof Error ? error.message : "Unknown social sign-in error.";
+    authMeta.submitError = userErrorMessage(error, "소셜 로그인 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.");
     render();
   }
 }
@@ -573,7 +574,7 @@ async function signOutWorkspace() {
     render();
   } catch (error) {
     authMeta.submitStatus = "error";
-    authMeta.submitError = error instanceof Error ? error.message : "Unknown sign-out error.";
+    authMeta.submitError = userErrorMessage(error, "로그아웃 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.");
     render();
   }
 }
@@ -594,7 +595,7 @@ async function submitAccountProfileUpdate() {
     render();
   } catch (error) {
     accountMeta.profileStatus = "error";
-    accountMeta.profileError = error instanceof Error ? error.message : "Unknown account profile update error.";
+    accountMeta.profileError = userErrorMessage(error, "프로필 저장 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.");
     render();
   }
 }
@@ -644,7 +645,7 @@ function queueRemoteSave() {
         }
 
         persistenceMeta.saveStatus = "error";
-        persistenceMeta.lastError = error instanceof Error ? error.message : "Unknown server save error.";
+        persistenceMeta.lastError = userErrorMessage(error, "서버 저장 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.");
         render();
       });
   }, 250);
@@ -682,7 +683,7 @@ function queueDomainSync() {
         }
 
         domainMeta.syncStatus = "error";
-        domainMeta.lastError = error instanceof Error ? error.message : "Unknown domain sync error.";
+        domainMeta.lastError = userErrorMessage(error, "계정 설정 동기화 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.");
         render();
       });
   }, 250);
@@ -723,7 +724,7 @@ function queueDeviceSync() {
         }
 
         deviceMeta.syncStatus = "error";
-        deviceMeta.lastError = error instanceof Error ? error.message : "Unknown device profile sync error.";
+        deviceMeta.lastError = userErrorMessage(error, "기기 설정 동기화 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.");
         render();
       });
   }, 250);
@@ -748,10 +749,10 @@ function formatLiveEtaContextCopy(context) {
   }
 
   if (Number.isFinite(Number(context.accuracySpreadMin))) {
-    return `Conservative ETA buffer ${context.accuracyRiskBufferMin} min is active because providers are ${context.accuracySpreadMin} min apart.`;
+    return `제공처별 예측이 ${context.accuracySpreadMin}분 차이 나므로 안전 여유시간 ${context.accuracyRiskBufferMin}분을 적용합니다.`;
   }
 
-  return `Conservative ETA buffer ${context.accuracyRiskBufferMin} min is active while live provider ETAs are still diverged.`;
+  return `제공처별 도착 예측에 차이가 있어 안전 여유시간 ${context.accuracyRiskBufferMin}분을 적용합니다.`;
 }
 
 function appendLiveEtaContextDetail(detail, context) {
@@ -773,12 +774,12 @@ function renderConservativeContextLine(context, className = "history-detail") {
     return "";
   }
 
-  const parts = [`Conservative ETA buffer ${context.accuracyRiskBufferMin} min`];
+  const parts = [`안전 여유시간 ${context.accuracyRiskBufferMin}분`];
   if (Number.isFinite(Number(context.accuracySpreadMin))) {
-    parts.push(`live spread ${context.accuracySpreadMin} min`);
+    parts.push(`예측 차이 ${context.accuracySpreadMin}분`);
   }
   if (context.liveEtaGuardMode) {
-    parts.push(`mode ${String(context.liveEtaGuardMode).toUpperCase()}`);
+    parts.push(`판단 모드 ${formatUiLabel(String(context.liveEtaGuardMode))}`);
   }
 
   return `<div class="${className}">${escapeHtml(parts.join(" · "))}</div>`;
@@ -792,13 +793,13 @@ function renderDeliveryPriorityLine(context, className = "history-detail") {
 
   const parts =
     priorityClass === "boosted"
-      ? ["Boosted first-alarm delivery", "HIGH instability route"]
+      ? ["첫 알림 강화 전송", "도착정보 변동이 큰 노선"]
       : priorityClass === "precheck"
-        ? ["Stability precheck delivery", "High-watch warmup"]
-        : [`Delivery ${priorityClass}`];
+        ? ["사전 점검 알림 전송", "주의 노선 사전 확인"]
+        : [`전송 우선순위 ${priorityClass}`];
 
   if (context?.deliveryPriorityReason) {
-    parts.push(String(context.deliveryPriorityReason));
+    parts.push(formatUiLabel(context.deliveryPriorityReason));
   }
 
   return `<div class="${className}">${escapeHtml(parts.join(" · "))}</div>`;
@@ -830,16 +831,16 @@ function renderPlaybackIntensityLine(context, className = "history-detail") {
 
   const parts = [];
   if (Number.isFinite(volumePercent) && volumePercent > 0) {
-    parts.push(`${Math.round(volumePercent)}% volume`);
+    parts.push(`${Math.round(volumePercent)}% 음량`);
   }
   if (Number.isFinite(vibrationRepeats) && vibrationRepeats > 0) {
-    parts.push(`vibration x${Math.round(vibrationRepeats)}`);
+    parts.push(`진동 ${Math.round(vibrationRepeats)}회`);
   }
   if (Number.isFinite(mechanicalLoopBoost) && mechanicalLoopBoost > 0) {
-    parts.push(`mechanical +${Math.round(mechanicalLoopBoost)} loops`);
+    parts.push(`경고음 ${Math.round(mechanicalLoopBoost)}회 추가`);
   }
   if (Number.isFinite(speechRepeatCount) && speechRepeatCount > 1) {
-    parts.push(`TTS x${Math.round(speechRepeatCount)}`);
+    parts.push(`음성 안내 ${Math.round(speechRepeatCount)}회`);
   }
 
   if (!parts.length) {
@@ -850,7 +851,7 @@ function renderPlaybackIntensityLine(context, className = "history-detail") {
 }
 
 function getConservativeReliabilityReport() {
-  return (
+  return localizeDisplayFields(
     alarmRuntimeMeta.conservativeReliability ||
     buildConservativeReliabilityReport({
       schedule: state.schedule,
@@ -864,7 +865,7 @@ function getConservativeReliabilityReport() {
 }
 
 function getDeliveryIntensityReport() {
-  return (
+  return localizeDisplayFields(
     alarmRuntimeMeta.deliveryIntensity ||
     buildDeliveryIntensityReport({
       now: new Date(),
@@ -926,7 +927,7 @@ function pushHistory(title, detail, kind = "INFO", serverKind = "APP_ACTION", op
 
 function ensureDemoHistory() {
   if (state.history.length) return;
-  pushHistory("Demo ready", "This prototype stores recent actions locally so you can inspect the morning flow.");
+  pushHistory("예시 준비 완료", "최근 이용 기록을 저장해 알람 처리 흐름을 확인할 수 있습니다.");
 }
 
 function queueAlarmPlanRefresh(delayMs = 250) {
@@ -960,7 +961,7 @@ function queueAlarmPlanRefresh(delayMs = 250) {
         }
 
         alarmPlanMeta.status = "error";
-        alarmPlanMeta.lastError = error instanceof Error ? error.message : "Unknown alarm plan error.";
+        alarmPlanMeta.lastError = userErrorMessage(error, "알람 계획 조회 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.");
         render();
       });
   }, delayMs);
@@ -1047,7 +1048,7 @@ function queueAlarmRuntimeRefresh(delayMs = 250) {
         }
 
         alarmRuntimeMeta.status = "error";
-        alarmRuntimeMeta.lastError = error instanceof Error ? error.message : "Unknown alarm runtime error.";
+        alarmRuntimeMeta.lastError = userErrorMessage(error, "알람 상태 조회 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.");
         deviceMeta.dispatchError = alarmRuntimeMeta.lastError;
         deviceMeta.dispatchExecutionError = alarmRuntimeMeta.lastError;
         deviceMeta.pushPreviewError = alarmRuntimeMeta.lastError;
@@ -1075,7 +1076,7 @@ async function primeAlarmPlayback() {
       await audioContext.resume();
     } catch (error) {
       browserPlaybackMeta.status = "blocked";
-      browserPlaybackMeta.lastError = error instanceof Error ? error.message : "Browser auto-play is still blocked.";
+      browserPlaybackMeta.lastError = userErrorMessage(error, "브라우저의 자동 소리 재생이 차단되어 있습니다.");
       return false;
     }
   }
@@ -1099,23 +1100,23 @@ function getLatestActiveDispatchBundle() {
 
 function getPlaybackStatusCopy() {
   if (browserPlaybackMeta.status === "playing") {
-    return "Browser alarm audio is playing now.";
+    return "브라우저에서 알람 소리를 재생하고 있습니다.";
   }
   if (browserPlaybackMeta.status === "played") {
     return browserPlaybackMeta.lastPlayedAt
-      ? `Browser alarm audio played at ${formatClock(new Date(browserPlaybackMeta.lastPlayedAt))}.`
-      : "Browser alarm audio played.";
+      ? `${formatClock(new Date(browserPlaybackMeta.lastPlayedAt))}에 알람 소리를 재생했습니다.`
+      : "브라우저에서 알람 소리를 재생했습니다.";
   }
   if (browserPlaybackMeta.status === "partial") {
-    return browserPlaybackMeta.lastError || "Part of the browser playback was blocked.";
+    return browserPlaybackMeta.lastError || "브라우저에서 일부 알림 재생이 차단되었습니다.";
   }
   if (browserPlaybackMeta.status === "blocked") {
-    return browserPlaybackMeta.lastError || "Browser alarm audio needs one tap before auto-play.";
+    return browserPlaybackMeta.lastError || "소리 자동 재생을 위해 먼저 화면의 재생 버튼을 눌러 주세요.";
   }
   if (browserPlaybackMeta.status === "muted") {
-    return "Sound and TTS are both disabled on this device profile.";
+    return "이 기기의 소리와 음성 안내가 모두 꺼져 있습니다.";
   }
-  return browserPlaybackMeta.lastError || "Waiting for the next active alarm stage.";
+  return browserPlaybackMeta.lastError || "다음 알람 단계를 기다리고 있습니다.";
 }
 
 function resolvePreferredKoreanVoice(voices) {
@@ -1218,11 +1219,11 @@ function maybeAutoPlayActiveAlarm() {
       const playback = playNotificationSpec(bundle.notificationSpec);
       if (!playback.playedSound && !playback.playedTts) {
         browserPlaybackMeta.status = "muted";
-        browserPlaybackMeta.lastError = "Sound and TTS are both unavailable for browser auto-play.";
+        browserPlaybackMeta.lastError = "브라우저에서 소리와 음성 안내를 자동 재생할 수 없습니다.";
       } else if (!playback.playedSound && playback.playedTts) {
         browserPlaybackMeta.status = "partial";
         browserPlaybackMeta.lastError = state.device.soundEnabled
-          ? "Mechanical tone is waiting for one tap because browser auto-play is restricted."
+          ? "브라우저 자동 재생이 제한되어 있습니다. 버튼을 눌러 알람 소리를 재생하세요."
           : "";
       } else {
         browserPlaybackMeta.status = "played";
@@ -1232,7 +1233,7 @@ function maybeAutoPlayActiveAlarm() {
     })
     .catch((error) => {
       browserPlaybackMeta.status = "blocked";
-      browserPlaybackMeta.lastError = error instanceof Error ? error.message : "Browser auto-play failed.";
+      browserPlaybackMeta.lastError = userErrorMessage(error, "브라우저 자동 재생에 실패했습니다.");
       render();
     });
 }
@@ -1249,7 +1250,7 @@ function syncAlarmEvent(event) {
     })
     .catch((error) => {
       alarmRuntimeMeta.eventSyncStatus = "error";
-      alarmRuntimeMeta.eventSyncError = error instanceof Error ? error.message : "Unknown alarm event sync error.";
+      alarmRuntimeMeta.eventSyncError = userErrorMessage(error, "알람 기록 동기화 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.");
       render();
     });
 }
@@ -1279,7 +1280,7 @@ function runAlarmDeliveryAction(type, historyTitle, historyDetail) {
     })
     .catch((error) => {
       alarmRuntimeMeta.actionStatus = "error";
-      alarmRuntimeMeta.actionError = error instanceof Error ? error.message : "Unknown alarm delivery action error.";
+      alarmRuntimeMeta.actionError = userErrorMessage(error, "알람 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.");
       render();
     });
 }
@@ -1297,12 +1298,12 @@ async function refreshBusApiConfig() {
           national: ["tago"],
         },
         guidance:
-          "For time-sensitive alarms, choose the provider that has shown the most accurate ETA for that region. API ownership matters less than observed accuracy.",
+          "지역별 실제 도착시간 정확도를 비교해 정보 제공처를 선택합니다.",
       },
       providers: {
-        seoul: { configured: false, label: "Seoul Direct", role: "regional-candidate" },
-        gyeonggi: { configured: false, label: "Gyeonggi Direct (Compare Accuracy)", role: "regional-candidate" },
-        tago: { configured: false, label: "TAGO (Accuracy-first candidate)", role: "national-candidate" },
+        seoul: { configured: false, label: "서울시 버스정보", role: "regional-candidate" },
+        gyeonggi: { configured: false, label: "경기도 버스정보(정확도 비교용)", role: "regional-candidate" },
+        tago: { configured: false, label: "국토교통부 TAGO", role: "national-candidate" },
       },
     };
   }
@@ -1360,7 +1361,7 @@ async function hydrateStateFromServer() {
     }
   } catch (error) {
     persistenceMeta.saveStatus = "error";
-    persistenceMeta.lastError = error instanceof Error ? error.message : "Unknown server load error.";
+    persistenceMeta.lastError = userErrorMessage(error, "서버 정보 조회 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.");
   }
 
   persistenceMeta.source = "local";
@@ -1380,7 +1381,7 @@ async function hydrateStateFromDomain() {
     }
   } catch (error) {
     domainMeta.syncStatus = "error";
-    domainMeta.lastError = error instanceof Error ? error.message : "Unknown domain load error.";
+    domainMeta.lastError = userErrorMessage(error, "계정 설정 조회 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.");
   }
 
   domainMeta.source = "local";
@@ -1403,7 +1404,7 @@ async function hydrateDeviceProfileFromServer() {
     }
   } catch (error) {
     deviceMeta.syncStatus = "error";
-    deviceMeta.lastError = error instanceof Error ? error.message : "Unknown device profile load error.";
+    deviceMeta.lastError = userErrorMessage(error, "기기 설정 조회 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.");
   }
 
   deviceMeta.source = "local";
@@ -1493,26 +1494,26 @@ function getLiveProviderMeta(provider = state.live.provider) {
 
 function getLiveProviderLabel(provider = state.live.provider) {
   if (provider === "none") {
-    return "Demo only";
+    return "예시 정보";
   }
 
-  return getLiveProviderMeta(provider)?.label || provider || "Demo only";
+  return formatUiLabel(getLiveProviderMeta(provider)?.label || provider || "예시 정보");
 }
 
 function getLiveProviderPolicyCopy(provider = state.live.provider) {
   if (provider === "gyeonggi") {
-    return "Use this only if measured ETA accuracy beats TAGO for the same Gyeonggi stop and route.";
+    return "같은 경기도 정류장·노선에서 TAGO보다 정확한 경우에 선택하세요.";
   }
 
   if (provider === "seoul") {
-    return "Keep Seoul Direct for Seoul stops unless measured ETA accuracy says another source is better.";
+    return "서울 정류장은 실제 비교 결과 더 정확한 제공처가 없다면 서울시 정보를 유지하세요.";
   }
 
   if (provider === "tago") {
-    return "This is the current accuracy-first candidate for Gyeonggi and the default national coverage source in this prototype.";
+    return "경기 지역 우선 제공처이자 전국 버스정보의 기본 제공처입니다.";
   }
 
-  return busApiConfig.policy?.guidance || "Choose the provider that measures most accurate for that region.";
+  return busApiConfig.policy?.guidance || "해당 지역에서 도착시간이 가장 정확한 제공처를 선택하세요.";
 }
 
 function getLiveRegionHint() {
@@ -1632,7 +1633,7 @@ function getAccuracyRecommendationButtonMarkup() {
     return "";
   }
 
-  return `<button class="mini-button" data-action="apply-bus-accuracy-recommendation">Switch to ${escapeHtml(
+  return `<button class="mini-button" data-action="apply-bus-accuracy-recommendation">추천 제공처로 변경: ${escapeHtml(
     getLiveProviderLabel(recommendedProvider),
   )}</button>`;
 }
@@ -1657,7 +1658,7 @@ async function refreshBusAccuracySummary() {
     return payload;
   } catch (error) {
     accuracyMeta.status = "error";
-    accuracyMeta.lastError = error instanceof Error ? error.message : "Unknown bus accuracy summary error.";
+    accuracyMeta.lastError = userErrorMessage(error, "버스 정확도 조회 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.");
     render();
     return null;
   }
@@ -1684,7 +1685,7 @@ async function refreshBusAccuracyLeaderboard(limit = 6) {
   } catch (error) {
     accuracyMeta.leaderboardStatus = "error";
     accuracyMeta.leaderboardError =
-      error instanceof Error ? error.message : "Unknown bus accuracy leaderboard error.";
+      userErrorMessage(error, "버스 정확도 순위 조회 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.");
     render();
     return null;
   }
@@ -1694,7 +1695,7 @@ async function probeBusAccuracyProviders() {
   const candidates = getAccuracyProbeCandidates();
   if (!candidates.length) {
     accuracyMeta.probeStatus = "error";
-    accuracyMeta.probeError = "Fill in at least one live provider binding first so the app can compare ETA candidates.";
+    accuracyMeta.probeError = "도착시간을 비교하려면 먼저 실시간 정보 제공처를 하나 이상 연결하세요.";
     render();
     return;
   }
@@ -1716,10 +1717,10 @@ async function probeBusAccuracyProviders() {
     accuracyMeta.lastLoadedAt = payload.savedAt || new Date().toISOString();
     const comparisonSummary = payload.comparisonSummary || {};
     pushHistory(
-      "ETA accuracy probe completed",
-      `${accuracyMeta.lastProbeComparisons.length} provider candidates were sampled for this route.${
+      "도착시간 비교 완료",
+      `이 노선의 제공처 ${accuracyMeta.lastProbeComparisons.length}곳을 비교했습니다.${
         Number.isFinite(Number(comparisonSummary.etaSpreadMin))
-          ? ` Live ETA spread is ${comparisonSummary.etaSpreadMin} min.`
+          ? ` 도착시간 차이는 ${comparisonSummary.etaSpreadMin}분입니다.`
           : ""
       }`,
       "INFO",
@@ -1728,8 +1729,8 @@ async function probeBusAccuracyProviders() {
     );
     if (payload.autoResolved?.autoDetected) {
       pushHistory(
-        "Actual arrival auto-detected",
-        `${payload.autoResolved.resolvedSamples.length} scored samples were resolved automatically from converging provider ETAs.`,
+        "실제 도착 자동 감지",
+        `제공처별 예측이 모여 도착 기록 ${payload.autoResolved.resolvedSamples.length}건을 자동 평가했습니다.`,
         "INFO",
         "APP_ACTION",
         { includeLiveEtaContext: true },
@@ -1739,7 +1740,7 @@ async function probeBusAccuracyProviders() {
     render();
   } catch (error) {
     accuracyMeta.probeStatus = "error";
-    accuracyMeta.probeError = error instanceof Error ? error.message : "Unknown ETA accuracy probe error.";
+    accuracyMeta.probeError = userErrorMessage(error, "도착시간 비교 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.");
     render();
   }
 }
@@ -1748,7 +1749,7 @@ async function recordCurrentBusArrival() {
   const filter = getAccuracyFilter();
   if (!filter.routeNumber || !filter.stopName) {
     accuracyMeta.actualStatus = "error";
-    accuracyMeta.actualError = "A route number and stop name are required before actual arrival can be recorded.";
+    accuracyMeta.actualError = "실제 도착을 기록하려면 버스 번호와 정류장 이름이 필요합니다.";
     render();
     return;
   }
@@ -1768,8 +1769,8 @@ async function recordCurrentBusArrival() {
     accuracyMeta.runtime = payload.runtime || accuracyMeta.runtime;
     accuracyMeta.lastLoadedAt = payload.savedAt || new Date().toISOString();
     pushHistory(
-      "Actual arrival recorded",
-      `${payload.resolvedSamples?.length || 0} provider forecast samples were scored against the real arrival moment.`,
+      "실제 도착 기록 완료",
+      `실제 도착 시각과 비교해 예측 ${payload.resolvedSamples?.length || 0}건을 평가했습니다.`,
       "INFO",
       "APP_ACTION",
       { includeLiveEtaContext: true },
@@ -1778,7 +1779,7 @@ async function recordCurrentBusArrival() {
     render();
   } catch (error) {
     accuracyMeta.actualStatus = "error";
-    accuracyMeta.actualError = error instanceof Error ? error.message : "Unknown actual arrival accuracy error.";
+    accuracyMeta.actualError = userErrorMessage(error, "실제 도착 기록 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.");
     render();
   }
 }
@@ -1804,8 +1805,8 @@ async function runAutoBusAccuracyProbeCycle() {
     const comparisonSummary = payload.comparisonSummary || {};
     if (payload.autoResolved?.autoDetected) {
       pushHistory(
-        "Actual arrival auto-detected",
-        `${payload.autoResolved.resolvedSamples.length} scored samples were resolved automatically from the background ETA probe.`,
+        "실제 도착 자동 감지",
+        `자동 도착정보 조회로 ${payload.autoResolved.resolvedSamples.length}건을 평가했습니다.`,
         "INFO",
         "APP_ACTION",
         { includeLiveEtaContext: true },
@@ -1813,8 +1814,8 @@ async function runAutoBusAccuracyProbeCycle() {
     }
     if (Number.isFinite(Number(comparisonSummary.etaSpreadMin)) && comparisonSummary.disagreementLevel === "diverged") {
       pushHistory(
-        "Live ETA spread widened",
-        `Providers are currently ${comparisonSummary.etaSpreadMin} min apart, so the live ETA should be treated carefully.`,
+        "도착시간 예측 차이 증가",
+        `제공처별 예측이 ${comparisonSummary.etaSpreadMin}분 차이 나므로 주의해서 확인하세요.`,
         "INFO",
         "APP_ACTION",
         { includeLiveEtaContext: true },
@@ -1825,7 +1826,7 @@ async function runAutoBusAccuracyProbeCycle() {
     return payload;
   } catch (error) {
     accuracyMeta.autoProbeStatus = "error";
-    accuracyMeta.autoProbeError = error instanceof Error ? error.message : "Unknown automatic bus accuracy probe error.";
+    accuracyMeta.autoProbeError = userErrorMessage(error, "자동 도착시간 비교 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.");
     accuracyMeta.autoProbeNextEligibleAt = null;
     render();
     return null;
@@ -1836,76 +1837,76 @@ function describeAutoProbeReason(reason, nextEligibleAt = null) {
   const normalizedReason = String(reason || "").trim();
 
   if (reason === "schedule-disabled-today") {
-    return "Today's schedule is off, so automatic ETA probing is paused.";
+    return "오늘은 알람이 꺼져 있어 자동 도착시간 비교를 쉬고 있습니다.";
   }
 
   if (reason === "before-probe-window-history-high") {
-    return "This route is on the recent HIGH instability watchlist, so automatic ETA probing will start 30 minutes before the morning window instead of waiting until the usual lead time.";
+    return "도착정보 변동이 큰 주의 노선이므로 알람 시간대 30분 전부터 비교 조회합니다.";
   }
 
   if (reason === "before-probe-window-history-elevated") {
-    return "This route has elevated recent instability, so automatic ETA probing will start 20 minutes before the morning window instead of waiting until the usual lead time.";
+    return "최근 도착정보 변동이 있어 알람 시간대 20분 전부터 비교 조회합니다.";
   }
 
   if (reason === "before-probe-window") {
-    return "It is still before the active morning alarm window, so automatic ETA probing is waiting.";
+    return "아직 알람 시간대 전이므로 자동 비교 조회를 기다리고 있습니다.";
   }
 
   if (reason === "after-probe-window") {
-    return "The active morning alarm window is over, so automatic ETA probing is paused.";
+    return "알람 시간대가 끝나 자동 비교 조회를 쉬고 있습니다.";
   }
 
   if (normalizedReason.startsWith("precheck-warmup")) {
-    return "This route is on the recent HIGH instability watchlist, so automatic ETA probing is running in a denser warmup cadence during the last 10 minutes before the normal morning window.";
+    return "도착정보 변동이 큰 주의 노선이므로 알람 시작 10분 전부터 더 자주 비교 조회합니다.";
   }
 
   if (reason === "eta-disagreement-diverged") {
-    return "Providers are currently far apart, so automatic ETA probing is temporarily running faster to verify the live arrival time.";
+    return "제공처별 도착시간 차이가 커서 일시적으로 더 자주 확인합니다.";
   }
 
   if (reason === "eta-disagreement-watch") {
-    return "Providers are slightly split right now, so automatic ETA probing is running a bit faster to confirm the next arrival.";
+    return "제공처별 도착시간 차이가 있어 다음 차량 정보를 더 자주 확인합니다.";
   }
 
   if (reason === "not-enough-candidates") {
-    return "At least two configured provider bindings are needed before automatic ETA probing can compare accuracy.";
+    return "자동 정확도 비교에는 연결된 제공처가 두 곳 이상 필요합니다.";
   }
 
   if (reason === "cooldown" || reason === "auto-resolve-cooldown") {
     return nextEligibleAt
-      ? `Automatic ETA probing is cooling down until ${formatClock(new Date(nextEligibleAt))}.`
-      : "Automatic ETA probing is cooling down before the next sample.";
+      ? `${formatClock(new Date(nextEligibleAt))}까지 다음 도착정보 비교를 기다립니다.`
+      : "다음 도착정보 비교 조회를 기다리고 있습니다.";
   }
 
   if (reason === "critical-imminence") {
-    return "A bus is close, so automatic ETA probing is running at the fastest cadence.";
+    return "버스가 가까워져 가장 짧은 간격으로 확인합니다.";
   }
 
   if (reason === "imminent-arrival") {
-    return "A bus is close, so automatic ETA probing is running faster than normal.";
+    return "버스가 가까워져 평소보다 자주 확인합니다.";
   }
 
   if (reason === "near-arrival") {
-    return "A bus is approaching, so automatic ETA probing is running at a mid-speed cadence.";
+    return "버스가 접근 중이어서 조회 간격을 줄였습니다.";
   }
 
   if (reason === "steady-window") {
-    return "Automatic ETA probing is running at the normal in-window cadence.";
+    return "알람 시간대의 기본 간격으로 도착정보를 확인합니다.";
   }
 
   if (normalizedReason.startsWith("steady-window+")) {
-    return "Automatic ETA probing is running at the normal in-window cadence, but recent instability history is keeping it a little tighter than the default schedule.";
+    return "최근 도착정보 변동을 고려해 기본 간격보다 조금 자주 확인합니다.";
   }
 
   if (normalizedReason.startsWith("eta-watch-history-high")) {
-    return "Providers are only mildly split right now, but this route has a strong recent instability history, so automatic ETA probing is already treating it like a conservative case.";
+    return "현재 예측 차이는 작지만 최근 변동이 큰 노선이라 보수적으로 확인합니다.";
   }
 
   if (normalizedReason.startsWith("eta-disagreement-watch+")) {
-    return "Providers are slightly split right now, and recent instability history is keeping automatic ETA probing tighter than the usual watch cadence.";
+    return "현재 예측 차이와 최근 변동을 고려해 주의 단계보다 더 자주 확인합니다.";
   }
 
-  return accuracyMeta.autoProbeError || "Automatic ETA probing has not run yet.";
+  return accuracyMeta.autoProbeError || "아직 자동 도착정보 비교를 실행하지 않았습니다.";
 }
 
 function loadLiveRoutesForSelectedStop() {
@@ -1934,16 +1935,16 @@ function loadLiveRoutesForSelectedStop() {
       state.ui.liveRouteSearchError = "";
       state.ui.liveRouteSearchResults = Array.isArray(payload.routes) ? payload.routes : [];
       pushHistory(
-        "Official routes loaded",
-        `${state.ui.liveRouteSearchResults.length} ${payload.provider} route candidates were returned for the selected stop.`,
+        "공식 노선 조회 완료",
+        `선택한 정류장의 ${payload.provider} 노선 ${state.ui.liveRouteSearchResults.length}개를 조회했습니다.`,
       );
       render();
     })
     .catch((error) => {
       state.ui.liveRouteSearchStatus = "error";
       state.ui.liveRouteSearchResults = [];
-      state.ui.liveRouteSearchError = error instanceof Error ? error.message : "Unknown station-route search error.";
-      pushHistory("Official route search failed", state.ui.liveRouteSearchError, "ERROR");
+      state.ui.liveRouteSearchError = userErrorMessage(error, "경유 노선 검색 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.");
+      pushHistory("공식 노선 조회 실패", state.ui.liveRouteSearchError, "ERROR");
       render();
     });
 }
@@ -2061,7 +2062,7 @@ function runAddressSearch(targetKey) {
       if (!isCurrent()) return;
       state.ui[`${safeTarget}AddressSearchStatus`] = "error";
       state.ui[`${safeTarget}AddressSearchResults`] = [];
-      state.ui[`${safeTarget}AddressSearchError`] = error instanceof Error ? error.message : "주소 검색 중 알 수 없는 오류가 발생했습니다.";
+      state.ui[`${safeTarget}AddressSearchError`] = userErrorMessage(error, "주소 검색 중 알 수 없는 오류가 발생했습니다.");
       pushHistory(
         safeTarget === "home" ? "집 주소 검색 실패" : "회사 주소 검색 실패",
         state.ui[`${safeTarget}AddressSearchError`],
@@ -2103,7 +2104,7 @@ async function refreshCommuteEstimate() {
   } catch (error) {
     if (authMeta.user?.id !== requestUserId || transitQueryKey(transitQueryForState(state)) !== queryKey) return;
     commuteEstimateMeta.status = "error";
-    commuteEstimateMeta.lastError = error instanceof Error ? error.message : "대중교통 경로 조회 실패";
+    commuteEstimateMeta.lastError = userErrorMessage(error, "대중교통 경로 조회 실패");
   } finally {
     if (authMeta.user?.id === requestUserId && transitQueryKey(transitQueryForState(state)) !== queryKey) {
       commuteEstimateMeta.status = "idle";
@@ -2159,7 +2160,7 @@ async function refreshVisibleTransit() {
     if (!isAuthenticated() || authMeta.user.id !== userId || JSON.stringify(getLiveBinding()) !== key) return;
     state.live.snapshot = null;
     state.live.status = "error";
-    state.live.lastError = error instanceof Error ? error.message : "실시간 도착정보 조회 실패";
+    state.live.lastError = userErrorMessage(error, "실시간 도착정보 조회 실패");
   } finally {
     visibleTransitRefreshPending = false;
     if (isAuthenticated()) render();
@@ -2306,7 +2307,7 @@ function replaceOfficialHolidaysForYear(year, holidays) {
 
 function formatSyncStamp(value) {
   if (!value) {
-    return "Never";
+    return "기록 없음";
   }
 
   return new Intl.DateTimeFormat("ko-KR", {
@@ -2322,33 +2323,33 @@ function describeLiveSnapshot(snapshot) {
   if (!snapshot) {
     return {
       cacheStatus: "idle",
-      label: "IDLE",
-      detail: "No live bus response has been loaded yet.",
+      label: formatUiLabel("IDLE"),
+      detail: "아직 실시간 버스 정보를 불러오지 않았습니다.",
     };
   }
 
   if (snapshot.cacheStatus === "stale-fallback") {
     return {
       cacheStatus: "stale-fallback",
-      label: "STALE",
+      label: formatUiLabel("STALE"),
       detail: snapshot.fallbackError
-        ? `Latest provider request failed. Showing the last successful response. ${snapshot.fallbackError}`
-        : "Latest provider request failed. Showing the last successful response.",
+        ? `최근 조회에 실패해 마지막으로 확인한 정보를 표시합니다. ${snapshot.fallbackError}`
+        : "최근 조회에 실패해 마지막으로 확인한 정보를 표시합니다.",
     };
   }
 
   if (snapshot.cacheStatus === "cache-hit") {
     return {
       cacheStatus: "cache-hit",
-      label: "CACHE",
-      detail: "A recent successful response was reused to reduce repeated public API calls.",
+      label: formatUiLabel("CACHE"),
+      detail: "중복 조회를 줄이기 위해 최근 확인한 정보를 사용했습니다.",
     };
   }
 
   return {
     cacheStatus: "live",
-    label: "FRESH",
-    detail: "Latest response came directly from the official provider.",
+    label: formatUiLabel("FRESH"),
+    detail: "공식 제공처에서 새로 조회한 정보입니다.",
   };
 }
 
@@ -2425,68 +2426,72 @@ function escapeHtml(text) {
     .replaceAll("'", "&#39;");
 }
 
+function escapeUiMessage(text) {
+  return escapeHtml(formatUiMessage(text));
+}
+
 function describeAccuracyFreshness(provider, recentWindowDays = 7) {
   if (!provider || provider.activeFreshnessState === "none") {
-    return `No scored arrival has been logged in the last ${recentWindowDays} days yet.`;
+    return `최근 ${recentWindowDays}일의 도착 평가 기록이 없습니다.`;
   }
 
   if (provider.activeFreshnessState === "fresh") {
-    return `Fresh sample window is active within the last ${recentWindowDays} days.`;
+    return `최근 ${recentWindowDays}일의 평가 기록을 사용합니다.`;
   }
 
   if (provider.activeLatestSampleAgeDays !== null && provider.activeLatestSampleAgeDays !== undefined) {
-    return `Latest scored arrival is ${provider.activeLatestSampleAgeDays} days old, so it is too stale to flip the live recommendation by itself.`;
+    return `가장 최근 평가가 ${provider.activeLatestSampleAgeDays}일 전이어서 이 기록만으로 추천을 변경하지 않습니다.`;
   }
 
-  return `Scored arrivals exist, but none is fresh inside the last ${recentWindowDays} days.`;
+  return `평가 기록은 있지만 최근 ${recentWindowDays}일 이내 기록이 없습니다.`;
 }
 
 function describeAccuracyDisagreement(runtime) {
   const comparableCount = Number(runtime?.lastObservedComparableProviderCount) || 0;
   const spread = runtime?.lastObservedEtaSpreadMin;
-  const source = String(runtime?.lastObservedProbeSource || "none").trim().toUpperCase();
+  const source = formatUiLabel(String(runtime?.lastObservedProbeSource || "none").trim());
   const providerCopy = Array.isArray(runtime?.lastObservedComparableProviders)
-    ? runtime.lastObservedComparableProviders.map((item) => String(item || "").trim().toUpperCase()).filter(Boolean).join(", ")
+    ? runtime.lastObservedComparableProviders.map((item) => formatUiLabel(String(item || "").trim())).filter(Boolean).join(", ")
     : "";
 
   if (!comparableCount) {
     return {
-      badge: "NO DATA",
-      copy: "No live multi-provider ETA comparison has been captured yet.",
+      badge: formatUiLabel("NO DATA"),
+      copy: "아직 제공처별 도착시간 비교 기록이 없습니다.",
     };
   }
 
   if (runtime?.lastObservedDisagreementLevel === "single-provider") {
     return {
-      badge: "SINGLE",
-      copy: `${source} probe only had one comparable provider, so live spread could not be measured yet.`,
+      badge: formatUiLabel("SINGLE"),
+      copy: `${source} 조회에서 비교 가능한 제공처가 한 곳뿐이어서 예측 차이를 계산하지 못했습니다.`,
     };
   }
 
   if (runtime?.lastObservedDisagreementLevel === "aligned") {
     return {
-      badge: `${spread ?? "-"} MIN`,
-      copy: `${source} probe shows ${providerCopy || "providers"} are tightly aligned right now.`,
+      badge: `${spread ?? "-"}분`,
+      copy: `${source} 조회 결과 ${providerCopy || "제공처"}의 도착 예측이 비슷합니다.`,
     };
   }
 
   if (runtime?.lastObservedDisagreementLevel === "watch") {
     return {
-      badge: `${spread ?? "-"} MIN`,
-      copy: `${source} probe shows ${providerCopy || "providers"} differ a bit right now. Keep collecting live comparisons before trusting a flip.`,
+      badge: `${spread ?? "-"}분`,
+      copy: `${source} 조회 결과 ${providerCopy || "제공처"}의 예측에 차이가 있습니다. 제공처를 바꾸기 전에 더 확인하세요.`,
     };
   }
 
   if (runtime?.lastObservedDisagreementLevel === "diverged") {
     return {
-      badge: `${spread ?? "-"} MIN`,
-      copy: `${source} probe shows ${providerCopy || "providers"} are far apart right now. Treat the current ETA as unstable until the spread narrows.`,
+      badge: `${spread ?? "-"}분`,
+      copy: `${source} 조회 결과 ${providerCopy || "제공처"}의 예측 차이가 큽니다. 차이가 줄기 전까지 현재 도착정보에 주의하세요.`,
     };
   }
 
   return {
-    badge: "UNKNOWN",
-    copy: "Live ETA spread has not been classified yet.",
+    badge: formatUiLabel("UNKNOWN"),
+    copy: "아직 제공처 간 도착시간 차이를 평가하지 않았습니다.",
   };
 }
 
@@ -2504,8 +2509,8 @@ function renderTopBar(screen, model) {
     return `
       <header class="topbar topbar-home">
         <div class="profile-chip"><div class="avatar">${escapeHtml(userInitial)}</div></div>
-        <div class="brandmark">BusWakeUp</div>
-        <button class="icon-button" data-action="logout" aria-label="Sign out">
+        <div class="brandmark">스마트 메트로</div>
+        <button class="icon-button" data-action="logout" aria-label="로그아웃">
           <span class="material-symbols-outlined">logout</span>
         </button>
       </header>
@@ -2513,15 +2518,15 @@ function renderTopBar(screen, model) {
   }
 
   const titles = {
-    onboarding: "Route Registration",
-    schedule: "Schedule Settings",
-    settings: "Notification Style",
+    onboarding: "이동 경로 등록",
+    schedule: "알람 일정",
+    settings: "알림 설정",
   };
 
   return `
     <header class="topbar">
       <div class="topbar-side">
-        <button class="icon-button" data-action="goto" data-screen="home" aria-label="?ㅻ줈">
+        <button class="icon-button" data-action="goto" data-screen="home" aria-label="뒤로">
           <span class="material-symbols-outlined">arrow_back</span>
         </button>
         <div>
@@ -2530,15 +2535,15 @@ function renderTopBar(screen, model) {
             screen === "schedule"
               ? `<div class="topbar-subtitle">${model.scheduleState.badge}</div>`
               : screen === "settings"
-                ? `<div class="topbar-subtitle">Web settings save the alert policy. The phone app requests the matching OS permissions.</div>`
-                : `<div class="topbar-subtitle">Prototype step 3 of 5</div>`
+                ? `<div class="topbar-subtitle">웹에서는 알림 설정을 저장합니다. 휴대폰 권한은 앱에서 별도로 허용해야 합니다.</div>`
+                : `<div class="topbar-subtitle">탑승 정류장과 노선을 등록하세요</div>`
           }
         </div>
       </div>
       ${
         screen === "onboarding"
           ? `<div class="avatar avatar-small">${escapeHtml(userInitial)}</div>`
-          : `<button class="icon-button" data-action="logout" aria-label="Sign out">
+          : `<button class="icon-button" data-action="logout" aria-label="로그아웃">
               <span class="material-symbols-outlined">logout</span>
             </button>`
       }
@@ -2554,7 +2559,7 @@ function renderAuthScreen() {
       ${provider?.ready ? "" : `<div class="field-help">${label}: ${escapeHtml(provider?.reason || "연결 상태를 확인하고 있습니다.")}</div>`}`;
   }).join("");
   return `<div class="app-shell"><main class="screen screen-form">
-    <section class="headline-block"><h1>늦지 않게, Smart Metro</h1>
+    <section class="headline-block"><h1>늦지 않게, 스마트 메트로</h1>
       <p>자주 쓰는 계정으로 시작하세요. 처음 로그인하면 계정이 만들어집니다.</p></section>
     <section class="stack-panel auth-panel">
       <div class="stack-title"><span class="material-symbols-outlined">verified_user</span>간편 로그인</div>
@@ -2588,21 +2593,21 @@ function renderStatusCard(model) {
   const bannerText =
     model.dataSource === "UNAVAILABLE" ? "버스 도착 정보를 확인할 수 없습니다. 실시간 정보를 새로 조회해 주세요." : liveEtaGuard.mode === "conservative"
       ? liveEtaGuard.reasonCode === "eta-watch-history-high"
-        ? `Providers are only about ${liveEtaGuard.spreadMin ?? "-"} min apart right now, but this route has been unstable on recent mornings. Leave conservatively and keep a ${liveEtaGuard.recommendedRiskBufferMin} min safety buffer anyway.`
-        : `Providers are currently about ${liveEtaGuard.spreadMin ?? "-"} min apart. Leave conservatively, do not wait for the tighter ETA, and score late risk with a ${liveEtaGuard.recommendedRiskBufferMin} min safety buffer.`
+        ? `현재 예측 차이는 약 ${liveEtaGuard.spreadMin ?? "-"}분이지만 최근 변동이 큰 노선입니다. 안전 여유시간 ${liveEtaGuard.recommendedRiskBufferMin}분을 고려하세요.`
+        : `제공처별 예측 차이가 약 ${liveEtaGuard.spreadMin ?? "-"}분입니다. 더 늦은 예측만 믿고 기다리지 말고 안전 여유시간 ${liveEtaGuard.recommendedRiskBufferMin}분을 고려하세요.`
       : liveEtaGuard.mode === "watch"
         ? liveEtaGuard.reasonCode === "eta-watch-history-elevated"
-          ? `Providers are slightly split right now, and this route has also been shaky on recent mornings. Re-check the live ETA before waiting any longer and keep the current source for now.`
-          : `Providers are currently about ${liveEtaGuard.spreadMin ?? "-"} min apart. Re-check the live ETA before waiting any longer.`
+          ? `제공처별 예측에 차이가 있고 최근 변동도 있는 노선입니다. 현재 제공처를 유지하며 도착정보를 다시 확인하세요.`
+          : `제공처별 예측 차이가 약 ${liveEtaGuard.spreadMin ?? "-"}분입니다. 더 기다리기 전에 도착정보를 다시 확인하세요.`
         : model.dataSource === "LIVE"
       ? snapshotState.cacheStatus === "stale-fallback"
-        ? "Official bus data is temporarily using the last successful cached response."
+        ? "현재 조회가 지연되어 마지막으로 확인한 버스 정보를 표시합니다."
         : snapshotState.cacheStatus === "cache-hit"
-          ? "Official bus data was served from the recent cache."
-          : "Official bus data is active on this dashboard."
-      : "Demo commute data is shown until live provider credentials are connected.";
+          ? "최근 조회한 공식 버스 정보를 표시합니다."
+          : "공식 버스 도착정보를 표시하고 있습니다."
+      : "실시간 정류장·노선을 연결하기 전에는 예시 정보가 표시됩니다. 실제 도착정보가 아닙니다.";
   const stateBadgeClass = model.scheduleState.firing ? "status-dot success" : "status-dot paused";
-  const buttonLabel = state.schedule.snoozeDate === dateOnlyKey(model.now) ? "Enable alarms for today" : "Disable alarms for today";
+  const buttonLabel = state.schedule.snoozeDate === dateOnlyKey(model.now) ? "오늘 알람 다시 켜기" : "오늘 알람 끄기";
   const heroWatchlistMarkup = highlightedWatchEntry
     ? `
       <div class="hero-watchlist ${highlightedWatchEntry.severityLevel === "high" ? "high" : "elevated"}">
@@ -2610,15 +2615,15 @@ function renderStatusCard(model) {
           <span class="material-symbols-outlined">warning</span>
           <span>${escapeHtml(
             watchlistHighlight.isCurrentRouteHighlighted
-              ? `${highlightedWatchEntry.severityLabel} WATCH · YOUR COMMUTE`
-              : `${highlightedWatchEntry.severityLabel} WATCH · TODAY'S TOP CAUTION`,
+              ? `${highlightedWatchEntry.severityLabel} 주의 · 내 이동 경로`
+              : `${highlightedWatchEntry.severityLabel} 주의 · 오늘 우선 확인`,
           )}</span>
         </div>
-        <div class="hero-watchlist-title">${escapeHtml(`${highlightedWatchEntry.routeNumber || "Route"} · ${highlightedWatchEntry.stopName || "Stop"}`)}</div>
+        <div class="hero-watchlist-title">${escapeHtml(`${highlightedWatchEntry.routeNumber || "노선"} · ${highlightedWatchEntry.stopName || "정류장"}`)}</div>
         <div class="hero-watchlist-copy">${escapeHtml(
           watchlistHighlight.isCurrentRouteHighlighted
-            ? `${highlightedWatchEntry.count} recent conservative traces, ${highlightedWatchEntry.inWindowCount} inside ${watchWindowLabel}, avg spread ${highlightedWatchEntry.averageSpreadMin ?? "-"} min.`
-            : `This pair has the strongest recent instability signal: ${highlightedWatchEntry.count} traces, ${highlightedWatchEntry.inWindowCount} inside ${watchWindowLabel}, avg spread ${highlightedWatchEntry.averageSpreadMin ?? "-"} min.`,
+            ? `최근 보수적 판단 ${highlightedWatchEntry.count}건, ${watchWindowLabel} 시간대 ${highlightedWatchEntry.inWindowCount}건, 평균 예측 차이 ${highlightedWatchEntry.averageSpreadMin ?? "-"}분.`
+            : `최근 변동이 가장 큰 조합입니다. 기록 ${highlightedWatchEntry.count}건, ${watchWindowLabel} 시간대 ${highlightedWatchEntry.inWindowCount}건, 평균 예측 차이 ${highlightedWatchEntry.averageSpreadMin ?? "-"}분.`,
         )}</div>
       </div>
     `
@@ -2632,25 +2637,25 @@ function renderStatusCard(model) {
             <span class="material-symbols-outlined">shield_with_heart</span>
             <span>${escapeHtml(
               alarmPlan?.nextTrigger?.triggerKind === "stability-precheck"
-                ? "REINFORCED MONITORING ACTIVE"
+                ? "강화 확인 중"
                 : nextTriggerPriorityClass === "boosted"
-                  ? "BOOSTED FIRST ALARM ARMED"
-                  : "HIGH-WATCH ROUTE PROTECTION",
+                  ? "첫 알림 강화 설정됨"
+                  : "주의 노선 보호 설정",
             )}</span>
           </div>
           <div class="hero-watchlist-title">${escapeHtml(
             alarmPlan?.nextTrigger?.triggerKind === "stability-precheck"
-              ? "Server precheck is already leading this route"
+              ? "이 노선의 사전 점검이 진행 중입니다"
               : nextTriggerPriorityClass === "boosted"
-                ? "First main alarm will use the boosted delivery path"
-                : "This route stays under reinforced monitoring today",
+                ? "첫 알람에 강화 전송 설정을 적용합니다"
+                : "오늘 이 노선의 도착정보를 더 자주 확인합니다",
           )}</div>
           <div class="hero-watchlist-copy">${escapeHtml(
             alarmPlan?.nextTrigger?.triggerKind === "stability-precheck"
-              ? `This HIGH instability route has an extra precheck ${stabilityWatch.precheckLeadMin || 0} min before the normal window. The first main alarm is also armed with boosted delivery and 10s / 30s / 90s retry.`
+              ? `주의 노선이므로 알람 시간대 ${stabilityWatch.precheckLeadMin || 0}분 전에 사전 점검합니다. 첫 알람은 강화 전송하며 10초·30초·90초 간격으로 재시도합니다.`
               : nextTriggerPriorityClass === "boosted"
-                ? "The next main alarm for this route is already marked for boosted delivery, and any retryable push failure will re-run on the faster 10s / 30s / 90s schedule."
-                : "Recent mornings were unstable on this route, so the server is keeping reinforced ETA monitoring and conservative alert rules active.",
+                ? "다음 첫 알람은 강화 전송으로 설정되어 있으며, 재시도 가능한 푸시 오류는 10초·30초·90초 간격으로 다시 시도합니다."
+                : "최근 아침 도착정보의 변동이 커서 조회를 강화하고 보수적인 알림 기준을 유지합니다.",
           )}</div>
         </div>
       `
@@ -2658,10 +2663,10 @@ function renderStatusCard(model) {
   return `
     <section class="hero-card">
       <div class="hero-card-glow"></div>
-      <div class="hero-meta">TODAY · ${escapeHtml(formatLongDate(model.now))}</div>
+      <div class="hero-meta">오늘 · ${escapeHtml(formatLongDate(model.now))}</div>
       <div class="hero-status-row">
         <div class="${stateBadgeClass}"></div>
-        <div class="hero-status">${model.scheduleState.firing ? "Active" : "Paused"}</div>
+        <div class="hero-status">${model.scheduleState.firing ? "알람 켜짐" : "알람 꺼짐"}</div>
         <span class="material-symbols-outlined hero-status-icon">alarm_on</span>
       </div>
       <div class="demo-banner">
@@ -2703,10 +2708,10 @@ function renderGauge(model) {
 function renderBusCard(result, title, primaryLine, toneOverride = "") {
   if (result.level === "UNKNOWN") return `<article class="bus-card neutral"><div class="bus-card-left"><div class="bus-chip">${title === "this" ? "이번 버스" : "다음 버스"}</div><div class="bus-minutes">—</div><div class="bus-line-copy">도착 정보가 없습니다. 실시간 정보를 다시 확인해 주세요.</div></div></article>`;
   const tone = toneOverride || result.risk.tone;
-  const lateText = result.deltaMinutes >= 0 ? `${result.deltaMinutes} min early` : `${Math.abs(result.deltaMinutes)} min late risk`;
+  const lateText = result.deltaMinutes >= 0 ? `${result.deltaMinutes}분 일찍 도착` : `${Math.abs(result.deltaMinutes)}분 지각 예상`;
   const riskCopy =
     result.etaRiskBufferMin > 0
-      ? `${lateText} · includes a ${result.etaRiskBufferMin} min safety buffer`
+      ? `${lateText} · 안전 여유시간 ${result.etaRiskBufferMin}분 포함`
       : lateText;
   return `
     <article class="bus-card ${tone}">
@@ -2716,15 +2721,15 @@ function renderBusCard(result, title, primaryLine, toneOverride = "") {
             title === "this"
               ? result.catchable
                 ? result.risk.chip
-                : "MISS RISK"
+                : "놓칠 위험"
               : result.level === "RED"
-                ? "LATE"
-                : "NEXT"
+                ? "지각 예상"
+                : "다음 차량"
           }
         </div>
         <div class="bus-minutes-row">
           <div class="bus-minutes">${Math.ceil(result.arrivalMinutes)}</div>
-          <div class="bus-minutes-unit">min</div>
+          <div class="bus-minutes-unit">분</div>
         </div>
         <div class="bus-line-copy">${escapeHtml(primaryLine.number)}번 ${escapeHtml(primaryLine.label)} · ${escapeHtml(primaryLine.destination)} 방면</div>
       </div>
@@ -2776,15 +2781,15 @@ function renderHistoryPanel() {
   const items = state.history.slice(0, 4);
   return `
     <section class="stack-panel">
-      <div class="stack-title"><span class="material-symbols-outlined">history</span>Recent alarm history</div>
+      <div class="stack-title"><span class="material-symbols-outlined">history</span>최근 알람 기록</div>
       <div class="history-list">
         ${items
           .map(
             (item) => `
               <article class="history-item">
                 <div class="history-main">
-                  <div class="history-title">${escapeHtml(item.title)}</div>
-                  <div class="history-detail">${escapeHtml(item.detail)}</div>
+                  <div class="history-title">${escapeUiMessage(item.title)}</div>
+                  <div class="history-detail">${escapeUiMessage(item.detail)}</div>
                   ${renderConservativeContextLine(item)}
                 </div>
                 <div class="history-time">${escapeHtml(formatClock(new Date(item.at)))}</div>
@@ -2802,55 +2807,55 @@ function renderLiveSyncPanel(model) {
   const providerLabel = getLiveProviderLabel();
   const syncLabel =
     state.live.status === "loading"
-      ? "Refreshing..."
+      ? "새로고침 중…"
       : model.dataSource === "LIVE"
-        ? "Refresh live data"
-        : "Try live sync";
+        ? "실시간 정보 새로고침"
+        : "실시간 정보 조회";
   const configuredCopy =
     state.live.provider === "none"
-      ? "Choose a provider and enter official IDs in onboarding."
+      ? "경로 등록에서 정보 제공처와 정류장·노선을 선택하세요."
       : model.liveProviderConfigured
-        ? `${providerLabel} key is configured on the local server.`
-        : `${providerLabel} key is not configured on the local server yet.`;
+        ? `${providerLabel} 연결 키가 서버에 설정되어 있습니다.`
+        : `${providerLabel} 연결 키가 아직 서버에 설정되지 않았습니다.`;
   const recommendedProvider = getAccuracyRecommendedProvider();
   const providerRoleCopy =
     state.live.provider === "none"
       ? getLiveProviderPolicyCopy("none")
       : state.live.provider === recommendedProvider
-        ? `${providerLabel} is currently the active ETA recommendation for this route.`
-        : `${providerLabel} stays available as a measured comparison source in this prototype.`;
+        ? `${providerLabel}는 현재 이 노선의 추천 정보 제공처입니다.`
+        : `${providerLabel}는 정확도를 비교할 수 있는 제공처입니다.`;
   const snapshotState = describeLiveSnapshot(model.liveSnapshot);
   const fetchedCopy =
     model.liveSnapshot?.fetchedAt && model.liveSnapshot.cacheStatus !== "live"
-      ? `Provider data timestamp: ${escapeHtml(formatClock(new Date(model.liveSnapshot.fetchedAt)))}`
+      ? `정보 조회 시각: ${escapeHtml(formatClock(new Date(model.liveSnapshot.fetchedAt)))}`
       : state.live.lastError || snapshotState.detail;
 
   return `
     <section class="stack-panel">
-      <div class="stack-title"><span class="material-symbols-outlined">sync</span>Live data sync</div>
+      <div class="stack-title"><span class="material-symbols-outlined">sync</span>실시간 도착정보</div>
       <div class="live-sync-grid">
         <article class="live-sync-card">
-          <div class="live-sync-label">Source</div>
-          <div class="live-sync-value">${model.dataSource}</div>
+          <div class="live-sync-label">정보 출처</div>
+          <div class="live-sync-value">${formatUiLabel(model.dataSource)}</div>
           <div class="live-sync-copy">${escapeHtml(configuredCopy)}</div>
         </article>
         <article class="live-sync-card">
-          <div class="live-sync-label">Provider policy</div>
+          <div class="live-sync-label">정보 제공처 기준</div>
           <div class="live-sync-value">${escapeHtml(providerLabel)}</div>
           <div class="live-sync-copy">${escapeHtml(providerRoleCopy)}</div>
         </article>
         <article class="live-sync-card">
-          <div class="live-sync-label">Fetch mode</div>
+          <div class="live-sync-label">조회 상태</div>
           <div class="live-sync-value">${escapeHtml(snapshotState.label)}</div>
           <div class="live-sync-copy">${escapeHtml(snapshotState.detail)}</div>
         </article>
         <article class="live-sync-card">
-          <div class="live-sync-label">Last sync</div>
+          <div class="live-sync-label">마지막 갱신</div>
           <div class="live-sync-value">${state.live.lastSyncedAt ? escapeHtml(formatClock(new Date(state.live.lastSyncedAt))) : "-"}</div>
-          <div class="live-sync-copy">${escapeHtml(fetchedCopy || "No sync error.")}</div>
+          <div class="live-sync-copy">${escapeHtml(fetchedCopy || "갱신 오류가 없습니다.")}</div>
         </article>
       </div>
-      <div class="field-help">${escapeHtml(getLiveProviderPolicyCopy())}</div>
+      <div class="field-help">${escapeUiMessage(getLiveProviderPolicyCopy())}</div>
       <button class="soft-button wide" data-action="sync-live-arrivals" ${state.live.status === "loading" ? "disabled" : ""}>${syncLabel}</button>
     </section>
   `;
@@ -2871,118 +2876,118 @@ function renderBusAccuracyPanel() {
   const scopeCopy =
     timeSlice?.mode === "schedule-window"
       ? summary?.recommendationScope === "schedule-window-weekday"
-        ? `${weekdayScopeLabel} scored arrivals are now strong enough to drive the recommendation first.`
+        ? `${weekdayScopeLabel} 평가 기록이 충분해 이 기록을 우선 반영합니다.`
         : summary?.recommendationScope === "schedule-window"
-          ? `${timeSlice.label} scored arrivals are strong enough, but the same-weekday slice is still warming up. The app is using the full alarm window for now.`
-          : `${timeSlice.label} scored arrivals exist, but there are not enough of them yet. The app is temporarily falling back to all scored arrivals.`
-      : "No active alarm window is available, so the recommendation is using all scored arrivals.";
+          ? `${timeSlice.label} 기록은 충분하지만 같은 요일의 기록은 부족해 전체 알람 시간대 기록을 사용합니다.`
+          : `${timeSlice.label} 평가 기록이 아직 부족해 전체 평가 기록을 사용합니다.`
+      : "적용할 알람 시간대가 없어 전체 도착 기록을 기준으로 추천합니다.";
   const basisCopy =
     summary?.recommendationBasis === "measured-accuracy"
-      ? `Measured ETA error is stable enough, and newer arrivals are weighted more strongly than older ones when choosing the current winner.`
+      ? `도착 예측 오차가 안정적이며, 최근 기록에 더 높은 비중을 두어 추천합니다.`
       : summary?.recommendationReason === "measured-samples-stale"
-        ? `Real-arrival samples exist, but the compared providers do not have fresh scored arrivals inside the last ${recentWindowDays} days. The app is holding the safer product default for now.`
+        ? `최근 ${recentWindowDays}일의 비교 평가 기록이 부족해 기본 추천 제공처를 유지합니다.`
         : summary?.recommendationReason === "not-enough-recent-compared-providers"
-          ? `Some fresh scored arrivals exist inside the last ${recentWindowDays} days, but fewer than ${policy.minProvidersForMeasuredRecommendation ?? 2} providers have both fresh and sufficient samples. The app is holding the default until the comparison is live enough.`
+          ? `최근 ${recentWindowDays}일 기록은 있으나 충분한 평가 기록을 가진 제공처가 ${policy.minProvidersForMeasuredRecommendation ?? 2}곳 미만이어서 기본 추천을 유지합니다.`
       : summary?.recommendationReason === "measured-gap-too-small"
-        ? `Real-arrival samples exist, but the top providers are still too close even after giving extra weight to recent arrivals. The app is keeping the product default until the gap grows past ${policy.minWinningGapMin ?? 0.5} min.`
+        ? `최근 기록을 우선 반영해도 정확도 차이가 작습니다. 차이가 ${policy.minWinningGapMin ?? 0.5}분을 넘기 전까지 기본 추천을 유지합니다.`
         : summary?.recommendationReason === "not-enough-compared-providers"
-          ? `Some real-arrival samples exist, but at least ${policy.minProvidersForMeasuredRecommendation ?? 2} providers need ${policy.minSamplesPerProvider ?? 2}+ samples each before the recommendation can flip.`
-          : `No provider has enough scored arrivals yet. The recommendation is still following the current product default.`;
+          ? `추천을 바꾸려면 제공처 ${policy.minProvidersForMeasuredRecommendation ?? 2}곳 이상에서 각각 ${policy.minSamplesPerProvider ?? 2}건 이상의 평가 기록이 필요합니다.`
+          : `제공처별 평가 기록이 아직 부족해 기본 추천을 유지합니다.`;
   const confidenceCopy =
     summary?.recommendationBasis === "measured-accuracy"
-      ? `${String(summary?.recommendationConfidence || "medium").toUpperCase()} confidence · ${summary?.measuredLeaderGapMin ?? "-"} min lead over the next provider on the recent-weighted metric.`
-      : `${String(summary?.recommendationConfidence || "low").toUpperCase()} confidence · keep collecting scored arrivals before overriding the default source.`;
+      ? `${formatUiLabel(String(summary?.recommendationConfidence || "medium"))} 신뢰도 · 최근 기록을 우선 반영한 오차가 다음 제공처보다 ${summary?.measuredLeaderGapMin ?? "-"}분 적습니다.`
+      : `${formatUiLabel(String(summary?.recommendationConfidence || "low"))} 신뢰도 · 기본 제공처를 변경하기 전에 평가 기록을 더 모아 주세요.`;
   const probeCopy =
     accuracyMeta.probeStatus === "loading"
-      ? "Sampling provider ETA candidates now..."
+      ? "제공처별 도착시간을 비교하고 있습니다…"
       : accuracyMeta.probeStatus === "error"
-        ? accuracyMeta.probeError || "The ETA probe failed."
+        ? accuracyMeta.probeError || "도착시간 비교에 실패했습니다."
         : accuracyMeta.lastProbeComparisons.length
-          ? `${accuracyMeta.lastProbeComparisons.length} provider candidates were sampled in the latest probe.`
-          : "Probe multiple configured providers to compare their current ETA side by side.";
+          ? `최근 조회에서 제공처 ${accuracyMeta.lastProbeComparisons.length}곳을 비교했습니다.`
+          : "연결된 제공처의 현재 도착시간을 함께 비교합니다.";
   const actualCopy =
     accuracyMeta.actualStatus === "loading"
-      ? "Recording the real arrival moment now..."
+      ? "실제 도착 시각을 기록하고 있습니다…"
       : accuracyMeta.actualStatus === "error"
-        ? accuracyMeta.actualError || "Actual arrival logging failed."
-        : "When the bus really arrives, tap the button below so this route gains a scored accuracy sample.";
+        ? accuracyMeta.actualError || "실제 도착 시각을 기록하지 못했습니다."
+        : "버스가 실제로 도착했을 때 아래 버튼을 누르면 예측 정확도를 평가할 수 있습니다.";
   const cadenceCopy =
     runtime?.lastCadence && runtime?.lastIntervalMs
-      ? `${String(runtime.lastCadence).toUpperCase()} cadence · every ${Math.round(Number(runtime.lastIntervalMs) / 1000)} sec`
+      ? `${formatUiLabel(String(runtime.lastCadence))} 조회 간격 · ${Math.round(Number(runtime.lastIntervalMs) / 1000)}초마다`
       : "";
   const disagreementState = describeAccuracyDisagreement(runtime);
   const autoCopy =
     accuracyMeta.autoProbeStatus === "loading"
-      ? "Automatic ETA probe is running now..."
+      ? "자동 도착시간 비교 중…"
       : runtime?.lastAutoProbeAt
-        ? `Last automatic probe ${formatClock(new Date(runtime.lastAutoProbeAt))} · ${runtime.lastComparisonCount} comparisons · ${runtime.lastStatus}${
+        ? `마지막 자동 비교 ${formatClock(new Date(runtime.lastAutoProbeAt))} · ${runtime.lastComparisonCount}건 비교 · ${runtime.lastStatus}${
             cadenceCopy ? ` · ${cadenceCopy}` : ""
           }${
             runtime?.lastAutoResolvedAt
-              ? ` · auto arrival ${runtime.autoResolvedArrivalCount || 0} times (latest ${formatClock(new Date(runtime.lastAutoResolvedAt))})`
+              ? ` · 자동 도착 감지 ${runtime.autoResolvedArrivalCount || 0}회 (최근 ${formatClock(new Date(runtime.lastAutoResolvedAt))})`
               : ""
           }`
         : describeAutoProbeReason(accuracyMeta.autoProbePlan?.reason || accuracyMeta.autoProbeError, accuracyMeta.autoProbeNextEligibleAt);
   const historicalBiasCopy =
     runtime?.lastHistoricalBiasLevel && runtime.lastHistoricalBiasLevel !== "none"
-      ? `Historical conservative bias ${String(runtime.lastHistoricalBiasLevel).toUpperCase()} · route traces ${runtime.lastHistoricalBiasRouteTraceCount || 0} · weekday-window traces ${runtime.lastHistoricalBiasWeekdayTraceCount || 0}.`
+      ? `이전 기록의 보수적 판단 수준 ${formatUiLabel(String(runtime.lastHistoricalBiasLevel))} · 노선 기록 ${runtime.lastHistoricalBiasRouteTraceCount || 0} · 요일·시간대 기록 ${runtime.lastHistoricalBiasWeekdayTraceCount || 0}.`
       : "";
   const recommendationGuardCopy =
     liveEtaGuard.shouldHoldProviderSwitch
       ? liveEtaGuard.reasonCode === "eta-watch-history-elevated"
-        ? "Provider ETAs are only slightly split right now, but this route has been shaky on recent mornings, so the app is holding the current live source a little longer before switching."
-        : "Provider ETAs are currently too far apart, so the app is holding the current live source instead of switching recommendations right now."
+        ? "현재 차이는 작지만 최근 변동이 있어 제공처를 바로 바꾸지 않고 조금 더 확인합니다."
+        : "제공처별 예측 차이가 커서 현재 제공처를 유지하며 확인합니다."
       : liveEtaGuard.mode === "watch"
-        ? "Provider ETAs are slightly split right now. The app will keep measuring before suggesting a stronger source change."
+        ? "제공처별 예측에 차이가 있어 더 확인한 뒤 변경을 추천합니다."
         : "";
 
   return `
     <section class="stack-panel">
-      <div class="stack-title"><span class="material-symbols-outlined">analytics</span>ETA accuracy monitor</div>
+      <div class="stack-title"><span class="material-symbols-outlined">analytics</span>도착시간 정확도 확인</div>
       <div class="live-sync-grid">
         <article class="live-sync-card">
-          <div class="live-sync-label">Current recommendation</div>
-          <div class="live-sync-value">${escapeHtml(String(topProvider).toUpperCase())}</div>
+          <div class="live-sync-label">현재 추천 제공처</div>
+          <div class="live-sync-value">${escapeHtml(formatUiLabel(String(topProvider)))}</div>
           <div class="live-sync-copy">${escapeHtml(basisCopy)}</div>
         </article>
         <article class="live-sync-card">
-          <div class="live-sync-label">Confidence gate</div>
-          <div class="live-sync-value">${escapeHtml(String(summary?.recommendationConfidence || "low").toUpperCase())}</div>
+          <div class="live-sync-label">신뢰도</div>
+          <div class="live-sync-value">${escapeHtml(formatUiLabel(String(summary?.recommendationConfidence || "low")))}</div>
           <div class="live-sync-copy">${escapeHtml(confidenceCopy)}</div>
         </article>
         <article class="live-sync-card">
-          <div class="live-sync-label">Scoring scope</div>
-          <div class="live-sync-value">${escapeHtml(summary?.recommendationScope === "schedule-window-weekday" ? "WEEKDAY-WINDOW" : summary?.recommendationScope === "schedule-window" ? "WINDOW" : "ALL-DAY")}</div>
+          <div class="live-sync-label">평가 범위</div>
+          <div class="live-sync-value">${escapeHtml(summary?.recommendationScope === "schedule-window-weekday" ? "요일·시간대" : summary?.recommendationScope === "schedule-window" ? "알람 시간대" : "하루 전체")}</div>
           <div class="live-sync-copy">${escapeHtml(scopeCopy)}</div>
         </article>
         <article class="live-sync-card">
-          <div class="live-sync-label">Resolved samples</div>
+          <div class="live-sync-label">평가 완료 기록</div>
           <div class="live-sync-value">${escapeHtml(String(summary?.sampleCount || 0))}</div>
           <div class="live-sync-copy">
             ${escapeHtml(
               summary?.lastActualArrivalAt
-                ? `Last actual arrival was logged at ${formatClock(new Date(summary.lastActualArrivalAt))}.`
-                : "No actual arrival has been logged yet.",
+                ? `마지막 실제 도착 기록: ${formatClock(new Date(summary.lastActualArrivalAt))}.`
+                : "아직 실제 도착 기록이 없습니다.",
             )}
           </div>
         </article>
         <article class="live-sync-card">
-          <div class="live-sync-label">Pending forecasts</div>
+          <div class="live-sync-label">평가 대기 예측</div>
           <div class="live-sync-value">${escapeHtml(String(summary?.pendingCount || 0))}</div>
-          <div class="live-sync-copy">${escapeHtml("Each pending forecast becomes a scored sample once the real bus arrival is logged.")}</div>
+          <div class="live-sync-copy">${escapeHtml("실제 버스 도착을 기록하면 대기 중인 예측의 정확도를 평가합니다.")}</div>
         </article>
         <article class="live-sync-card">
-          <div class="live-sync-label">Configured candidates</div>
+          <div class="live-sync-label">연결된 제공처</div>
           <div class="live-sync-value">${escapeHtml(String(configuredCandidates.length))}</div>
-          <div class="live-sync-copy">${escapeHtml(configuredCandidates.map((item) => item.provider.toUpperCase()).join(", ") || "No provider binding is ready yet.")}</div>
+          <div class="live-sync-copy">${escapeHtml(configuredCandidates.map((item) => formatUiLabel(item.provider)).join(", ") || "연결된 제공처가 없습니다.")}</div>
         </article>
         <article class="live-sync-card">
-          <div class="live-sync-label">Live ETA spread</div>
+          <div class="live-sync-label">제공처 간 도착시간 차이</div>
           <div class="live-sync-value">${escapeHtml(disagreementState.badge)}</div>
           <div class="live-sync-copy">${escapeHtml(disagreementState.copy)}</div>
         </article>
         <article class="live-sync-card">
-          <div class="live-sync-label">Auto probe</div>
+          <div class="live-sync-label">자동 비교 조회</div>
           <div class="live-sync-value">${escapeHtml(String(runtime?.autoProbeCount || 0))}</div>
           <div class="live-sync-copy">${escapeHtml(autoCopy)}</div>
         </article>
@@ -2995,13 +3000,13 @@ function renderBusAccuracyPanel() {
                   (provider) => `
                     <article class="history-item">
                       <div class="history-main">
-                        <div class="history-title">${escapeHtml(provider.provider.toUpperCase())}</div>
+                        <div class="history-title">${escapeHtml(formatUiLabel(provider.provider))}</div>
                         <div class="history-detail">${escapeHtml(
                           timeSlice?.mode === "schedule-window"
                             ? summary?.recommendationScope === "schedule-window-weekday"
-                              ? `${weekdayScopeLabel} weighted ${provider.weekdayTimeSliceWeightedMeanAbsoluteErrorMin ?? "-"} min · ${provider.weekdayTimeSliceRecentSampleCount} recent / ${provider.weekdayTimeSliceSampleCount} weekday window · full window ${provider.timeSliceWeightedMeanAbsoluteErrorMin ?? "-"} min · all-day ${provider.weightedMeanAbsoluteErrorMin ?? "-"} min · ${provider.meetsRecommendationThreshold ? "eligible now" : "warming up"} · ${describeAccuracyFreshness(provider, recentWindowDays)}`
-                              : `${timeSlice.label} weighted ${provider.timeSliceWeightedMeanAbsoluteErrorMin ?? "-"} min · ${provider.timeSliceRecentSampleCount} recent / ${provider.timeSliceSampleCount} window · all-day ${provider.weightedMeanAbsoluteErrorMin ?? "-"} min · ${provider.sampleCount} total · ${provider.meetsRecommendationThreshold ? "eligible now" : "warming up"} · ${describeAccuracyFreshness(provider, recentWindowDays)}`
-                            : `Recent-weighted error ${provider.weightedMeanAbsoluteErrorMin ?? "-"} min · raw mean ${provider.meanAbsoluteErrorMin ?? "-"} min · ${provider.recentSampleCount} recent / ${provider.sampleCount} total · ${provider.meetsRecommendationThreshold ? "eligible" : "warming up"} · ${describeAccuracyFreshness(provider, recentWindowDays)}`,
+                              ? `${weekdayScopeLabel} 가중 평균 오차 ${provider.weekdayTimeSliceWeightedMeanAbsoluteErrorMin ?? "-"}분 · ${provider.weekdayTimeSliceRecentSampleCount}건 최근 / ${provider.weekdayTimeSliceSampleCount}건 같은 요일·시간대 · 전체 시간대 오차 ${provider.timeSliceWeightedMeanAbsoluteErrorMin ?? "-"}분 · 종일 오차 ${provider.weightedMeanAbsoluteErrorMin ?? "-"}분 · ${provider.meetsRecommendationThreshold ? "평가 가능" : "기록 수집 중"} · ${describeAccuracyFreshness(provider, recentWindowDays)}`
+                              : `${timeSlice.label} 가중 평균 오차 ${provider.timeSliceWeightedMeanAbsoluteErrorMin ?? "-"}분 · ${provider.timeSliceRecentSampleCount}건 최근 / ${provider.timeSliceSampleCount}건 시간대 · 종일 오차 ${provider.weightedMeanAbsoluteErrorMin ?? "-"}분 · ${provider.sampleCount}건 전체 · ${provider.meetsRecommendationThreshold ? "평가 가능" : "기록 수집 중"} · ${describeAccuracyFreshness(provider, recentWindowDays)}`
+                            : `최근 가중 평균 오차 ${provider.weightedMeanAbsoluteErrorMin ?? "-"}분 · 단순 평균 ${provider.meanAbsoluteErrorMin ?? "-"}분 · ${provider.recentSampleCount}건 최근 / ${provider.sampleCount}건 전체 · ${provider.meetsRecommendationThreshold ? "평가 가능" : "기록 수집 중"} · ${describeAccuracyFreshness(provider, recentWindowDays)}`,
                         )}</div>
                       </div>
                       <div class="history-time">${escapeHtml(provider.activeLatestActualArrivalAt ? formatClock(new Date(provider.activeLatestActualArrivalAt)) : "-")}</div>
@@ -3009,13 +3014,13 @@ function renderBusAccuracyPanel() {
                   `,
                 )
                 .join("")
-            : `<div class="empty-copy">${escapeHtml(accuracyMeta.lastError || "No provider accuracy score has been computed yet.")}</div>`
+            : `<div class="empty-copy">${escapeHtml(accuracyMeta.lastError || "아직 제공처별 정확도 평가가 없습니다.")}</div>`
         }
       </div>
       <div class="quick-actions">
-        <button class="secondary-button" data-action="probe-bus-accuracy" ${accuracyMeta.probeStatus === "loading" ? "disabled" : ""}>${accuracyMeta.probeStatus === "loading" ? "Probing..." : "Probe configured providers"}</button>
+        <button class="secondary-button" data-action="probe-bus-accuracy" ${accuracyMeta.probeStatus === "loading" ? "disabled" : ""}>${accuracyMeta.probeStatus === "loading" ? "비교 조회 중…" : "연결된 제공처 비교"}</button>
         <button class="primary-cta" data-action="record-actual-arrival" ${accuracyMeta.actualStatus === "loading" ? "disabled" : ""}>
-          <span>${accuracyMeta.actualStatus === "loading" ? "Recording..." : "Record actual arrival now"}</span>
+          <span>${accuracyMeta.actualStatus === "loading" ? "기록 중…" : "지금 실제 도착 기록"}</span>
           <span class="material-symbols-outlined">check_circle</span>
         </button>
         ${getAccuracyRecommendationButtonMarkup()}
@@ -3031,42 +3036,42 @@ function renderBusAccuracyPanel() {
 function renderBusAccuracyLeaderboardPanel() {
   const leaderboard = accuracyMeta.leaderboard;
   const entries = Array.isArray(leaderboard?.entries) ? leaderboard.entries : [];
-  const regionLabel = leaderboard?.region ? String(leaderboard.region).toUpperCase() : "ALL";
+  const regionLabel = leaderboard?.region ? formatUiLabel(String(leaderboard.region)) : "ALL";
   const timeSlice = leaderboard?.timeSlice || null;
   const weekdayScopeLabel =
     timeSlice?.weekdayLabel && timeSlice?.label ? `${timeSlice.weekdayLabel} ${timeSlice.label}` : timeSlice?.label || "";
   const scopeCopy =
     timeSlice?.mode === "schedule-window"
       ? timeSlice?.usedWeekdayForRecommendation
-        ? `Rows prefer ${weekdayScopeLabel} samples first when that same-weekday slice has enough scored arrivals.`
-        : `Rows prefer ${timeSlice.label} samples first when that window has enough scored arrivals.`
-      : "Rows are currently ranked from all scored arrivals.";
+        ? `기록이 충분하면 ${weekdayScopeLabel} 평가 기록을 우선 사용합니다.`
+        : `기록이 충분하면 ${timeSlice.label} 평가 기록을 우선 사용합니다.`
+      : "전체 도착 평가 기록을 기준으로 순위를 표시합니다.";
   const statusCopy =
     accuracyMeta.leaderboardStatus === "loading"
-      ? "Building the route and stop accuracy leaderboard now..."
+      ? "노선·정류장별 정확도 순위를 계산하고 있습니다…"
       : accuracyMeta.leaderboardStatus === "error"
-        ? accuracyMeta.leaderboardError || "Accuracy leaderboard could not be loaded."
+        ? accuracyMeta.leaderboardError || "정확도 순위를 불러오지 못했습니다."
         : leaderboard?.generatedAt
-          ? `Leaderboard built from scored arrivals as of ${formatClock(new Date(leaderboard.generatedAt))}.`
-          : "No route-level accuracy leaderboard has been built yet.";
+          ? `${formatClock(new Date(leaderboard.generatedAt))} 기준 도착 평가 기록으로 집계했습니다.`
+          : "아직 노선별 정확도 순위가 없습니다.";
 
   return `
     <section class="stack-panel">
-      <div class="stack-title"><span class="material-symbols-outlined">leaderboard</span>Accuracy leaderboard</div>
+      <div class="stack-title"><span class="material-symbols-outlined">leaderboard</span>도착시간 정확도 순위</div>
       <div class="live-sync-grid">
         <article class="live-sync-card">
-          <div class="live-sync-label">Region</div>
-          <div class="live-sync-value">${escapeHtml(regionLabel)}</div>
-          <div class="live-sync-copy">${escapeHtml(statusCopy)}</div>
+          <div class="live-sync-label">지역</div>
+          <div class="live-sync-value">${escapeUiMessage(regionLabel)}</div>
+          <div class="live-sync-copy">${escapeUiMessage(statusCopy)}</div>
         </article>
         <article class="live-sync-card">
-          <div class="live-sync-label">Tracked route-stops</div>
+          <div class="live-sync-label">확인 중인 노선·정류장</div>
           <div class="live-sync-value">${escapeHtml(String(leaderboard?.totalRoutes || 0))}</div>
-          <div class="live-sync-copy">${escapeHtml("Each row is one route and stop combination with enough scored ETA history to evaluate.")}</div>
+          <div class="live-sync-copy">${escapeHtml("평가할 기록이 충분한 노선·정류장 조합을 표시합니다.")}</div>
         </article>
         <article class="live-sync-card">
-          <div class="live-sync-label">Ranking scope</div>
-          <div class="live-sync-value">${escapeHtml(timeSlice?.usedWeekdayForRecommendation ? "WEEKDAY-WINDOW" : timeSlice?.mode === "schedule-window" ? "WINDOW" : "ALL-DAY")}</div>
+          <div class="live-sync-label">순위 기준</div>
+          <div class="live-sync-value">${escapeHtml(timeSlice?.usedWeekdayForRecommendation ? "요일·시간대" : timeSlice?.mode === "schedule-window" ? "알람 시간대" : "하루 전체")}</div>
           <div class="live-sync-copy">${escapeHtml(scopeCopy)}</div>
         </article>
       </div>
@@ -3079,14 +3084,14 @@ function renderBusAccuracyLeaderboardPanel() {
                     <article class="history-item">
                       <div class="history-main">
                         <div class="history-title">${escapeHtml(`${entry.routeNumber} · ${entry.stopName}`)}</div>
-                        <div class="history-detail">${escapeHtml(`Recommended ${String(entry.recommendedProvider || "-").toUpperCase()} · ${String(entry.recommendationConfidence || "low").toUpperCase()} confidence · ${entry.recommendationScope === "schedule-window-weekday" ? `${entry.timeSlice?.weekdayLabel || ""} ${entry.timeSlice?.label || "weekday window"}`.trim() : entry.recommendationScope === "schedule-window" ? entry.timeSlice?.label || "window" : "all-day"} · lead ${entry.measuredLeaderGapMin ?? "-"} min · active recent ${entry.activeRecentSampleCount ?? entry.recentSampleCount} / total ${entry.sampleCount}`)}</div>
+                        <div class="history-detail">${escapeHtml(`추천 제공처 ${formatUiLabel(String(entry.recommendedProvider || "-"))} · ${formatUiLabel(String(entry.recommendationConfidence || "low"))} 신뢰도 · ${entry.recommendationScope === "schedule-window-weekday" ? `${entry.timeSlice?.weekdayLabel || ""} ${entry.timeSlice?.label || "요일·시간대"}`.trim() : entry.recommendationScope === "schedule-window" ? entry.timeSlice?.label || "window" : "all-day"} · 오차 차이 ${entry.measuredLeaderGapMin ?? "-"}분 · 최근 유효 기록 ${entry.activeRecentSampleCount ?? entry.recentSampleCount} / 전체 ${entry.sampleCount}`)}</div>
                       </div>
                       <div class="history-time">${escapeHtml(entry.lastActualArrivalAt ? formatClock(new Date(entry.lastActualArrivalAt)) : "-")}</div>
                     </article>
                   `,
                 )
                 .join("")
-            : `<div class="empty-copy">${escapeHtml(accuracyMeta.leaderboardError || "No route-stop leaderboard rows are available yet. Keep probing and recording arrivals.")}</div>`
+            : `<div class="empty-copy">${escapeHtml(accuracyMeta.leaderboardError || "아직 평가 기록이 부족합니다. 도착시간 비교와 실제 도착 기록을 더 모아 주세요.")}</div>`
         }
       </div>
     </section>
@@ -3098,59 +3103,59 @@ function renderConservativeReliabilityPanel() {
   const weekdayWindow = report.weekdayWindow || { rows: [] };
   const watchlist = report.watchlist || { entries: [], highCount: 0, elevatedCount: 0, topEntry: null, totalEntries: 0 };
   const latestCopy = report.latestSignal
-    ? `${report.latestSignal.sourceLabel} wrote the latest conservative trace at ${formatClock(new Date(report.latestSignal.createdAt))}.`
-    : "No conservative ETA trace is loaded yet.";
+    ? `${report.latestSignal.sourceLabel}의 마지막 보수적 판단 기록: ${formatClock(new Date(report.latestSignal.createdAt))}.`
+    : "아직 보수적 도착시간 판단 기록이 없습니다.";
   const deepestCopy = report.deepestTrace
-    ? `${report.deepestTrace.routeNumber || "Route"} · ${report.deepestTrace.stopName || "Stop"} has reached ${report.deepestTrace.sourceCount} pipeline stages in the current loaded window.`
-    : "No route-stop trace has crossed the conservative pipeline yet.";
+    ? `${report.deepestTrace.routeNumber || "노선"} · ${report.deepestTrace.stopName || "정류장"}: 현재 조회 기간에서 ${report.deepestTrace.sourceCount}단계까지 처리했습니다.`
+    : "아직 보수적 판단으로 처리한 노선·정류장 기록이 없습니다.";
   const weekdayCopy = weekdayWindow.topWeekday
-    ? `${weekdayWindow.topWeekday.weekdayLabel} currently has the most conservative traces inside the ${weekdayWindow.windowLabel || "active"} window.`
-    : "No weekday trend has been loaded yet.";
+    ? `${weekdayWindow.windowLabel || "알람"} 시간대에 ${weekdayWindow.topWeekday.weekdayLabel}의 보수적 판단 기록이 가장 많습니다.`
+    : "아직 요일별 추세가 없습니다.";
   const watchlistCopy = watchlist.topEntry
-    ? `${watchlist.topEntry.routeNumber || "Route"} · ${watchlist.topEntry.stopName || "Stop"} is the top recent watchlist pair and has ${watchlist.topEntry.inWindowCount} conservative traces inside the alarm window.`
-    : "No route-stop pair has crossed the recent structural watchlist threshold yet.";
+    ? `${watchlist.topEntry.routeNumber || "노선"} · ${watchlist.topEntry.stopName || "정류장"}: 최근 최우선 주의 대상으로, 알람 시간대의 보수적 판단 기록이 ${watchlist.topEntry.inWindowCount}건입니다.`
+    : "최근 주의 기준에 해당하는 노선·정류장이 없습니다.";
   const rollingCopy =
     report.rollingDays && report.windowStartAt && report.windowEndAt
-      ? `Server-tracked rolling window: last ${report.rollingDays} days, ending ${formatClock(new Date(report.windowEndAt))}.`
-      : "This report is using the currently loaded dashboard traces.";
+      ? `서버 집계 기간: 최근 ${report.rollingDays}일, 종료 시각 ${formatClock(new Date(report.windowEndAt))}.`
+      : "현재 화면에 불러온 기록을 기준으로 집계합니다.";
 
   return `
     <section class="stack-panel">
-      <div class="stack-title"><span class="material-symbols-outlined">shield_with_heart</span>Conservative ETA reliability</div>
+      <div class="stack-title"><span class="material-symbols-outlined">shield_with_heart</span>보수적 도착시간 판단 기록</div>
       <div class="live-sync-grid">
         <article class="live-sync-card">
-          <div class="live-sync-label">Loaded traces</div>
+          <div class="live-sync-label">불러온 기록</div>
           <div class="live-sync-value">${escapeHtml(String(report.totalSignals))}</div>
           <div class="live-sync-copy">${escapeHtml(`${rollingCopy} ${latestCopy}`)}</div>
         </article>
         <article class="live-sync-card">
-          <div class="live-sync-label">Commute pairs</div>
+          <div class="live-sync-label">노선·정류장 조합</div>
           <div class="live-sync-value">${escapeHtml(String(report.distinctRouteStopCount))}</div>
-          <div class="live-sync-copy">${escapeHtml("This counts distinct route and stop pairs that recently entered conservative ETA mode in the loaded logs.")}</div>
+          <div class="live-sync-copy">${escapeHtml("최근 보수적 판단이 적용된 서로 다른 노선·정류장 조합의 수입니다.")}</div>
         </article>
         <article class="live-sync-card">
-          <div class="live-sync-label">Buffer range</div>
+          <div class="live-sync-label">안전 여유시간 범위</div>
           <div class="live-sync-value">${escapeHtml(`${report.averageRiskBufferMin || 0} / ${report.maxRiskBufferMin || 0}`)}</div>
-          <div class="live-sync-copy">${escapeHtml(`Average / max conservative ETA buffer in minutes. Live spread average: ${report.averageSpreadMin ?? "-"}.`)}</div>
+          <div class="live-sync-copy">${escapeHtml(`안전 여유시간의 평균 / 최댓값(분). 평균 예측 차이: ${report.averageSpreadMin ?? "-"}분.`)}</div>
         </article>
         <article class="live-sync-card">
-          <div class="live-sync-label">Deepest trace</div>
+          <div class="live-sync-label">최종 처리 단계</div>
           <div class="live-sync-value">${escapeHtml(report.deepestTrace ? `${report.deepestTrace.sourceCount}/5` : "0/5")}</div>
           <div class="live-sync-copy">${escapeHtml(deepestCopy)}</div>
         </article>
         <article class="live-sync-card">
-          <div class="live-sync-label">Alarm-window traces</div>
+          <div class="live-sync-label">알람 시간대 기록</div>
           <div class="live-sync-value">${escapeHtml(`${weekdayWindow.inWindowCount || 0} / ${report.totalSignals || 0}`)}</div>
-          <div class="live-sync-copy">${escapeHtml(`Inside ${weekdayWindow.windowLabel || `${state.schedule.startTime} - ${state.schedule.endTime}`}: ${weekdayWindow.inWindowCount || 0}, outside: ${weekdayWindow.outOfWindowCount || 0}.`)}</div>
+          <div class="live-sync-copy">${escapeHtml(`알람 시간대 ${weekdayWindow.windowLabel || `${state.schedule.startTime} - ${state.schedule.endTime}`}: ${weekdayWindow.inWindowCount || 0}건, 시간대 밖: ${weekdayWindow.outOfWindowCount || 0}.`)}</div>
         </article>
         <article class="live-sync-card">
-          <div class="live-sync-label">Top weekday</div>
+          <div class="live-sync-label">주의가 많은 요일</div>
           <div class="live-sync-value">${escapeHtml(weekdayWindow.topWeekday?.weekdayLabel || "-")}</div>
           <div class="live-sync-copy">${escapeHtml(weekdayCopy)}</div>
         </article>
         <article class="live-sync-card">
-          <div class="live-sync-label">Risk watchlist</div>
-          <div class="live-sync-value">${escapeHtml(`${watchlist.highCount || 0}H / ${watchlist.elevatedCount || 0}E`)}</div>
+          <div class="live-sync-label">주의 노선 목록</div>
+          <div class="live-sync-value">${escapeHtml(`${watchlist.highCount || 0}건 높은 주의 / ${watchlist.elevatedCount || 0}건 주의`)}</div>
           <div class="live-sync-copy">${escapeHtml(watchlistCopy)}</div>
         </article>
       </div>
@@ -3178,16 +3183,16 @@ function renderConservativeReliabilityPanel() {
                   (entry) => `
                     <article class="history-item">
                       <div class="history-main">
-                        <div class="history-title">${escapeHtml(`${entry.severityLabel} · ${entry.routeNumber || "Route"} · ${entry.stopName || "Stop"}`)}</div>
-                        <div class="history-detail">${escapeHtml(`${entry.count} traces total · ${entry.inWindowCount} inside ${weekdayWindow.windowLabel || "the alarm window"} · avg buffer ${entry.averageRiskBufferMin} min`)}</div>
-                        <div class="history-detail">${escapeHtml(`Avg spread ${entry.averageSpreadMin ?? "-"} min · max buffer ${entry.maxRiskBufferMin} min · sources ${entry.sourceLabels.join(", ")}`)}</div>
+                        <div class="history-title">${escapeHtml(`${entry.severityLabel} · ${entry.routeNumber || "노선"} · ${entry.stopName || "정류장"}`)}</div>
+                        <div class="history-detail">${escapeHtml(`${entry.count}건 전체 기록 · ${entry.inWindowCount}건 해당 시간대 ${weekdayWindow.windowLabel || "알람 시간대"} · 평균 여유시간 ${entry.averageRiskBufferMin}분`)}</div>
+                        <div class="history-detail">${escapeHtml(`평균 예측 차이 ${entry.averageSpreadMin ?? "-"}분 · 최대 여유시간 ${entry.maxRiskBufferMin}분 · 출처 ${entry.sourceLabels.join(", ")}`)}</div>
                       </div>
                       <div class="history-time">${escapeHtml(entry.latestAt ? formatClock(new Date(entry.latestAt)) : "-")}</div>
                     </article>
                   `,
                 )
                 .join("")
-            : `<div class="empty-copy">No route-stop pair has repeated enough recent conservative traces to enter the watchlist yet.</div>`
+            : `<div class="empty-copy">최근 반복된 주의 기록이 기준을 넘은 노선·정류장이 없습니다.</div>`
         }
       </div>
       <div class="history-list">
@@ -3199,16 +3204,16 @@ function renderConservativeReliabilityPanel() {
                   (entry) => `
                     <article class="history-item">
                       <div class="history-main">
-                        <div class="history-title">${escapeHtml(`${entry.routeNumber || "Route"} · ${entry.stopName || "Stop"}`)}</div>
-                        <div class="history-detail">${escapeHtml(`${entry.count} traces · avg buffer ${entry.averageRiskBufferMin} min · max ${entry.maxRiskBufferMin} min · avg spread ${entry.averageSpreadMin ?? "-"} min`)}</div>
-                        <div class="history-detail">${escapeHtml(`Sources: ${entry.sourceLabels.join(", ")} · latest via ${entry.latestSource}`)}</div>
+                        <div class="history-title">${escapeHtml(`${entry.routeNumber || "노선"} · ${entry.stopName || "정류장"}`)}</div>
+                        <div class="history-detail">${escapeHtml(`${entry.count} traces · 평균 여유시간 ${entry.averageRiskBufferMin}분 · 최대 ${entry.maxRiskBufferMin}분 · 평균 예측 차이 ${entry.averageSpreadMin ?? "-"}분`)}</div>
+                        <div class="history-detail">${escapeHtml(`출처: ${entry.sourceLabels.join(", ")} · 최근 출처 ${entry.latestSource}`)}</div>
                       </div>
                       <div class="history-time">${escapeHtml(entry.latestAt ? formatClock(new Date(entry.latestAt)) : "-")}</div>
                     </article>
                   `,
                 )
                 .join("")
-            : `<div class="empty-copy">No conservative ETA trace is loaded yet. As soon as live providers diverge enough to trigger a safety buffer, this report will summarize where it happened and how far it traveled through the alert pipeline.</div>`
+            : `<div class="empty-copy">보수적 판단 기록이 없습니다. 제공처별 예측 차이로 안전 여유시간이 적용되면 발생 지점과 알림 처리 단계를 표시합니다.</div>`
         }
       </div>
       <div class="history-list">
@@ -3221,8 +3226,8 @@ function renderConservativeReliabilityPanel() {
                     <article class="history-item">
                       <div class="history-main">
                         <div class="history-title">${escapeHtml(entry.weekdayLabel)}</div>
-                        <div class="history-detail">${escapeHtml(`${entry.inWindowCount} traces inside ${weekdayWindow.windowLabel || "the alarm window"} · ${entry.outOfWindowCount} outside`)}</div>
-                        <div class="history-detail">${escapeHtml(`Avg buffer ${entry.averageRiskBufferMin} min · avg spread ${entry.averageSpreadMin ?? "-"} min`)}</div>
+                        <div class="history-detail">${escapeHtml(`${entry.inWindowCount}건 해당 시간대 ${weekdayWindow.windowLabel || "알람 시간대"} · ${entry.outOfWindowCount}건 시간대 밖`)}</div>
+                        <div class="history-detail">${escapeHtml(`평균 여유시간 ${entry.averageRiskBufferMin}분 · 평균 예측 차이 ${entry.averageSpreadMin ?? "-"}분`)}</div>
                       </div>
                       <div class="history-time">${escapeHtml(entry.latestAt ? formatClock(new Date(entry.latestAt)) : "-")}</div>
                     </article>
@@ -3232,61 +3237,61 @@ function renderConservativeReliabilityPanel() {
             : ""
         }
       </div>
-      <div class="quick-actions-copy">This report is built from the recent rolling window the local server has stored, not from a full long-term analytics warehouse.</div>
+      <div class="quick-actions-copy">서버에 저장된 최근 기간의 기록을 집계한 것으로, 전체 장기 통계는 아닙니다.</div>
     </section>
   `;
 }
 
 function renderStateSyncPanel() {
   const sourceCopy =
-    persistenceMeta.source === "server" ? "Settings are backed up to the local server file." : "Using browser-local state only.";
+    persistenceMeta.source === "server" ? "설정을 계정별 서버 저장소에 저장합니다." : "현재 이 브라우저에만 저장된 설정을 사용합니다.";
   const statusCopy =
     persistenceMeta.saveStatus === "pending"
-      ? "Changes queued for server save."
+      ? "변경한 설정을 저장할 예정입니다."
       : persistenceMeta.saveStatus === "saving"
-      ? "Saving..."
+      ? "저장 중…"
       : persistenceMeta.saveStatus === "saved"
         ? persistenceMeta.lastSavedAt
-          ? `Saved at ${escapeHtml(formatClock(new Date(persistenceMeta.lastSavedAt)))}`
-          : "Saved"
+          ? `저장 시각 ${escapeHtml(formatClock(new Date(persistenceMeta.lastSavedAt)))}`
+          : "저장됨"
         : persistenceMeta.saveStatus === "error"
-          ? persistenceMeta.lastError || "Server save failed."
-          : "Waiting for changes.";
+          ? persistenceMeta.lastError || "서버에 저장하지 못했습니다."
+          : "변경 사항을 기다리고 있습니다.";
   const domainSourceCopy =
     domainMeta.source === "server"
-      ? "Profile, route, schedule, and notification settings are mirrored into domain REST files."
-      : "Domain REST snapshot has not been loaded yet.";
+      ? "프로필, 이동 경로, 일정과 알림 설정을 계정별 저장소에 동기화합니다."
+      : "계정 설정을 아직 불러오지 않았습니다.";
   const domainStatusCopy =
     domainMeta.syncStatus === "pending"
-      ? "Changes queued for domain sync."
+      ? "계정 설정 동기화를 기다리고 있습니다."
       : domainMeta.syncStatus === "syncing"
-      ? "Syncing profile, route, schedule, and notification settings..."
+      ? "프로필, 경로, 일정과 알림 설정을 저장하고 있습니다."
       : domainMeta.syncStatus === "synced"
         ? domainMeta.lastSyncedAt
-          ? `Synced at ${escapeHtml(formatClock(new Date(domainMeta.lastSyncedAt)))}`
-          : "Synced"
+          ? `동기화 시각 ${escapeHtml(formatClock(new Date(domainMeta.lastSyncedAt)))}`
+          : "동기화됨"
         : domainMeta.syncStatus === "error"
-          ? domainMeta.lastError || "Domain sync failed."
-          : "Waiting for changes.";
+          ? domainMeta.lastError || "계정 설정을 동기화하지 못했습니다."
+          : "변경 사항을 기다리고 있습니다.";
 
   return `
     <section class="stack-panel">
-      <div class="stack-title"><span class="material-symbols-outlined">cloud_sync</span>State persistence</div>
+      <div class="stack-title"><span class="material-symbols-outlined">cloud_sync</span>설정 저장 상태</div>
       <div class="live-sync-grid">
         <article class="live-sync-card">
-          <div class="live-sync-label">Storage</div>
-          <div class="live-sync-value">${persistenceMeta.source === "server" ? "SERVER" : "LOCAL"}</div>
-          <div class="live-sync-copy">${escapeHtml(sourceCopy)}</div>
+          <div class="live-sync-label">저장 위치</div>
+          <div class="live-sync-value">${persistenceMeta.source === "server" ? "계정별 서버" : "이 브라우저"}</div>
+          <div class="live-sync-copy">${escapeUiMessage(sourceCopy)}</div>
         </article>
         <article class="live-sync-card">
-          <div class="live-sync-label">Sync status</div>
-          <div class="live-sync-value">${escapeHtml(persistenceMeta.saveStatus.toUpperCase())}</div>
-          <div class="live-sync-copy">${escapeHtml(statusCopy)}</div>
+          <div class="live-sync-label">저장 상태</div>
+          <div class="live-sync-value">${escapeHtml(formatUiLabel(persistenceMeta.saveStatus))}</div>
+          <div class="live-sync-copy">${escapeUiMessage(statusCopy)}</div>
         </article>
         <article class="live-sync-card">
-          <div class="live-sync-label">Domain API</div>
-          <div class="live-sync-value">${escapeHtml(domainMeta.syncStatus.toUpperCase())}</div>
-          <div class="live-sync-copy">${escapeHtml(domainSourceCopy)} ${escapeHtml(domainStatusCopy)}</div>
+          <div class="live-sync-label">계정 설정 동기화</div>
+          <div class="live-sync-value">${escapeHtml(formatUiLabel(domainMeta.syncStatus))}</div>
+          <div class="live-sync-copy">${escapeUiMessage(domainSourceCopy)} ${escapeUiMessage(domainStatusCopy)}</div>
         </article>
       </div>
     </section>
@@ -3303,11 +3308,11 @@ function getTopAttentionQuickActionState(alert) {
     const disabled = !state.device.pushToken.trim() || deviceMeta.tokenRegisterStatus === "sending";
     return {
       action: quickAction.action,
-      label: deviceMeta.tokenRegisterStatus === "sending" ? "Registering Token..." : quickAction.buttonLabel,
+      label: deviceMeta.tokenRegisterStatus === "sending" ? "토큰 등록 중…" : quickAction.buttonLabel,
       disabled,
       copy: disabled
-        ? "Paste or keep a device token in the input first, then re-run token registration."
-        : "Re-check the current device token against the server normalization and readiness rules now.",
+        ? "먼저 기기 토큰을 입력한 뒤 다시 등록하세요."
+        : "서버에서 기기 토큰 형식과 전송 준비 상태를 다시 확인합니다.",
     };
   }
 
@@ -3318,17 +3323,17 @@ function getTopAttentionQuickActionState(alert) {
       action: quickAction.action,
       label: deviceMeta.pushGatewayDispatchStatus === "sending"
         ? executeMode
-          ? "Sending Gateway Bundle..."
-          : "Preparing Gateway Preview..."
+          ? "알림 전송 중…"
+          : "전송 요청 준비 중…"
         : executeMode
-          ? "Send Gateway Bundle"
-          : "Preview Gateway Request",
+          ? "알림 전송"
+          : "전송 요청 미리보기",
       disabled,
       copy: disabled
-        ? "A current dispatch bundle is needed before the gateway can replay this path."
+        ? "이 전송 과정을 다시 실행하려면 현재 알림 전송 묶음이 필요합니다."
         : executeMode
-          ? "The gateway is in execute mode. This action can send a real provider request."
-          : "The gateway is in preview mode, so this action only prepares and records the provider request.",
+          ? "실제 전송 모드입니다. 실행하면 실제 알림이 전송될 수 있습니다."
+          : "미리보기 모드입니다. 실제 전송 없이 요청 내용만 준비하고 기록합니다.",
     };
   }
 
@@ -3336,11 +3341,11 @@ function getTopAttentionQuickActionState(alert) {
     const disabled = deviceMeta.pushGatewayDispatchStatus === "sending" || !deviceMeta.pushGatewayRetryPending;
     return {
       action: quickAction.action,
-      label: deviceMeta.pushGatewayDispatchStatus === "sending" ? "Running Retry Demo..." : quickAction.buttonLabel,
+      label: deviceMeta.pushGatewayDispatchStatus === "sending" ? "재시도 시험 중…" : quickAction.buttonLabel,
       disabled,
       copy: disabled
-        ? "The retry queue is empty right now, so there is no saved retry step to replay."
-        : "Prototype note: this replays the saved retry path through the local retry demo flow.",
+        ? "재시도 대기열이 비어 있어 실행할 항목이 없습니다."
+        : "시험 기능: 저장된 재시도 절차를 모의 실행합니다.",
     };
   }
 
@@ -3354,32 +3359,32 @@ function renderDeliveryIntensityPanel() {
   const topAttentionCause = report.topAttentionCause;
   const outcomeBreakdown = report.outcomeBreakdown || {};
   const strongestCopy = report.topSignal
-    ? `${report.topSignal.sourceLabel} recorded the current strongest configured alert trace at ${formatClock(new Date(report.topSignal.createdAt))}.`
-    : "No alert trace with playback intensity has been recorded yet today.";
+    ? `${report.topSignal.sourceLabel}에서 ${formatClock(new Date(report.topSignal.createdAt))}에 가장 강한 알림 설정을 기록했습니다.`
+    : "오늘 알림 강도가 기록된 알림이 없습니다.";
   const routeCopy = report.topRouteStop
-    ? `${report.topRouteStop.routeNumber || "Route"} · ${report.topRouteStop.stopName || "Stop"} currently has the highest intensity trace, with ${report.topRouteStop.count} playback records today.`
-    : "No commute pair has enough playback traces to summarize yet.";
+    ? `${report.topRouteStop.routeNumber || "노선"} · ${report.topRouteStop.stopName || "정류장"}: 가장 강한 알림 기록이 있으며 오늘 재생 기록은 ${report.topRouteStop.count}건입니다.`
+    : "집계할 알림 재생 기록이 충분한 노선·정류장이 없습니다.";
   const deliveryCopy = topAlert
     ? topAlert.deliveryOutcomeCopy
-    : "No delivery outcome can be summarized until at least one playback-intensity trace exists.";
+    : "알림 강도 기록이 있어야 전송 결과를 집계할 수 있습니다.";
   const averageCopy = report.totalSignals
-    ? `Today's tracked traces average ${report.averageScore} on the configured intensity score.`
-    : "The score only reflects configured playback strength, not whether the phone physically sounded.";
+    ? `오늘 기록된 설정 강도의 평균 점수는 ${report.averageScore}입니다.`
+    : "점수는 설정된 알림 강도이며, 휴대폰에서 실제 소리가 났는지를 의미하지 않습니다.";
   const deliveryHealthCopy = outcomeBreakdown.pushVisibleCount
-    ? `${outcomeBreakdown.pushVisibleCount} alerts reached the push-visible layer today, and ${outcomeBreakdown.deliveredRatePercent}% of them ended in DELIVERED.`
-    : "No alert has reached the real push-visible layer yet today.";
+    ? `오늘 푸시 전송 결과가 기록된 알림은 ${outcomeBreakdown.pushVisibleCount}건이며, 그중 ${outcomeBreakdown.deliveredRatePercent}%가 전달 완료로 기록됐습니다.`
+    : "오늘 실제 푸시 전송이 확인된 알림이 없습니다.";
   const attentionCopy = outcomeBreakdown.needsAttentionCount
-    ? `${outcomeBreakdown.needsAttentionCount} strong alerts still need attention because they are pending retry, failed, or blocked.`
-    : "No strong alert is currently stuck in retry, failed, or blocked state.";
+    ? `강한 알림 ${outcomeBreakdown.needsAttentionCount}건이 재시도 대기·실패·차단 상태여서 확인이 필요합니다.`
+    : "재시도 중이거나 실패·차단된 강한 알림이 없습니다.";
   const topIssueCopy = topAttentionCause
-    ? `${topAttentionCause.label} appeared on ${topAttentionCause.count} attention alert(s) across ${topAttentionCause.routeStopCount} commute pair(s). The most severe outcome in this group is ${topAttentionCause.highestOutcomeLabel || "UNKNOWN"}.`
-    : "No repeated attention cause has been recorded yet today.";
+    ? `${topAttentionCause.label}: 노선·정류장 ${topAttentionCause.routeStopCount}개 조합에서 ${topAttentionCause.count}건 발생했습니다. 가장 심각한 결과는 ${topAttentionCause.highestOutcomeLabel || "확인 불가"}입니다.`
+    : "오늘 반복된 문제 원인이 기록되지 않았습니다.";
   const topIssueActionCopy = topAttentionCause
     ? `${topAttentionCause.attentionActionLabel}: ${topAttentionCause.attentionActionCopy}`
     : "";
   const topAttentionCopy = topAttentionAlert
-    ? `${topAttentionAlert.routeNumber ? `Route ${topAttentionAlert.routeNumber}` : "This alert"}${topAttentionAlert.stopName ? ` · ${topAttentionAlert.stopName}` : ""} is the top attention item because it ended in ${topAttentionAlert.deliveryOutcomeLabel} with intensity score ${topAttentionAlert.maxScore}. ${topAttentionAlert.attentionActionLabel}: ${topAttentionAlert.attentionActionCopy}`
-    : "There is no blocked, failed, or retry-pending strong alert that needs escalation right now.";
+    ? `${topAttentionAlert.routeNumber ? `노선 ${topAttentionAlert.routeNumber}` : "이 알림"}${topAttentionAlert.stopName ? ` · ${topAttentionAlert.stopName}` : ""}: 강도 ${topAttentionAlert.maxScore}점, ${topAttentionAlert.deliveryOutcomeLabel} 상태로 우선 확인이 필요합니다. ${topAttentionAlert.attentionActionLabel}: ${topAttentionAlert.attentionActionCopy}`
+    : "현재 추가 조치가 필요한 실패·차단·재시도 대기 알림이 없습니다.";
   const topAttentionButton = topAttentionAlert?.attentionTarget
     ? `<button class="mini-button" data-action="focus-panel" data-screen="${escapeHtml(topAttentionAlert.attentionTarget.screen)}" data-panel="${escapeHtml(topAttentionAlert.attentionTarget.panelId)}" data-panel-item-id="${escapeHtml(topAttentionAlert.attentionTarget.panelItemId || "")}" data-panel-kind="${escapeHtml(topAttentionAlert.attentionTarget.panelItemKind || "")}" data-panel-key="${escapeHtml(topAttentionAlert.attentionTarget.panelItemKey || "")}">${escapeHtml(topAttentionAlert.attentionTarget.buttonLabel)}</button>`
     : "";
@@ -3388,7 +3393,7 @@ function renderDeliveryIntensityPanel() {
     ? `<button class="mini-button" data-action="${escapeHtml(topAttentionQuickAction.action)}" ${topAttentionQuickAction.disabled ? "disabled" : ""}>${escapeHtml(topAttentionQuickAction.label)}</button>`
     : "";
   const topAttentionCauseCopy = topAttentionAlert?.attentionCause
-    ? `Cause: ${topAttentionAlert.attentionCause.label}. ${topAttentionAlert.attentionCause.copy}`
+    ? `원인: ${topAttentionAlert.attentionCause.label}. ${topAttentionAlert.attentionCause.copy}`
     : "";
   const topAttentionStatusCopy = topAttentionAlert?.attentionStatus
     ? `${topAttentionAlert.attentionStatus.label}: ${topAttentionAlert.attentionStatus.value}. ${topAttentionAlert.attentionStatus.copy}`
@@ -3422,57 +3427,57 @@ function renderDeliveryIntensityPanel() {
           .slice(0, 3)
           .map(
             (item) => `
-              <span class="channel-badge ready">${escapeHtml(`${item.routeNumber || "Route"} · ${item.stopName || "Stop"} ${item.count}`)}</span>
+              <span class="channel-badge ready">${escapeHtml(`${item.routeNumber || "노선"} · ${item.stopName || "정류장"} ${item.count}`)}</span>
             `,
           )
           .join("")
       : "";
   const topIssueMoreRoutesCopy =
     Array.isArray(topAttentionCause?.topRouteStops) && topAttentionCause.topRouteStops.length > 3
-      ? `${topAttentionCause.topRouteStops.length - 3} more commute pair(s) share this issue today.`
+      ? `오늘 다른 노선·정류장 ${topAttentionCause.topRouteStops.length - 3}개 조합에서도 같은 문제가 있습니다.`
       : "";
 
   return `
     <section class="stack-panel">
-      <div class="stack-title"><span class="material-symbols-outlined">graphic_eq</span>Today's strongest alert</div>
+      <div class="stack-title"><span class="material-symbols-outlined">graphic_eq</span>오늘 가장 강한 알림</div>
       <div class="live-sync-grid">
         <article class="live-sync-card">
-          <div class="live-sync-label">Tracked traces</div>
+          <div class="live-sync-label">확인된 기록</div>
           <div class="live-sync-value">${escapeHtml(String(report.totalSignals))}</div>
-          <div class="live-sync-copy">${escapeHtml(`Date ${report.dateKey || "-"}. ${strongestCopy}`)}</div>
+          <div class="live-sync-copy">${escapeHtml(`기준일 ${report.dateKey || "-"}. ${strongestCopy}`)}</div>
         </article>
         <article class="live-sync-card">
-          <div class="live-sync-label">Top intensity</div>
+          <div class="live-sync-label">최대 알림 강도</div>
           <div class="live-sync-value">${escapeHtml(String(report.maxScore || 0))}</div>
           <div class="live-sync-copy">${escapeHtml(averageCopy)}</div>
         </article>
         <article class="live-sync-card">
-          <div class="live-sync-label">Boosted traces</div>
+          <div class="live-sync-label">강화 알림 기록</div>
           <div class="live-sync-value">${escapeHtml(String(report.boostedCount || 0))}</div>
-          <div class="live-sync-copy">${escapeHtml("These traces were flagged for the reinforced first-alarm delivery path.")}</div>
+          <div class="live-sync-copy">${escapeHtml("첫 알림 강화 전송 대상으로 표시된 기록입니다.")}</div>
         </article>
         <article class="live-sync-card">
-          <div class="live-sync-label">Top commute pair</div>
-          <div class="live-sync-value">${escapeHtml(report.topRouteStop ? `${report.topRouteStop.routeNumber || "Route"}` : "-")}</div>
+          <div class="live-sync-label">주요 노선·정류장</div>
+          <div class="live-sync-value">${escapeHtml(report.topRouteStop ? `${report.topRouteStop.routeNumber || "노선"}` : "-")}</div>
           <div class="live-sync-copy">${escapeHtml(routeCopy)}</div>
         </article>
         <article class="live-sync-card">
-          <div class="live-sync-label">Delivery outcome</div>
+          <div class="live-sync-label">전송 결과</div>
           <div class="live-sync-value">${escapeHtml(topAlert?.deliveryOutcomeLabel || "-")}</div>
-          <div class="live-sync-copy">${escapeHtml(deliveryCopy)}</div>
+          <div class="live-sync-copy">${escapeUiMessage(deliveryCopy)}</div>
         </article>
         <article class="live-sync-card">
-          <div class="live-sync-label">Push-visible alerts</div>
+          <div class="live-sync-label">푸시 전송 확인 알림</div>
           <div class="live-sync-value">${escapeHtml(String(outcomeBreakdown.pushVisibleCount || 0))}</div>
           <div class="live-sync-copy">${escapeHtml(deliveryHealthCopy)}</div>
         </article>
         <article class="live-sync-card">
-          <div class="live-sync-label">Needs attention</div>
+          <div class="live-sync-label">확인 필요</div>
           <div class="live-sync-value">${escapeHtml(String(outcomeBreakdown.needsAttentionCount || 0))}</div>
           <div class="live-sync-copy">${escapeHtml(attentionCopy)}</div>
         </article>
         <article class="live-sync-card">
-          <div class="live-sync-label">Top attention</div>
+          <div class="live-sync-label">우선 확인 알림</div>
           <div class="live-sync-value">${escapeHtml(topAttentionAlert?.deliveryOutcomeLabel || "-")}</div>
           <div class="live-sync-copy">${escapeHtml(topAttentionCopy)}</div>
           ${
@@ -3485,7 +3490,7 @@ function renderDeliveryIntensityPanel() {
           ${topAttentionStatusCopy ? `<div class="quick-actions-copy">${escapeHtml(topAttentionStatusCopy)}</div>` : ""}
         </article>
         <article class="live-sync-card">
-          <div class="live-sync-label">Top issue</div>
+          <div class="live-sync-label">주요 문제</div>
           <div class="live-sync-value">${escapeHtml(topAttentionCause?.label || "-")}</div>
           <div class="live-sync-copy">${escapeHtml(topIssueCopy)}</div>
           ${
@@ -3502,9 +3507,9 @@ function renderDeliveryIntensityPanel() {
           ${topIssueMoreRoutesCopy ? `<div class="quick-actions-copy">${escapeHtml(topIssueMoreRoutesCopy)}</div>` : ""}
         </article>
         <article class="live-sync-card">
-          <div class="live-sync-label">Upstream only</div>
+          <div class="live-sync-label">서버 처리만 확인</div>
           <div class="live-sync-value">${escapeHtml(String(outcomeBreakdown.upstreamOnlyCount || 0))}</div>
-          <div class="live-sync-copy">${escapeHtml("These alerts were only seen in server trigger, dispatch, or simulation layers, not in a real push-visible handoff result.")}</div>
+          <div class="live-sync-copy">${escapeHtml("서버 처리나 모의 실행 기록만 확인된 알림이며, 실제 푸시 전송 결과는 확인되지 않았습니다.")}</div>
         </article>
       </div>
       ${
@@ -3514,7 +3519,7 @@ function renderDeliveryIntensityPanel() {
               ${report.sourceBreakdown
                 .map(
                   (item) => `
-                    <span class="channel-badge ready">${escapeHtml(`${item.sourceLabel} ${item.count} · max ${item.maxScore}`)}</span>
+                    <span class="channel-badge ready">${escapeHtml(`${item.sourceLabel} ${item.count} · 최대 ${item.maxScore}`)}</span>
                   `,
                 )
                 .join("")}
@@ -3538,7 +3543,7 @@ function renderDeliveryIntensityPanel() {
           `
           : ""
       }
-      <div class="field-help">This panel ranks configured playback strength only. It does not claim that the phone speaker or vibration physically succeeded on the device.</div>
+      <div class="field-help">이 순위는 설정된 알림 강도만 비교합니다. 휴대폰에서 실제로 소리나 진동이 발생했다는 뜻은 아닙니다.</div>
       <div class="history-list">
         ${
           report.alertLeaders.length
@@ -3548,13 +3553,13 @@ function renderDeliveryIntensityPanel() {
                   (alert) => `
                     <article class="history-item">
                       <div class="history-main">
-                        <div class="history-title">${escapeHtml(`${alert.deliveryOutcomeLabel} · ${alert.title || alert.routeNumber || "Alert trace"}`)}</div>
+                        <div class="history-title">${escapeHtml(`${alert.deliveryOutcomeLabel} · ${alert.title || alert.routeNumber || "알림 처리 기록"}`)}</div>
                         <div class="history-detail">${escapeHtml(
                           [
-                            alert.routeNumber ? `Route ${alert.routeNumber}` : "",
+                            alert.routeNumber ? `노선 ${alert.routeNumber}` : "",
                             alert.stopName || "",
                             alert.riskLevel || "",
-                            `score ${alert.maxScore}`,
+                            `강도 점수 ${alert.maxScore}`,
                           ]
                             .filter(Boolean)
                             .join(" · "),
@@ -3568,7 +3573,7 @@ function renderDeliveryIntensityPanel() {
                   `,
                 )
                 .join("")
-            : `<div class="empty-copy">No playback-intensity trace has been recorded yet today.</div>`
+            : `<div class="empty-copy">오늘 알림 강도 기록이 없습니다.</div>`
         }
       </div>
     </section>
@@ -3579,8 +3584,8 @@ function renderAlarmPlanPanel() {
   if (alarmPlanMeta.status === "loading" && !alarmPlanMeta.plan) {
     return `
       <section class="stack-panel">
-        <div class="stack-title"><span class="material-symbols-outlined">event_upcoming</span>Today's alarm plan</div>
-        <div class="empty-copy">The server is calculating the remaining alerts for today.</div>
+        <div class="stack-title"><span class="material-symbols-outlined">event_upcoming</span>오늘의 알람 계획</div>
+        <div class="empty-copy">오늘 남은 알람을 계산하고 있습니다.</div>
       </section>
     `;
   }
@@ -3588,8 +3593,8 @@ function renderAlarmPlanPanel() {
   if (alarmPlanMeta.status === "error" && !alarmPlanMeta.plan) {
     return `
       <section class="stack-panel">
-        <div class="stack-title"><span class="material-symbols-outlined">event_upcoming</span>Today's alarm plan</div>
-        <div class="empty-copy">${escapeHtml(alarmPlanMeta.lastError || "Alarm plan preview failed.")}</div>
+        <div class="stack-title"><span class="material-symbols-outlined">event_upcoming</span>오늘의 알람 계획</div>
+        <div class="empty-copy">${escapeHtml(alarmPlanMeta.lastError || "알람 계획을 불러오지 못했습니다.")}</div>
       </section>
     `;
   }
@@ -3602,34 +3607,34 @@ function renderAlarmPlanPanel() {
   const stabilityWatch = alarmPlanMeta.plan.stabilityWatch || {};
   const statusCopy =
     alarmPlanMeta.status === "refreshing"
-      ? "Refreshing with the latest settings..."
+      ? "최신 설정으로 갱신하고 있습니다…"
       : alarmPlanMeta.lastLoadedAt
-        ? `Updated at ${escapeHtml(formatClock(new Date(alarmPlanMeta.lastLoadedAt)))}`
-        : "Ready";
+        ? `갱신 시각 ${escapeHtml(formatClock(new Date(alarmPlanMeta.lastLoadedAt)))}`
+        : "준비됨";
   const precheckCopy =
     alarmPlanMeta.plan.precheckTriggerCount && stabilityWatch.precheckTriggerAt
-      ? `High instability route: one extra precheck ${stabilityWatch.precheckLeadMin || 0} min before the normal window.`
+      ? `주의 노선: 알람 시간대 ${stabilityWatch.precheckLeadMin || 0}분 전에 사전 점검합니다.`
       : stabilityWatch.level === "high"
-        ? "High instability route, but the extra precheck is no longer useful after the normal alarm window starts."
-        : "No extra instability precheck is scheduled right now.";
+        ? "주의 노선이지만 알람 시간대가 이미 시작되어 추가 사전 점검은 생략합니다."
+        : "추가 사전 점검이 예정되어 있지 않습니다.";
 
   return `
     <section class="stack-panel">
-      <div class="stack-title"><span class="material-symbols-outlined">event_upcoming</span>Today's alarm plan</div>
+      <div class="stack-title"><span class="material-symbols-outlined">event_upcoming</span>오늘의 알람 계획</div>
       <div class="live-sync-grid">
         <article class="live-sync-card">
-          <div class="live-sync-label">Remaining</div>
+          <div class="live-sync-label">남은 알람</div>
           <div class="live-sync-value">${escapeHtml(String(alarmPlanMeta.plan.remainingTriggers))}</div>
           <div class="live-sync-copy">${escapeHtml(alarmPlanMeta.plan.todayStatus.detail)}</div>
         </article>
         <article class="live-sync-card">
-          <div class="live-sync-label">Next trigger</div>
+          <div class="live-sync-label">다음 알람</div>
           <div class="live-sync-value">${nextTrigger ? escapeHtml(formatClock(new Date(nextTrigger.triggerAt))) : "-"}</div>
-          <div class="live-sync-copy">${escapeHtml(statusCopy)}</div>
+          <div class="live-sync-copy">${escapeUiMessage(statusCopy)}</div>
         </article>
         <article class="live-sync-card">
-          <div class="live-sync-label">Instability precheck</div>
-          <div class="live-sync-value">${alarmPlanMeta.plan.precheckTriggerCount ? `+${escapeHtml(String(alarmPlanMeta.plan.precheckTriggerCount))}` : "OFF"}</div>
+          <div class="live-sync-label">도착정보 사전 점검</div>
+          <div class="live-sync-value">${alarmPlanMeta.plan.precheckTriggerCount ? `+${escapeHtml(String(alarmPlanMeta.plan.precheckTriggerCount))}` : "꺼짐"}</div>
           <div class="live-sync-copy">${escapeHtml(precheckCopy)}</div>
         </article>
       </div>
@@ -3638,9 +3643,9 @@ function renderAlarmPlanPanel() {
           alarmPlanMeta.plan.triggers.length
             ? alarmPlanMeta.plan.triggers.slice(0, 4).map(
                 (trigger) => `
-                  <article class="history-item" data-focus-kind="push-attempt" data-focus-key="${escapeHtml(attempt.dispatchKey || "")}">
+                  <article class="history-item" data-focus-kind="alarm-trigger" data-focus-key="${escapeHtml(trigger.triggerAt || "")}">
                     <div class="history-main">
-                      <div class="history-title">${escapeHtml(formatClock(new Date(trigger.triggerAt)))} · ${escapeHtml(trigger.triggerKind === "stability-precheck" ? "PRECHECK" : trigger.notificationSpec.riskLevel)}</div>
+                      <div class="history-title">${escapeHtml(formatClock(new Date(trigger.triggerAt)))} · ${escapeUiMessage(trigger.triggerKind === "stability-precheck" ? "PRECHECK" : trigger.notificationSpec.riskLevel)}</div>
                       <div class="history-detail">${escapeHtml(trigger.notificationSpec.body)}</div>
                       ${renderDeliveryPriorityLine(trigger)}
                       ${renderPlaybackIntensityLine(trigger)}
@@ -3649,7 +3654,7 @@ function renderAlarmPlanPanel() {
                   </article>
                 `,
               ).join("")
-            : `<div class="empty-copy">No remaining alerts are scheduled for today.</div>`
+            : `<div class="empty-copy">오늘 남은 알람이 없습니다.</div>`
         }
       </div>
     </section>
@@ -3658,9 +3663,9 @@ function renderAlarmPlanPanel() {
 
 function renderBottomNav(screen) {
   const items = [
-    { id: "home", label: "Dashboard", icon: "dashboard" },
-    { id: "schedule", label: "Schedule", icon: "event_repeat" },
-    { id: "settings", label: "Settings", icon: "tune" },
+    { id: "home", label: "홈", icon: "dashboard" },
+    { id: "schedule", label: "일정", icon: "event_repeat" },
+    { id: "settings", label: "설정", icon: "tune" },
   ];
 
   return `
@@ -3683,8 +3688,8 @@ function renderAlarmRuntimePanel() {
   if (alarmRuntimeMeta.status === "loading" && !alarmRuntimeMeta.runtime) {
     return `
       <section class="stack-panel">
-        <div class="stack-title"><span class="material-symbols-outlined">memory</span>Server alarm runtime</div>
-        <div class="empty-copy">The server is checking whether today's alerts should already be firing.</div>
+        <div class="stack-title"><span class="material-symbols-outlined">memory</span>서버 알람 처리 상태</div>
+        <div class="empty-copy">서버에서 현재 울릴 알람이 있는지 확인하고 있습니다.</div>
       </section>
     `;
   }
@@ -3692,8 +3697,8 @@ function renderAlarmRuntimePanel() {
   if (alarmRuntimeMeta.status === "error" && !alarmRuntimeMeta.runtime) {
     return `
       <section class="stack-panel">
-        <div class="stack-title"><span class="material-symbols-outlined">memory</span>Server alarm runtime</div>
-        <div class="empty-copy">${escapeHtml(alarmRuntimeMeta.lastError || "Alarm runtime status failed to load.")}</div>
+        <div class="stack-title"><span class="material-symbols-outlined">memory</span>서버 알람 처리 상태</div>
+        <div class="empty-copy">${escapeHtml(alarmRuntimeMeta.lastError || "알람 처리 상태를 불러오지 못했습니다.")}</div>
       </section>
     `;
   }
@@ -3706,48 +3711,48 @@ function renderAlarmRuntimePanel() {
   const plan = alarmRuntimeMeta.plan;
   const statusCopy =
     alarmRuntimeMeta.status === "refreshing"
-      ? "Refreshing runtime state..."
+      ? "알람 처리 상태를 갱신하고 있습니다…"
       : alarmRuntimeMeta.lastLoadedAt
-        ? `Updated at ${escapeHtml(formatClock(new Date(alarmRuntimeMeta.lastLoadedAt)))}`
-        : "Ready";
+        ? `갱신 시각 ${escapeHtml(formatClock(new Date(alarmRuntimeMeta.lastLoadedAt)))}`
+        : "준비됨";
   const nextTriggerCopy = runtime.nextTriggerAt ? escapeHtml(formatClock(new Date(runtime.nextTriggerAt))) : "-";
   const eventSyncCopy =
     alarmRuntimeMeta.eventSyncStatus === "sending"
-      ? "Sending the latest app action to the server log."
+      ? "최근 앱 이용 기록을 서버에 저장하고 있습니다."
       : alarmRuntimeMeta.eventSyncStatus === "error"
-        ? alarmRuntimeMeta.eventSyncError || "Server event sync failed."
+        ? alarmRuntimeMeta.eventSyncError || "서버 기록 저장에 실패했습니다."
         : alarmRuntimeMeta.eventSyncStatus === "sent"
-          ? "Latest app action was logged on the server."
-          : "App actions will be mirrored into the server event log.";
+          ? "최근 앱 이용 기록을 서버에 저장했습니다."
+          : "앱 이용 기록을 서버에 저장합니다.";
 
   return `
     <section class="stack-panel">
-      <div class="stack-title"><span class="material-symbols-outlined">memory</span>Server alarm runtime</div>
+      <div class="stack-title"><span class="material-symbols-outlined">memory</span>서버 알람 처리 상태</div>
       <div class="live-sync-grid">
         <article class="live-sync-card">
-          <div class="live-sync-label">Runtime</div>
-          <div class="live-sync-value">${escapeHtml(String(runtime.status || "idle").toUpperCase())}</div>
-          <div class="live-sync-copy">${plan ? escapeHtml(plan.todayStatus.detail) : "No active plan loaded yet."}</div>
+          <div class="live-sync-label">처리 상태</div>
+          <div class="live-sync-value">${escapeHtml(formatUiLabel(String(runtime.status || "idle")))}</div>
+          <div class="live-sync-copy">${plan ? escapeHtml(plan.todayStatus.detail) : "진행 중인 알람 계획이 없습니다."}</div>
         </article>
         <article class="live-sync-card">
-          <div class="live-sync-label">Next trigger</div>
+          <div class="live-sync-label">다음 알람</div>
           <div class="live-sync-value">${nextTriggerCopy}</div>
-          <div class="live-sync-copy">${escapeHtml(statusCopy)}</div>
+          <div class="live-sync-copy">${escapeUiMessage(statusCopy)}</div>
         </article>
         <article class="live-sync-card">
-          <div class="live-sync-label">Triggered today</div>
+          <div class="live-sync-label">오늘 발생한 알람</div>
           <div class="live-sync-value">${escapeHtml(String(runtime.firedCountToday || 0))}</div>
-          <div class="live-sync-copy">${escapeHtml(eventSyncCopy)}</div>
+          <div class="live-sync-copy">${escapeUiMessage(eventSyncCopy)}</div>
         </article>
       </div>
       ${
         runtime.lastEvent
           ? `
             <div class="sample-copy">
-              Last server alert: ${escapeHtml(runtime.lastEvent.title)} at ${escapeHtml(formatClock(new Date(runtime.lastEvent.createdAt)))}
+              최근 서버 알람: ${escapeUiMessage(runtime.lastEvent.title)} · ${escapeHtml(formatClock(new Date(runtime.lastEvent.createdAt)))}
             </div>
           `
-          : `<div class="sample-copy">No server-triggered alert has fired yet today.</div>`
+          : `<div class="sample-copy">오늘 서버에서 발생한 알람이 없습니다.</div>`
       }
     </section>
   `;
@@ -3758,8 +3763,8 @@ function renderActiveAlarmPanel() {
   if (!delivery?.currentAlert) {
     return `
       <section class="stack-panel">
-        <div class="stack-title"><span class="material-symbols-outlined">notifications_active</span>Active server alarm</div>
-        <div class="empty-copy">No active server-held alarm is waiting for a response right now.</div>
+        <div class="stack-title"><span class="material-symbols-outlined">notifications_active</span>응답 대기 알람</div>
+        <div class="empty-copy">현재 응답을 기다리는 서버 알람이 없습니다.</div>
       </section>
     `;
   }
@@ -3767,38 +3772,38 @@ function renderActiveAlarmPanel() {
   const alert = delivery.currentAlert;
   const statusCopy =
     alert.status === "SNOOZED" && alert.snoozedUntil
-      ? `Snoozed until ${escapeHtml(formatClock(new Date(alert.snoozedUntil)))}`
-      : "The server is holding this alert as the current active morning alarm.";
+      ? `다시 울릴 시각 ${escapeHtml(formatClock(new Date(alert.snoozedUntil)))}`
+      : "서버에서 이 알람에 대한 응답을 기다리고 있습니다.";
   const actionCopy =
     alarmRuntimeMeta.actionStatus === "sending"
-      ? "Sending the action to the server..."
+      ? "서버에 요청을 보내고 있습니다…"
       : alarmRuntimeMeta.actionStatus === "error"
-        ? alarmRuntimeMeta.actionError || "The alarm action failed."
-        : "Choose whether you already left or want one more minute.";
+        ? alarmRuntimeMeta.actionError || "알람 요청을 처리하지 못했습니다."
+        : "출발했는지, 1분 뒤 다시 알림을 받을지 선택하세요.";
   const playbackCopy = getPlaybackStatusCopy();
 
   return `
     <section class="stack-panel">
-      <div class="stack-title"><span class="material-symbols-outlined">notifications_active</span>Active server alarm</div>
+      <div class="stack-title"><span class="material-symbols-outlined">notifications_active</span>응답 대기 알람</div>
       <div class="preview-card delivery-card">
-        <div class="preview-label">${escapeHtml(alert.riskLevel || "INFO")} · ${escapeHtml(alert.status || "ACTIVE")}</div>
-        <div class="preview-title">${escapeHtml(alert.title || "Current alarm")}</div>
-        <div class="support-copy">${escapeHtml(alert.detail || "No active alarm detail.")}</div>
+        <div class="preview-label">${escapeUiMessage(alert.riskLevel || "INFO")} · ${escapeUiMessage(alert.status || "ACTIVE")}</div>
+        <div class="preview-title">${escapeHtml(alert.title || "현재 알람")}</div>
+        <div class="support-copy">${escapeHtml(alert.detail || "진행 중인 알람 정보가 없습니다.")}</div>
         ${renderDeliveryPriorityLine(alert, "sample-copy")}
         ${renderPlaybackIntensityLine(alert, "sample-copy")}
         ${renderConservativeContextLine(alert, "sample-copy")}
         <div class="sample-copy">
-          Triggered at ${escapeHtml(formatClock(new Date(alert.createdAt)))} · ${escapeHtml(statusCopy)}
+          알람 발생 시각 ${escapeHtml(formatClock(new Date(alert.createdAt)))} · ${escapeUiMessage(statusCopy)}
         </div>
         <div class="quick-actions delivery-actions">
           <button class="primary-cta" data-action="ack-active-alarm">
-            <span>I've departed</span>
+            <span>출발했어요</span>
             <span class="material-symbols-outlined">directions_bus</span>
           </button>
-          <button class="secondary-button" data-action="snooze-active-alarm">Snooze 1 min</button>
+          <button class="secondary-button" data-action="snooze-active-alarm">1분 뒤 다시 알림</button>
         </div>
-        <div class="quick-actions-copy">${escapeHtml(actionCopy)}</div>
-        <div class="sample-copy">${escapeHtml(playbackCopy)}</div>
+        <div class="quick-actions-copy">${escapeUiMessage(actionCopy)}</div>
+        <div class="sample-copy">${escapeUiMessage(playbackCopy)}</div>
       </div>
     </section>
   `;
@@ -3807,23 +3812,23 @@ function renderActiveAlarmPanel() {
 function renderDispatchQueuePanel() {
   return `
     <section class="stack-panel">
-      <div class="stack-title"><span class="material-symbols-outlined">send_to_mobile</span>Dispatch queue</div>
+      <div class="stack-title"><span class="material-symbols-outlined">send_to_mobile</span>알림 전송 대기열</div>
       <div class="live-sync-grid">
         <article class="live-sync-card">
-          <div class="live-sync-label">Bundles</div>
+          <div class="live-sync-label">전송 묶음</div>
           <div class="live-sync-value">${escapeHtml(String(deviceMeta.dispatchTotal || 0))}</div>
           <div class="live-sync-copy">
             ${
               deviceMeta.dispatchLastLoadedAt
-                ? `Updated at ${escapeHtml(formatClock(new Date(deviceMeta.dispatchLastLoadedAt)))}`
-                : "No dispatch bundle has been loaded yet."
+                ? `갱신 시각 ${escapeHtml(formatClock(new Date(deviceMeta.dispatchLastLoadedAt)))}`
+                : "아직 알림 전송 묶음을 불러오지 않았습니다."
             }
           </div>
         </article>
         <article class="live-sync-card">
-          <div class="live-sync-label">Device</div>
-          <div class="live-sync-value">${escapeHtml(String(state.device.platform || "android").toUpperCase())}</div>
-          <div class="live-sync-copy">${escapeHtml(state.device.deviceName || "Primary Phone")}</div>
+          <div class="live-sync-label">기기</div>
+          <div class="live-sync-value">${escapeHtml(formatUiLabel(String(state.device.platform || "android")))}</div>
+          <div class="live-sync-copy">${escapeUiMessage(state.device.deviceName || "기본 휴대폰")}</div>
         </article>
       </div>
       <div class="history-list">
@@ -3833,16 +3838,16 @@ function renderDispatchQueuePanel() {
                 (bundle) => `
                   <article class="history-item">
                     <div class="history-main">
-                      <div class="history-title">${escapeHtml(bundle.title || "Dispatch bundle")} · ${escapeHtml(bundle.riskLevel || "INFO")}</div>
+                      <div class="history-title">${escapeHtml(bundle.title || "알림 전송 묶음")} · ${escapeUiMessage(bundle.riskLevel || "INFO")}</div>
                       <div class="history-detail">
-                        ${escapeHtml(`${bundle.summary?.queued || 0} queued / ${bundle.summary?.blocked || 0} blocked / ${bundle.summary?.disabled || 0} disabled`)}
+                        ${escapeHtml(`${bundle.summary?.queued || 0}건 대기 / ${bundle.summary?.blocked || 0}건 차단 / ${bundle.summary?.disabled || 0}건 꺼짐`)}
                       </div>
                       <div class="channel-badge-row">
                         ${(Array.isArray(bundle.channels) ? bundle.channels : [])
                           .slice(0, 6)
                           .map(
                             (channel) => `
-                              <span class="channel-badge ${String(channel.status || "").toLowerCase()}">${escapeHtml(channel.label)} · ${escapeHtml(channel.status || "UNKNOWN")}</span>
+                              <span class="channel-badge ${String(channel.status || "").toLowerCase()}">${escapeUiMessage(channel.label)} · ${escapeUiMessage(channel.status || "UNKNOWN")}</span>
                             `,
                           )
                           .join("")}
@@ -3852,7 +3857,7 @@ function renderDispatchQueuePanel() {
                   </article>
                 `,
               ).join("")
-            : `<div class="empty-copy">${escapeHtml(deviceMeta.dispatchError || "No dispatch bundle has been created yet.")}</div>`
+            : `<div class="empty-copy">${escapeHtml(deviceMeta.dispatchError || "생성된 알림 전송 묶음이 없습니다.")}</div>`
         }
       </div>
     </section>
@@ -3862,27 +3867,27 @@ function renderDispatchQueuePanel() {
 function renderDispatchExecutionPanel() {
   return `
     <section class="stack-panel">
-      <div class="stack-title"><span class="material-symbols-outlined">sms</span>Dispatch execution</div>
+      <div class="stack-title"><span class="material-symbols-outlined">sms</span>알림 전송 처리</div>
       <div class="live-sync-grid">
         <article class="live-sync-card">
-          <div class="live-sync-label">Attempts</div>
+          <div class="live-sync-label">시도 횟수</div>
           <div class="live-sync-value">${escapeHtml(String(deviceMeta.dispatchExecutionTotal || 0))}</div>
           <div class="live-sync-copy">
             ${
               deviceMeta.dispatchExecutionLastLoadedAt
-                ? `Executed at ${escapeHtml(formatClock(new Date(deviceMeta.dispatchExecutionLastLoadedAt)))}`
-                : "No execution result has been recorded yet."
+                ? `실행 시각 ${escapeHtml(formatClock(new Date(deviceMeta.dispatchExecutionLastLoadedAt)))}`
+                : "기록된 전송 처리 결과가 없습니다."
             }
           </div>
         </article>
         <article class="live-sync-card">
-          <div class="live-sync-label">Latest result</div>
-          <div class="live-sync-value">${escapeHtml(deviceMeta.dispatchExecutions[0]?.riskLevel || "IDLE")}</div>
+          <div class="live-sync-label">최근 결과</div>
+          <div class="live-sync-value">${escapeUiMessage(deviceMeta.dispatchExecutions[0]?.riskLevel || "IDLE")}</div>
           <div class="live-sync-copy">
             ${
               deviceMeta.dispatchExecutions[0]
-                ? escapeHtml(deviceMeta.dispatchExecutions[0].title || "Dispatch execution ready.")
-                : escapeHtml(deviceMeta.dispatchExecutionError || "The execution feed is waiting for the first dispatch bundle.")
+                ? escapeHtml(deviceMeta.dispatchExecutions[0].title || "알림 전송 처리가 준비됐습니다.")
+                : escapeHtml(deviceMeta.dispatchExecutionError || "첫 알림 전송 묶음을 기다리고 있습니다.")
             }
           </div>
         </article>
@@ -3894,16 +3899,16 @@ function renderDispatchExecutionPanel() {
                 (attempt) => `
                   <article class="history-item">
                     <div class="history-main">
-                      <div class="history-title">${escapeHtml(attempt.title || "Dispatch execution")} · ${escapeHtml(attempt.riskLevel || "INFO")}</div>
+                      <div class="history-title">${escapeHtml(attempt.title || "알림 전송 처리")} · ${escapeUiMessage(attempt.riskLevel || "INFO")}</div>
                       <div class="history-detail">
-                        ${escapeHtml(`${attempt.summary?.simulated_sent || 0} simulated / ${attempt.summary?.failed || 0} failed / ${attempt.summary?.skipped || 0} skipped`)}
+                        ${escapeHtml(`${attempt.summary?.simulated_sent || 0}건 모의 전송 / ${attempt.summary?.failed || 0}건 실패 / ${attempt.summary?.skipped || 0}건 생략`)}
                       </div>
                       <div class="channel-badge-row">
                         ${(Array.isArray(attempt.channels) ? attempt.channels : [])
                           .slice(0, 6)
                           .map(
                             (channel) => `
-                              <span class="channel-badge ${String(channel.executionStatus || "").toLowerCase()}">${escapeHtml(channel.label)} · ${escapeHtml(channel.executionStatus || "UNKNOWN")}</span>
+                              <span class="channel-badge ${String(channel.executionStatus || "").toLowerCase()}">${escapeUiMessage(channel.label)} · ${escapeUiMessage(channel.executionStatus || "UNKNOWN")}</span>
                             `,
                           )
                           .join("")}
@@ -3913,7 +3918,7 @@ function renderDispatchExecutionPanel() {
                   </article>
                 `,
               ).join("")
-            : `<div class="empty-copy">${escapeHtml(deviceMeta.dispatchExecutionError || "No dispatch execution has been simulated yet.")}</div>`
+            : `<div class="empty-copy">${escapeHtml(deviceMeta.dispatchExecutionError || "모의 실행한 알림 전송이 없습니다.")}</div>`
         }
       </div>
     </section>
@@ -3923,23 +3928,23 @@ function renderDispatchExecutionPanel() {
 function renderDispatchQueuePanelStageAware() {
   return `
     <section class="stack-panel">
-      <div class="stack-title"><span class="material-symbols-outlined">send_to_mobile</span>Dispatch queue</div>
+      <div class="stack-title"><span class="material-symbols-outlined">send_to_mobile</span>알림 전송 대기열</div>
       <div class="live-sync-grid">
         <article class="live-sync-card">
-          <div class="live-sync-label">Bundles</div>
+          <div class="live-sync-label">전송 묶음</div>
           <div class="live-sync-value">${escapeHtml(String(deviceMeta.dispatchTotal || 0))}</div>
           <div class="live-sync-copy">
             ${
               deviceMeta.dispatchLastLoadedAt
-                ? `Updated at ${escapeHtml(formatClock(new Date(deviceMeta.dispatchLastLoadedAt)))}`
-                : "No dispatch bundle has been loaded yet."
+                ? `갱신 시각 ${escapeHtml(formatClock(new Date(deviceMeta.dispatchLastLoadedAt)))}`
+                : "아직 알림 전송 묶음을 불러오지 않았습니다."
             }
           </div>
         </article>
         <article class="live-sync-card">
-          <div class="live-sync-label">Device</div>
-          <div class="live-sync-value">${escapeHtml(String(state.device.platform || "android").toUpperCase())}</div>
-          <div class="live-sync-copy">${escapeHtml(state.device.deviceName || "Primary Phone")}</div>
+          <div class="live-sync-label">기기</div>
+          <div class="live-sync-value">${escapeHtml(formatUiLabel(String(state.device.platform || "android")))}</div>
+          <div class="live-sync-copy">${escapeUiMessage(state.device.deviceName || "기본 휴대폰")}</div>
         </article>
       </div>
       <div class="history-list">
@@ -3949,9 +3954,9 @@ function renderDispatchQueuePanelStageAware() {
                 (bundle) => `
                   <article class="history-item">
                     <div class="history-main">
-                      <div class="history-title">${escapeHtml(bundle.title || "Dispatch bundle")} · ${escapeHtml(bundle.riskLevel || "INFO")} · ${escapeHtml(bundle.escalationLabel || "Initial")}</div>
+                      <div class="history-title">${escapeHtml(bundle.title || "알림 전송 묶음")} · ${escapeUiMessage(bundle.riskLevel || "INFO")} · ${escapeHtml(bundle.escalationLabel || "첫 알림")}</div>
                       <div class="history-detail">
-                        ${escapeHtml(`${bundle.summary?.queued || 0} queued / ${bundle.summary?.blocked || 0} blocked / ${bundle.summary?.disabled || 0} disabled / +${bundle.secondsSinceTrigger || 0}s`)}
+                        ${escapeHtml(`${bundle.summary?.queued || 0}건 대기 / ${bundle.summary?.blocked || 0}건 차단 / ${bundle.summary?.disabled || 0}건 꺼짐 / +${bundle.secondsSinceTrigger || 0}초`)}
                       </div>
                       ${renderDeliveryPriorityLine(bundle)}
                       ${renderPlaybackIntensityLine(bundle)}
@@ -3961,7 +3966,7 @@ function renderDispatchQueuePanelStageAware() {
                           .slice(0, 6)
                           .map(
                             (channel) => `
-                              <span class="channel-badge ${String(channel.status || "").toLowerCase()}">${escapeHtml(channel.label)} · ${escapeHtml(channel.status || "UNKNOWN")}</span>
+                              <span class="channel-badge ${String(channel.status || "").toLowerCase()}">${escapeUiMessage(channel.label)} · ${escapeUiMessage(channel.status || "UNKNOWN")}</span>
                             `,
                           )
                           .join("")}
@@ -3971,7 +3976,7 @@ function renderDispatchQueuePanelStageAware() {
                   </article>
                 `,
               ).join("")
-            : `<div class="empty-copy">${escapeHtml(deviceMeta.dispatchError || "No dispatch bundle has been created yet.")}</div>`
+            : `<div class="empty-copy">${escapeHtml(deviceMeta.dispatchError || "생성된 알림 전송 묶음이 없습니다.")}</div>`
         }
       </div>
     </section>
@@ -3981,27 +3986,27 @@ function renderDispatchQueuePanelStageAware() {
 function renderDispatchExecutionPanelStageAware() {
   return `
     <section class="stack-panel">
-      <div class="stack-title"><span class="material-symbols-outlined">sms</span>Dispatch execution</div>
+      <div class="stack-title"><span class="material-symbols-outlined">sms</span>알림 전송 처리</div>
       <div class="live-sync-grid">
         <article class="live-sync-card">
-          <div class="live-sync-label">Attempts</div>
+          <div class="live-sync-label">시도 횟수</div>
           <div class="live-sync-value">${escapeHtml(String(deviceMeta.dispatchExecutionTotal || 0))}</div>
           <div class="live-sync-copy">
             ${
               deviceMeta.dispatchExecutionLastLoadedAt
-                ? `Executed at ${escapeHtml(formatClock(new Date(deviceMeta.dispatchExecutionLastLoadedAt)))}`
-                : "No execution result has been recorded yet."
+                ? `실행 시각 ${escapeHtml(formatClock(new Date(deviceMeta.dispatchExecutionLastLoadedAt)))}`
+                : "기록된 전송 처리 결과가 없습니다."
             }
           </div>
         </article>
         <article class="live-sync-card">
-          <div class="live-sync-label">Latest result</div>
-          <div class="live-sync-value">${escapeHtml(deviceMeta.dispatchExecutions[0]?.riskLevel || "IDLE")}</div>
+          <div class="live-sync-label">최근 결과</div>
+          <div class="live-sync-value">${escapeUiMessage(deviceMeta.dispatchExecutions[0]?.riskLevel || "IDLE")}</div>
           <div class="live-sync-copy">
             ${
               deviceMeta.dispatchExecutions[0]
-                ? escapeHtml(deviceMeta.dispatchExecutions[0].title || "Dispatch execution ready.")
-                : escapeHtml(deviceMeta.dispatchExecutionError || "The execution feed is waiting for the first dispatch bundle.")
+                ? escapeHtml(deviceMeta.dispatchExecutions[0].title || "알림 전송 처리가 준비됐습니다.")
+                : escapeHtml(deviceMeta.dispatchExecutionError || "첫 알림 전송 묶음을 기다리고 있습니다.")
             }
           </div>
         </article>
@@ -4013,9 +4018,9 @@ function renderDispatchExecutionPanelStageAware() {
                 (attempt) => `
                   <article class="history-item">
                     <div class="history-main">
-                      <div class="history-title">${escapeHtml(attempt.title || "Dispatch execution")} · ${escapeHtml(attempt.riskLevel || "INFO")} · ${escapeHtml(attempt.escalationLabel || "Initial")}</div>
+                      <div class="history-title">${escapeHtml(attempt.title || "알림 전송 처리")} · ${escapeUiMessage(attempt.riskLevel || "INFO")} · ${escapeHtml(attempt.escalationLabel || "첫 알림")}</div>
                       <div class="history-detail">
-                        ${escapeHtml(`${attempt.summary?.simulated_sent || 0} simulated / ${attempt.summary?.failed || 0} failed / ${attempt.summary?.skipped || 0} skipped / +${attempt.secondsSinceTrigger || 0}s`)}
+                        ${escapeHtml(`${attempt.summary?.simulated_sent || 0}건 모의 전송 / ${attempt.summary?.failed || 0}건 실패 / ${attempt.summary?.skipped || 0}건 생략 / +${attempt.secondsSinceTrigger || 0}초`)}
                       </div>
                       ${renderDeliveryPriorityLine(attempt)}
                       ${renderPlaybackIntensityLine(attempt)}
@@ -4025,7 +4030,7 @@ function renderDispatchExecutionPanelStageAware() {
                           .slice(0, 6)
                           .map(
                             (channel) => `
-                              <span class="channel-badge ${String(channel.executionStatus || "").toLowerCase()}">${escapeHtml(channel.label)} · ${escapeHtml(channel.executionStatus || "UNKNOWN")}</span>
+                              <span class="channel-badge ${String(channel.executionStatus || "").toLowerCase()}">${escapeUiMessage(channel.label)} · ${escapeUiMessage(channel.executionStatus || "UNKNOWN")}</span>
                             `,
                           )
                           .join("")}
@@ -4035,7 +4040,7 @@ function renderDispatchExecutionPanelStageAware() {
                   </article>
                 `,
               ).join("")
-            : `<div class="empty-copy">${escapeHtml(deviceMeta.dispatchExecutionError || "No dispatch execution has been simulated yet.")}</div>`
+            : `<div class="empty-copy">${escapeHtml(deviceMeta.dispatchExecutionError || "모의 실행한 알림 전송이 없습니다.")}</div>`
         }
       </div>
     </section>
@@ -4044,31 +4049,31 @@ function renderDispatchExecutionPanelStageAware() {
 
 function renderPushAdapterPreviewPanel() {
   const preview = deviceMeta.pushPreview;
-  const statusLabel = String(preview?.status || "idle").toUpperCase();
-  const adapterLabel = String(preview?.adapter || "fcm").toUpperCase();
+  const statusLabel = formatUiLabel(String(preview?.status || "idle"));
+  const adapterLabel = formatUiLabel(String(preview?.adapter || "fcm"));
   const envelopeJson = preview?.envelope ? JSON.stringify(preview.envelope, null, 2) : "";
   const detailCopy =
     preview?.reason ||
     deviceMeta.pushPreviewError ||
-    "The server has not prepared a push adapter envelope yet.";
+    "서버에서 아직 푸시 전송 요청을 준비하지 않았습니다.";
 
   return `
     <section class="stack-panel">
-      <div class="stack-title"><span class="material-symbols-outlined">quickreply</span>Push Adapter Preview</div>
+      <div class="stack-title"><span class="material-symbols-outlined">quickreply</span>푸시 요청 미리보기</div>
       <div class="live-sync-grid">
         <article class="live-sync-card">
-          <div class="live-sync-label">Status</div>
+          <div class="live-sync-label">상태</div>
           <div class="live-sync-value">${escapeHtml(statusLabel)}</div>
-          <div class="live-sync-copy">${escapeHtml(detailCopy)}</div>
+          <div class="live-sync-copy">${escapeUiMessage(detailCopy)}</div>
         </article>
         <article class="live-sync-card">
-          <div class="live-sync-label">Adapter</div>
+          <div class="live-sync-label">전송 방식</div>
           <div class="live-sync-value">${escapeHtml(adapterLabel)}</div>
           <div class="live-sync-copy">
             ${
               preview?.target?.tokenMasked
-                ? `Token ${escapeHtml(preview.target.tokenMasked)}`
-                : "No registered token yet."
+                ? `토큰 ${escapeHtml(preview.target.tokenMasked)}`
+                : "등록된 토큰이 없습니다."
             }
           </div>
         </article>
@@ -4076,14 +4081,14 @@ function renderPushAdapterPreviewPanel() {
       <div class="sample-copy">
         ${
           deviceMeta.pushPreviewLoadedAt
-            ? `Updated at ${escapeHtml(formatClock(new Date(deviceMeta.pushPreviewLoadedAt)))}`
-            : "Waiting for the first preview refresh."
+            ? `갱신 시각 ${escapeHtml(formatClock(new Date(deviceMeta.pushPreviewLoadedAt)))}`
+            : "첫 전송 미리보기를 기다리고 있습니다."
         }
       </div>
       ${
         envelopeJson
           ? `<pre class="payload-preview">${escapeHtml(envelopeJson)}</pre>`
-          : `<div class="empty-copy">${escapeHtml(detailCopy)}</div>`
+          : `<div class="empty-copy">${escapeUiMessage(detailCopy)}</div>`
       }
     </section>
   `;
@@ -4091,37 +4096,37 @@ function renderPushAdapterPreviewPanel() {
 
 function renderFcmAuthPanel() {
   const auth = deviceMeta.fcmAuthStatus;
-  const strategy = String(auth?.authStrategy || "none").toUpperCase();
-  const tokenStatus = String(auth?.accessTokenStatus || "idle").toUpperCase();
+  const strategy = formatUiLabel(String(auth?.authStrategy || "none"));
+  const tokenStatus = formatUiLabel(String(auth?.accessTokenStatus || "idle"));
   const detailCopy =
     auth?.reason ||
     deviceMeta.fcmAuthStatusError ||
     (auth?.accessTokenStatus === "ready"
       ? auth?.accessTokenExpiresAt
-        ? `Access token cached until ${formatClock(new Date(auth.accessTokenExpiresAt))}.`
-        : "Manual bearer token is ready."
-      : "FCM auth has not been checked yet.");
+        ? `인증 토큰 유효 시각: ${formatClock(new Date(auth.accessTokenExpiresAt))}.`
+        : "직접 입력한 인증 토큰이 준비됐습니다."
+      : "구글 푸시 인증 상태를 아직 확인하지 않았습니다.");
 
   return `
     <section class="stack-panel">
-      <div class="stack-title"><span class="material-symbols-outlined">verified_user</span>FCM Auth Health</div>
+      <div class="stack-title"><span class="material-symbols-outlined">verified_user</span>구글 푸시(FCM) 인증 상태</div>
       <div class="live-sync-grid">
         <article class="live-sync-card">
-          <div class="live-sync-label">Strategy</div>
+          <div class="live-sync-label">인증 방식</div>
           <div class="live-sync-value">${escapeHtml(strategy)}</div>
-          <div class="live-sync-copy">${escapeHtml(auth?.serviceAccountEmail || auth?.serviceAccountFilePath || "No service account configured.")}</div>
+          <div class="live-sync-copy">${escapeHtml(auth?.serviceAccountEmail || auth?.serviceAccountFilePath || "서비스 계정이 설정되지 않았습니다.")}</div>
         </article>
         <article class="live-sync-card">
-          <div class="live-sync-label">Token</div>
+          <div class="live-sync-label">인증 토큰</div>
           <div class="live-sync-value">${escapeHtml(tokenStatus)}</div>
-          <div class="live-sync-copy">${escapeHtml(detailCopy)}</div>
+          <div class="live-sync-copy">${escapeUiMessage(detailCopy)}</div>
         </article>
       </div>
       <div class="sample-copy">
         ${
           auth?.projectId
-            ? `Project ${escapeHtml(auth.projectId)} · ${escapeHtml(String(auth.accessTokenCacheStatus || "none").toUpperCase())}`
-            : "FCM project id is not configured yet."
+            ? `프로젝트 ${escapeHtml(auth.projectId)} · ${escapeHtml(formatUiLabel(String(auth.accessTokenCacheStatus || "none")))}`
+            : "구글 푸시 프로젝트가 아직 설정되지 않았습니다."
         }
       </div>
     </section>
@@ -4143,13 +4148,13 @@ function runPushGatewayCurrentBundle() {
         deviceMeta.pushGatewayAttemptTotal = Number(payload.totalAttempts) || deviceMeta.pushGatewayAttempts.length;
         deviceMeta.pushGatewayLastAttemptAt = payload.attempt.createdAt || new Date().toISOString();
       }
-      pushHistory("Push gateway checked", payload?.attempt?.reason || "The provider handoff was recorded.");
+      pushHistory("푸시 전송 확인", payload?.attempt?.reason || "제공처로 보낸 전송 요청을 기록했습니다.");
       queueAlarmRuntimeRefresh(0);
       render();
     })
     .catch((error) => {
       deviceMeta.pushGatewayDispatchStatus = "error";
-      deviceMeta.pushGatewayDispatchError = error instanceof Error ? error.message : "Unknown push gateway error.";
+      deviceMeta.pushGatewayDispatchError = userErrorMessage(error, "푸시 전송 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.");
       render();
     });
 }
@@ -4161,7 +4166,7 @@ function runPushGatewayTestBundle() {
 
   runPushGatewayTestDispatch({
     routeNumber: state.live.routeNumber || state.live.routeId || state.commute.primaryLineId || "1002",
-    stopName: state.live.stationName || state.commute.selectedStopId || "Registered stop",
+    stopName: state.live.stationName || state.commute.selectedStopId || "등록된 정류장",
     riskLevel: "RED",
   })
     .then((payload) => {
@@ -4172,13 +4177,13 @@ function runPushGatewayTestBundle() {
         deviceMeta.pushGatewayAttemptTotal = Number(payload.totalAttempts) || deviceMeta.pushGatewayAttempts.length;
         deviceMeta.pushGatewayLastAttemptAt = payload.attempt.createdAt || new Date().toISOString();
       }
-      pushHistory("Test push checked", payload?.attempt?.reason || "The test push handoff was recorded.");
+      pushHistory("시험 알림 확인", payload?.attempt?.reason || "시험 알림 전송 요청을 기록했습니다.");
       queueAlarmRuntimeRefresh(0);
       render();
     })
     .catch((error) => {
       deviceMeta.pushGatewayDispatchStatus = "error";
-      deviceMeta.pushGatewayDispatchError = error instanceof Error ? error.message : "Unknown test push error.";
+      deviceMeta.pushGatewayDispatchError = userErrorMessage(error, "시험 알림 전송 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.");
       render();
     });
 }
@@ -4192,7 +4197,7 @@ function runPushGatewayRetrySimulationAction(action, outcome = "success") {
     action,
     outcome,
     routeNumber: state.live.routeNumber || state.live.routeId || state.commute.primaryLineId || "1002",
-    stopName: state.live.stationName || state.commute.selectedStopId || "Registered stop",
+    stopName: state.live.stationName || state.commute.selectedStopId || "등록된 정류장",
     riskLevel: "RED",
   })
     .then((payload) => {
@@ -4201,21 +4206,21 @@ function runPushGatewayRetrySimulationAction(action, outcome = "success") {
       applyPushGatewaySummary(payload?.pushGateway || {}, payload?.savedAt || new Date().toISOString());
       const historyTitle =
         action === "seed-retryable-failure"
-          ? "Retry simulation seeded"
+          ? "재시도 시험 준비 완료"
           : action === "clear-simulation"
-            ? "Retry simulation cleared"
+            ? "재시도 시험 기록 초기화"
             : outcome === "hard-failure"
-              ? "Due retry replayed as hard failure"
+              ? "재시도를 영구 실패로 모의 실행"
               : outcome === "retryable-failure"
-                ? "Due retry replayed as retryable failure"
-                : "Due retry replayed as success";
-      pushHistory(historyTitle, payload?.attempt?.reason || "The retry simulation completed.");
+                ? "재시도를 일시 실패로 모의 실행"
+                : "재시도를 성공으로 모의 실행";
+      pushHistory(historyTitle, payload?.attempt?.reason || "재시도 모의 실행을 완료했습니다.");
       queueAlarmRuntimeRefresh(0);
       render();
     })
     .catch((error) => {
       deviceMeta.pushGatewayDispatchStatus = "error";
-      deviceMeta.pushGatewayDispatchError = error instanceof Error ? error.message : "Unknown retry simulation error.";
+      deviceMeta.pushGatewayDispatchError = userErrorMessage(error, "재시도 모의 실행 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.");
       render();
     });
 }
@@ -4225,7 +4230,7 @@ function renderPushGatewayPanel() {
   const activeAdapter = String(deviceMeta.pushPreview?.adapter || "fcm");
   const adapterConfig = config?.adapters?.[activeAdapter] || null;
   const adapterStrategy =
-    activeAdapter === "fcm" ? String(adapterConfig?.authStrategy || "none").toUpperCase() : "DRY_RUN";
+    activeAdapter === "fcm" ? formatUiLabel(String(adapterConfig?.authStrategy || "none")) : "DRY_RUN";
   const nextRetryPriorityClass = String(deviceMeta.pushGatewayNextRetryDeliveryPriorityClass || "").trim().toLowerCase();
   const standardBackoff = Array.isArray(deviceMeta.pushGatewayPriorityBackoffSeconds?.standard)
     ? deviceMeta.pushGatewayPriorityBackoffSeconds.standard
@@ -4235,78 +4240,78 @@ function renderPushGatewayPanel() {
     : [];
   const statusCopy =
     deviceMeta.pushGatewayDispatchStatus === "sending"
-      ? "Sending or recording the provider handoff..."
+      ? "전송 요청을 보내거나 기록하고 있습니다…"
       : deviceMeta.pushGatewayDispatchStatus === "error"
-        ? deviceMeta.pushGatewayDispatchError || "The push gateway action failed."
+        ? deviceMeta.pushGatewayDispatchError || "푸시 전송 요청을 처리하지 못했습니다."
           : deviceMeta.pushGatewayDispatchStatus === "sent"
             ? deviceMeta.pushGatewayLastAttemptAt
-              ? `Last checked at ${escapeHtml(formatClock(new Date(deviceMeta.pushGatewayLastAttemptAt)))}` 
-              : "The latest push gateway attempt was recorded."
-          : "New dispatch bundles are now handed off automatically, and you can still run manual dry-runs or test pushes.";
+              ? `마지막 확인 ${escapeHtml(formatClock(new Date(deviceMeta.pushGatewayLastAttemptAt)))}`
+              : "최근 푸시 전송 시도를 기록했습니다."
+          : "새 알림 전송 묶음은 자동 처리됩니다. 직접 모의 실행하거나 시험 알림을 보낼 수도 있습니다.";
 
   return `
     <section class="stack-panel" id="push-gateway-panel">
-      <div class="stack-title"><span class="material-symbols-outlined">outgoing_mail</span>Push Gateway</div>
+      <div class="stack-title"><span class="material-symbols-outlined">outgoing_mail</span>푸시 전송</div>
       <div class="live-sync-grid">
         <article class="live-sync-card">
-          <div class="live-sync-label">Mode</div>
-          <div class="live-sync-value">${escapeHtml(String(config?.mode || "preview").toUpperCase())}</div>
-          <div class="live-sync-copy">${escapeHtml(statusCopy)}</div>
+          <div class="live-sync-label">동작 모드</div>
+          <div class="live-sync-value">${escapeHtml(formatUiLabel(String(config?.mode || "preview")))}</div>
+          <div class="live-sync-copy">${escapeUiMessage(statusCopy)}</div>
         </article>
         <article class="live-sync-card">
-          <div class="live-sync-label">Active Adapter</div>
-          <div class="live-sync-value">${escapeHtml(activeAdapter.toUpperCase())}</div>
+          <div class="live-sync-label">사용 중인 전송 방식</div>
+          <div class="live-sync-value">${escapeHtml(formatUiLabel(activeAdapter))}</div>
           <div class="live-sync-copy">
             ${escapeHtml(
               adapterConfig?.configured
                 ? adapterConfig.executeSupported
-                  ? `Credentials are present for this adapter via ${adapterStrategy}.`
-                  : adapterConfig.limitation || "This adapter is limited to preview mode in the prototype."
-                : deviceMeta.pushGatewayConfigError || "Credentials are missing for this adapter.",
+                  ? `${adapterStrategy} 방식의 인증 정보가 설정되어 있습니다.`
+                  : adapterConfig.limitation || "이 전송 방식은 현재 미리보기만 지원합니다."
+                : deviceMeta.pushGatewayConfigError || "이 전송 방식에 필요한 인증 정보가 없습니다.",
             )}
           </div>
         </article>
         <article class="live-sync-card">
-          <div class="live-sync-label">Auto Handled</div>
+          <div class="live-sync-label">자동 처리</div>
           <div class="live-sync-value">${escapeHtml(String(deviceMeta.pushGatewayHandledDispatchKeys || 0))}</div>
           <div class="live-sync-copy">
             ${
               deviceMeta.pushGatewayDateKey
-                ? `Dispatch keys already auto-handed off for ${escapeHtml(deviceMeta.pushGatewayDateKey)}.`
-                : "No automatic push handoff has been recorded for the current day yet."
+                ? `${escapeHtml(deviceMeta.pushGatewayDateKey)}에 자동 처리한 전송 항목입니다.`
+                : "오늘 자동 푸시 전송 기록이 없습니다."
             }
           </div>
         </article>
         <article class="live-sync-card">
-          <div class="live-sync-label">Retry Queue</div>
+          <div class="live-sync-label">재시도 대기열</div>
           <div class="live-sync-value">${escapeHtml(String(deviceMeta.pushGatewayRetryPending || 0))}</div>
           <div class="live-sync-copy">
             ${
               deviceMeta.pushGatewayNextRetryAt
                 ? `${
-                    nextRetryPriorityClass === "boosted" ? "Next boosted first-alarm retry" : "Next retry"
+                    nextRetryPriorityClass === "boosted" ? "다음 첫 알림 강화 전송 재시도" : "다음 재시도"
                   } at ${escapeHtml(formatClock(new Date(deviceMeta.pushGatewayNextRetryAt)))}.`
-                : "Only failed provider handoffs enter retry, and none are waiting right now."
+                : "전송에 실패한 요청만 재시도하며, 현재 대기 중인 항목은 없습니다."
             }
           </div>
         </article>
       </div>
       <div class="sample-copy">
-        Auto retry runs only for provider failures such as network errors, HTTP 429, or HTTP 5xx.
+        자동 재시도는 네트워크 오류, 요청 한도 초과(429), 서버 오류(5xx) 같은 일시 오류에만 실행됩니다.
         ${
           standardBackoff.length
-            ? ` Standard retry: ${escapeHtml(standardBackoff.join("s / "))}s.`
+            ? ` 기본 재시도: ${escapeHtml(standardBackoff.join("s / "))}s.`
             : ""
         }
         ${
           boostedBackoff.length
-            ? ` Boosted first-alarm retry: ${escapeHtml(boostedBackoff.join("s / "))}s.`
+            ? ` 첫 알림 강화 재시도: ${escapeHtml(boostedBackoff.join("s / "))}s.`
             : ""
         }
       </div>
       ${
         deviceMeta.pushGatewayBoostedRetryPending
-          ? `<div class="quick-actions-copy">${escapeHtml(`${deviceMeta.pushGatewayBoostedRetryPending} queued retry item(s) are using the boosted first-alarm policy because those alarms came from historically unstable routes.`)}</div>`
+          ? `<div class="quick-actions-copy">${escapeHtml(`변동이 큰 노선의 재시도 ${deviceMeta.pushGatewayBoostedRetryPending}건에 첫 알림 강화 기준을 적용합니다.`)}</div>`
           : ""
       }
       ${
@@ -4318,14 +4323,14 @@ function renderPushGatewayPanel() {
                   (item) => `
                     <article class="retry-queue-item" data-focus-kind="retry-queue" data-focus-key="${escapeHtml(item.dispatchKey || "")}">
                       <div>
-                        <div class="retry-queue-title">${escapeHtml(item.title || `${item.routeNumber || "Route"} retry`)}</div>
+                        <div class="retry-queue-title">${escapeHtml(item.title || `${item.routeNumber || "노선"} 재시도`)}</div>
                         <div class="retry-queue-copy">
                           ${escapeHtml(
                             [
-                              item.routeNumber ? `Route ${item.routeNumber}` : "",
+                              item.routeNumber ? `노선 ${item.routeNumber}` : "",
                               item.stopName || "",
                               item.escalationLabel || "",
-                              Number(item.retryAttempt) ? `Attempt ${item.retryAttempt}` : "",
+                              Number(item.retryAttempt) ? `시도 ${item.retryAttempt}` : "",
                               item.retryProfileLabel || "",
                             ]
                               .filter(Boolean)
@@ -4350,9 +4355,9 @@ function renderPushGatewayPanel() {
           ${
             deviceMeta.dispatchBundles.length
               ? deviceMeta.pushGatewayConfig?.mode === "execute"
-                ? "Send Current Gateway Bundle"
-                : "Preview Current Gateway Request"
-              : "No Active Bundle"
+                ? "현재 알림 전송"
+                : "현재 전송 요청 미리보기"
+              : "전송할 알림 없음"
           }
         </button>
         <button
@@ -4366,14 +4371,14 @@ function renderPushGatewayPanel() {
               : ""
           }
         >
-          ${deviceMeta.pushGatewayDispatchStatus === "sending" ? "Sending Test Push..." : "Run Test Push"}
+          ${deviceMeta.pushGatewayDispatchStatus === "sending" ? "시험 알림 전송 중…" : "시험 알림 보내기"}
         </button>
       </div>
       <div class="quick-actions">
         ${
           state.device.platform === "web"
             ? `<button class="soft-button wide" data-action="subscribe-web-push" ${deviceMeta.tokenRegisterStatus === "sending" ? "disabled" : ""}>
-                 ${deviceMeta.tokenRegisterStatus === "sending" ? "Subscribing Browser..." : "Enable Browser Push"}
+                 ${deviceMeta.tokenRegisterStatus === "sending" ? "브라우저 알림 등록 중…" : "브라우저 푸시 알림 켜기"}
                </button>`
             : ""
         }
@@ -4382,7 +4387,7 @@ function renderPushGatewayPanel() {
           data-action="seed-push-retry-simulation"
           ${deviceMeta.pushGatewayDispatchStatus === "sending" ? "disabled" : ""}
         >
-          ${deviceMeta.pushGatewayDispatchStatus === "sending" ? "Preparing Retry Demo..." : "Simulate Retryable Failure"}
+          ${deviceMeta.pushGatewayDispatchStatus === "sending" ? "재시도 시험 준비 중…" : "일시 실패 모의 실행"}
         </button>
         <button
           class="soft-button wide"
@@ -4393,7 +4398,7 @@ function renderPushGatewayPanel() {
               : ""
           }
         >
-          ${deviceMeta.pushGatewayDispatchStatus === "sending" ? "Running Due Retry..." : "Run Due Retry"}
+          ${deviceMeta.pushGatewayDispatchStatus === "sending" ? "대기 중인 재시도 실행 중…" : "대기 중인 재시도 실행"}
         </button>
       </div>
       <div class="quick-actions">
@@ -4406,7 +4411,7 @@ function renderPushGatewayPanel() {
               : ""
           }
         >
-          ${deviceMeta.pushGatewayDispatchStatus === "sending" ? "Running Hard Fail Demo..." : "Run Due Retry as 400"}
+          ${deviceMeta.pushGatewayDispatchStatus === "sending" ? "영구 실패 시험 중…" : "재시도 시험: 요청 오류(400)"}
         </button>
         <button
           class="soft-button wide"
@@ -4417,7 +4422,7 @@ function renderPushGatewayPanel() {
               : ""
           }
         >
-          ${deviceMeta.pushGatewayDispatchStatus === "sending" ? "Running 503 Demo..." : "Run Due Retry as 503"}
+          ${deviceMeta.pushGatewayDispatchStatus === "sending" ? "서버 오류 시험 중…" : "재시도 시험: 서버 오류(503)"}
         </button>
         <button
           class="soft-button wide"
@@ -4429,7 +4434,7 @@ function renderPushGatewayPanel() {
               : ""
           }
         >
-          ${deviceMeta.pushGatewayDispatchStatus === "sending" ? "Clearing Demo..." : "Clear Simulation Records"}
+          ${deviceMeta.pushGatewayDispatchStatus === "sending" ? "시험 기록 초기화 중…" : "모의 실행 기록 초기화"}
         </button>
       </div>
       <div class="history-list">
@@ -4439,13 +4444,13 @@ function renderPushGatewayPanel() {
                 (attempt) => `
                   <article class="history-item">
                     <div class="history-main">
-                      <div class="history-title">${escapeHtml(attempt.title || "Push gateway attempt")} · ${escapeHtml(attempt.status || "UNKNOWN")}</div>
+                      <div class="history-title">${escapeHtml(attempt.title || "푸시 전송 시도")} · ${escapeUiMessage(attempt.status || "UNKNOWN")}</div>
                       <div class="history-detail">
-                        ${escapeHtml(attempt.reason || "No detail.")}
+                        ${escapeUiMessage(attempt.reason || "상세 정보가 없습니다.")}
                         ${
                           attempt.routeNumber || attempt.stopName
                             ? `<br /><span>${escapeHtml(
-                                [attempt.routeNumber ? `Route ${attempt.routeNumber}` : "", attempt.stopName || ""]
+                                [attempt.routeNumber ? `노선 ${attempt.routeNumber}` : "", attempt.stopName || ""]
                                   .filter(Boolean)
                                   .join(" · "),
                               )}</span>`
@@ -4456,17 +4461,17 @@ function renderPushGatewayPanel() {
                       ${renderPlaybackIntensityLine(attempt)}
                       ${renderConservativeContextLine(attempt)}
                       <div class="channel-badge-row">
-                        <span class="channel-badge ${String(attempt.adapter || "").toLowerCase()}">${escapeHtml(String(attempt.adapter || "adapter").toUpperCase())}</span>
-                        <span class="channel-badge ${String(attempt.mode || "").toLowerCase()}">${escapeHtml(String(attempt.mode || "preview").toUpperCase())}</span>
-                        <span class="channel-badge ${String(attempt.origin || "").toLowerCase()}">${escapeHtml(String(attempt.origin || "manual").toUpperCase())}</span>
+                        <span class="channel-badge ${String(attempt.adapter || "").toLowerCase()}">${escapeHtml(formatUiLabel(String(attempt.adapter || "adapter")))}</span>
+                        <span class="channel-badge ${String(attempt.mode || "").toLowerCase()}">${escapeHtml(formatUiLabel(String(attempt.mode || "preview")))}</span>
+                        <span class="channel-badge ${String(attempt.origin || "").toLowerCase()}">${escapeHtml(formatUiLabel(String(attempt.origin || "manual")))}</span>
                         ${
                           Number(attempt.retryAttempt) > 0
-                            ? `<span class="channel-badge test">RETRY ${escapeHtml(String(attempt.retryAttempt))}</span>`
+                            ? `<span class="channel-badge test">재시도 ${escapeHtml(String(attempt.retryAttempt))}회</span>`
                             : ""
                         }
                         ${
                           attempt.response?.authSource
-                            ? `<span class="channel-badge ready">${escapeHtml(String(attempt.response.authSource).toUpperCase())}</span>`
+                            ? `<span class="channel-badge ready">${escapeHtml(formatUiLabel(String(attempt.response.authSource)))}</span>`
                             : ""
                         }
                       </div>
@@ -4475,7 +4480,7 @@ function renderPushGatewayPanel() {
                   </article>
                 `,
               ).join("")
-            : `<div class="empty-copy">${escapeHtml(deviceMeta.pushGatewayAttemptsError || "No push gateway attempt has been recorded yet.")}</div>`
+            : `<div class="empty-copy">${escapeHtml(deviceMeta.pushGatewayAttemptsError || "푸시 전송 시도 기록이 없습니다.")}</div>`
         }
       </div>
     </section>
@@ -4486,40 +4491,40 @@ function renderDeviceDeliveryPanel() {
   const tokenHealth = deviceMeta.tokenHealth;
   const deviceStatusCopy =
     deviceMeta.syncStatus === "pending"
-      ? "Changes queued for device sync."
+      ? "기기 설정 동기화를 기다리고 있습니다."
       : deviceMeta.syncStatus === "syncing"
-        ? "Saving the device delivery profile..."
+        ? "기기 알림 설정을 저장하고 있습니다."
         : deviceMeta.syncStatus === "synced"
           ? deviceMeta.lastSyncedAt
-            ? `Synced at ${escapeHtml(formatClock(new Date(deviceMeta.lastSyncedAt)))}`
-            : "Synced"
+            ? `동기화 시각 ${escapeHtml(formatClock(new Date(deviceMeta.lastSyncedAt)))}`
+            : "동기화됨"
           : deviceMeta.syncStatus === "error"
-            ? deviceMeta.lastError || "Device sync failed."
-            : "Waiting for changes.";
+            ? deviceMeta.lastError || "기기 설정을 저장하지 못했습니다."
+            : "변경 사항을 기다리고 있습니다.";
   const tokenStatusCopy =
     deviceMeta.tokenRegisterStatus === "sending"
-      ? "Normalizing and registering the current token on the server..."
+      ? "토큰 형식을 확인하고 서버에 등록하고 있습니다."
       : deviceMeta.tokenRegisterStatus === "error"
-        ? deviceMeta.tokenRegisterError || "Device token registration failed."
-        : tokenHealth?.reason || deviceMeta.tokenHealthError || "Register the current token to verify its platform format.";
+        ? deviceMeta.tokenRegisterError || "기기 토큰을 등록하지 못했습니다."
+        : tokenHealth?.reason || deviceMeta.tokenHealthError || "기기 토큰을 등록하면 해당 기기에서 사용할 수 있는 형식인지 확인합니다.";
   const tokenActionCopy =
-    tokenHealth?.recommendedAction || "Paste a real device token first, then run token registration.";
+    tokenHealth?.recommendedAction || "실제 기기에서 발급받은 토큰을 입력한 뒤 등록하세요.";
 
   return `
     <section class="stack-panel" id="device-delivery-panel">
-      <div class="stack-title"><span class="material-symbols-outlined">smartphone</span>Device Delivery</div>
+      <div class="stack-title"><span class="material-symbols-outlined">smartphone</span>기기 알림 설정</div>
       <div class="field-grid">
         <label class="field-block">
-          <span>Device Name</span>
-          <input type="text" value="${escapeHtml(state.device.deviceName)}" data-field="device.deviceName" />
+          <span>기기 이름</span>
+          <input type="text" value="${escapeUiMessage(state.device.deviceName)}" data-field="device.deviceName" />
         </label>
         <label class="field-block">
-          <span>Platform</span>
+          <span>기기 종류</span>
           <select data-field="device.platform">
             ${["android", "ios", "web"]
               .map(
                 (platform) => `
-                  <option value="${platform}" ${state.device.platform === platform ? "selected" : ""}>${platform.toUpperCase()}</option>
+                  <option value="${platform}" ${state.device.platform === platform ? "selected" : ""}>${formatUiLabel(platform)}</option>
                 `,
               )
               .join("")}
@@ -4527,13 +4532,13 @@ function renderDeviceDeliveryPanel() {
         </label>
       </div>
       <label class="field-block">
-        <span>Push Token</span>
+        <span>푸시 토큰</span>
         <input
           id="device-push-token-input"
           type="text"
           value="${escapeHtml(state.device.pushToken)}"
           data-field="device.pushToken"
-          placeholder="FCM or APNs token placeholder"
+          placeholder="휴대폰의 FCM 또는 APNs 푸시 토큰"
         />
       </label>
       <div class="quick-actions">
@@ -4542,7 +4547,7 @@ function renderDeviceDeliveryPanel() {
           data-action="register-device-token"
           ${!state.device.pushToken.trim() || deviceMeta.tokenRegisterStatus === "sending" ? "disabled" : ""}
         >
-          ${deviceMeta.tokenRegisterStatus === "sending" ? "Registering Token..." : "Register Device Token"}
+          ${deviceMeta.tokenRegisterStatus === "sending" ? "토큰 등록 중…" : "기기 토큰 등록"}
         </button>
         <button
           class="soft-button wide"
@@ -4555,75 +4560,75 @@ function renderDeviceDeliveryPanel() {
               : ""
           }
         >
-          ${deviceMeta.pushGatewayDispatchStatus === "sending" ? "Sending Test Push..." : "Send Test Push"}
+          ${deviceMeta.pushGatewayDispatchStatus === "sending" ? "시험 알림 전송 중…" : "시험 알림 보내기"}
         </button>
       </div>
-      <div class="sample-copy">${escapeHtml(tokenActionCopy)}</div>
+      <div class="sample-copy">${escapeUiMessage(tokenActionCopy)}</div>
       <div class="toggle-row inset">
         <div>
-          <div class="toggle-title">Push Delivery</div>
-          <p class="field-help">Server dispatch bundles will try push first when this is on.</p>
+          <div class="toggle-title">푸시 알림</div>
+          <p class="field-help">켜 두면 서버가 푸시 알림 전송을 먼저 시도합니다.</p>
         </div>
         <button class="toggle ${state.device.pushEnabled ? "on" : ""}" data-action="toggle-field" data-field="device.pushEnabled"><span></span></button>
       </div>
       <div class="toggle-row inset">
         <div>
-          <div class="toggle-title">Full-screen Permission</div>
-          <p class="field-help">Needed for red-level alerts that want a full-screen interruption.</p>
+          <div class="toggle-title">전체 화면 알림 권한</div>
+          <p class="field-help">긴급 알림을 전체 화면으로 표시하려면 휴대폰에서 권한을 허용해야 합니다.</p>
         </div>
         <button class="toggle ${state.device.fullScreenEnabled ? "on" : ""}" data-action="toggle-field" data-field="device.fullScreenEnabled"><span></span></button>
       </div>
       <div class="toggle-row inset">
         <div>
-          <div class="toggle-title">DND Override Granted</div>
-          <p class="field-help">Marks whether the device can legally bypass Do Not Disturb for critical alerts.</p>
+          <div class="toggle-title">방해금지 우회 권한</div>
+          <p class="field-help">휴대폰에서 긴급 알림의 방해금지 우회 권한을 허용했는지 설정합니다.</p>
         </div>
         <button class="toggle ${state.device.dndOverrideGranted ? "on" : ""}" data-action="toggle-field" data-field="device.dndOverrideGranted"><span></span></button>
       </div>
       <div class="toggle-row inset">
         <div>
-          <div class="toggle-title">Battery Optimization Ignored</div>
-          <p class="field-help">Local fallback alarms are more reliable when this is on.</p>
+          <div class="toggle-title">배터리 최적화 제외</div>
+          <p class="field-help">휴대폰에서 배터리 최적화를 제외하면 기기 내 예비 알람의 실행에 도움이 됩니다.</p>
         </div>
         <button class="toggle ${state.device.batteryOptimizationIgnored ? "on" : ""}" data-action="toggle-field" data-field="device.batteryOptimizationIgnored"><span></span></button>
       </div>
       <div class="toggle-grid">
-        <button class="choice-chip ${state.device.localBackupEnabled ? "selected" : ""}" data-action="toggle-field" data-field="device.localBackupEnabled">Local Backup</button>
-        <button class="choice-chip ${state.device.soundEnabled ? "selected" : ""}" data-action="toggle-field" data-field="device.soundEnabled">Sound</button>
-        <button class="choice-chip ${state.device.vibrationEnabled ? "selected" : ""}" data-action="toggle-field" data-field="device.vibrationEnabled">Vibration</button>
-        <button class="choice-chip ${state.device.ttsEnabled ? "selected" : ""}" data-action="toggle-field" data-field="device.ttsEnabled">TTS</button>
+        <button class="choice-chip ${state.device.localBackupEnabled ? "selected" : ""}" data-action="toggle-field" data-field="device.localBackupEnabled">기기 내 예비 알람</button>
+        <button class="choice-chip ${state.device.soundEnabled ? "selected" : ""}" data-action="toggle-field" data-field="device.soundEnabled">소리</button>
+        <button class="choice-chip ${state.device.vibrationEnabled ? "selected" : ""}" data-action="toggle-field" data-field="device.vibrationEnabled">진동</button>
+        <button class="choice-chip ${state.device.ttsEnabled ? "selected" : ""}" data-action="toggle-field" data-field="device.ttsEnabled">음성 안내</button>
       </div>
       <div class="live-sync-grid">
         <article class="live-sync-card">
-          <div class="live-sync-label">Profile</div>
-          <div class="live-sync-value">${escapeHtml(deviceMeta.syncStatus.toUpperCase())}</div>
-          <div class="live-sync-copy">${escapeHtml(deviceStatusCopy)}</div>
+          <div class="live-sync-label">기기 설정</div>
+          <div class="live-sync-value">${escapeHtml(formatUiLabel(deviceMeta.syncStatus))}</div>
+          <div class="live-sync-copy">${escapeUiMessage(deviceStatusCopy)}</div>
         </article>
         <article class="live-sync-card">
-          <div class="live-sync-label">Token Health</div>
-          <div class="live-sync-value">${escapeHtml(String(tokenHealth?.deliveryReadiness || "unknown").toUpperCase())}</div>
-          <div class="live-sync-copy">${escapeHtml(tokenStatusCopy)}</div>
+          <div class="live-sync-label">토큰 상태</div>
+          <div class="live-sync-value">${escapeHtml(formatUiLabel(String(tokenHealth?.deliveryReadiness || "unknown")))}</div>
+          <div class="live-sync-copy">${escapeUiMessage(tokenStatusCopy)}</div>
         </article>
         <article class="live-sync-card">
-          <div class="live-sync-label">Adapter</div>
-          <div class="live-sync-value">${escapeHtml(String(tokenHealth?.adapter || state.device.platform || "fcm").toUpperCase())}</div>
+          <div class="live-sync-label">전송 방식</div>
+          <div class="live-sync-value">${escapeHtml(formatUiLabel(String(tokenHealth?.adapter || state.device.platform || "fcm")))}</div>
           <div class="live-sync-copy">
-            ${escapeHtml(tokenHealth?.tokenMasked || "No token registered yet.")}
+            ${escapeHtml(tokenHealth?.tokenMasked || "등록된 토큰이 없습니다.")}
             ${
               tokenHealth?.tokenKind
-                ? `<br /><span>${escapeHtml(String(tokenHealth.tokenKind).toUpperCase())}</span>`
+                ? `<br /><span>${escapeHtml(formatUiLabel(String(tokenHealth.tokenKind)))}</span>`
                 : ""
             }
           </div>
         </article>
         <article class="live-sync-card">
-          <div class="live-sync-label">Dispatch Queue</div>
+          <div class="live-sync-label">알림 전송 대기열</div>
           <div class="live-sync-value">${escapeHtml(String(deviceMeta.dispatchTotal || 0))}</div>
           <div class="live-sync-copy">
             ${
               deviceMeta.dispatchBundles[0]
-                ? escapeHtml(deviceMeta.dispatchBundles[0].title || "Latest bundle ready.")
-                : escapeHtml(deviceMeta.dispatchError || "No dispatch bundle yet.")
+                ? escapeHtml(deviceMeta.dispatchBundles[0].title || "최근 알림 전송 묶음이 준비됐습니다.")
+                : escapeHtml(deviceMeta.dispatchError || "알림 전송 묶음이 없습니다.")
             }
           </div>
         </article>
@@ -4656,8 +4661,8 @@ function renderServerEventPanel() {
   if (alarmRuntimeMeta.status === "loading" && !alarmRuntimeMeta.events.length) {
     return `
       <section class="stack-panel">
-        <div class="stack-title"><span class="material-symbols-outlined">list_alt</span>Server event log</div>
-        <div class="empty-copy">Loading the latest server-side alarm events.</div>
+        <div class="stack-title"><span class="material-symbols-outlined">list_alt</span>서버 알람 기록</div>
+        <div class="empty-copy">최근 서버 알람 기록을 불러오고 있습니다.</div>
       </section>
     `;
   }
@@ -4665,15 +4670,15 @@ function renderServerEventPanel() {
   if (alarmRuntimeMeta.status === "error" && !alarmRuntimeMeta.events.length) {
     return `
       <section class="stack-panel">
-        <div class="stack-title"><span class="material-symbols-outlined">list_alt</span>Server event log</div>
-        <div class="empty-copy">${escapeHtml(alarmRuntimeMeta.lastError || "Server event feed failed to load.")}</div>
+        <div class="stack-title"><span class="material-symbols-outlined">list_alt</span>서버 알람 기록</div>
+        <div class="empty-copy">${escapeHtml(alarmRuntimeMeta.lastError || "서버 알람 기록을 불러오지 못했습니다.")}</div>
       </section>
     `;
   }
 
   return `
     <section class="stack-panel">
-      <div class="stack-title"><span class="material-symbols-outlined">list_alt</span>Server event log</div>
+      <div class="stack-title"><span class="material-symbols-outlined">list_alt</span>서버 알람 기록</div>
       <div class="history-list">
         ${
           alarmRuntimeMeta.events.length
@@ -4681,8 +4686,8 @@ function renderServerEventPanel() {
                 (item) => `
                   <article class="history-item">
                     <div class="history-main">
-                      <div class="history-title">${escapeHtml(item.title || item.kind || "Alarm event")}</div>
-                      <div class="history-detail">${escapeHtml(item.detail || "No detail.")}</div>
+                      <div class="history-title">${escapeHtml(item.title || item.kind || "알람 기록")}</div>
+                      <div class="history-detail">${escapeHtml(item.detail || "상세 정보가 없습니다.")}</div>
                       ${renderDeliveryPriorityLine(item)}
                       ${renderPlaybackIntensityLine(item)}
                       ${renderConservativeContextLine(item)}
@@ -4691,7 +4696,7 @@ function renderServerEventPanel() {
                   </article>
                 `,
               ).join("")
-            : `<div class="empty-copy">No server event has been written yet.</div>`
+            : `<div class="empty-copy">아직 서버 알람 기록이 없습니다.</div>`
         }
       </div>
     </section>
@@ -4721,17 +4726,17 @@ function renderHome(screen, model) {
       <section class="panel-section">
         <div class="section-heading-row">
           <div>
-            <div class="section-title">Next Buses · Route ${escapeHtml(model.primaryLine.number)}</div>
-            <div class="section-caption">${escapeHtml(model.stop.name)} boarding stop</div>
+            <div class="section-title">다음 버스 · 노선 ${escapeHtml(model.primaryLine.number)}</div>
+            <div class="section-caption">${escapeHtml(model.stop.name)} 탑승 정류장</div>
           </div>
-          <button class="ghost-link" data-action="goto" data-screen="onboarding">Edit commute</button>
+          <button class="ghost-link" data-action="goto" data-screen="onboarding">경로 수정</button>
         </div>
         ${model.risk.results.map((result, index) => renderBusCard(result, index === model.risk.targetResult.index ? "this" : "next", model.primaryLine, model.risk.lastChanceConfirmed && index === model.risk.targetResult.index ? "orange" : "")).join("")}
       </section>
       <section class="message-panel">
         <div class="message-icon"><span class="material-symbols-outlined">tips_and_updates</span></div>
         <div>
-          <div class="message-title">Late-risk guidance</div>
+          <div class="message-title">지각 위험 안내</div>
           <div class="message-body">${escapeHtml(model.risk.message)}</div>
         </div>
       </section>
@@ -4739,10 +4744,10 @@ function renderHome(screen, model) {
       ${renderServerEventPanel()}
       <section class="quick-actions">
         <button class="primary-cta" data-action="departed">
-          <span>I've departed</span>
+          <span>출발했어요</span>
           <span class="material-symbols-outlined">arrow_forward</span>
         </button>
-        <div class="quick-actions-copy">One tap marks the current morning alarm flow as completed.</div>
+        <div class="quick-actions-copy">출발 버튼을 누르면 오늘 남은 알람을 중지합니다.</div>
       </section>
     </main>
     ${renderBottomNav(screen)}
@@ -4756,7 +4761,7 @@ function renderOnboarding() {
   const recommendedStops = getRecommendedStops(2);
   const nearestStop = recommendedStops[0] || null;
   const search = state.ui.routeSearch.trim().toLowerCase();
-  const placeProviderLabel = placeApiConfig.providers?.kakao?.configured ? "Kakao Local REST API" : "Demo address library";
+  const placeProviderLabel = placeApiConfig.providers?.kakao?.configured ? "카카오 장소 검색" : "예시 주소 목록";
   const filteredStops = STOP_LIBRARY.filter((item) => {
     if (!search) return true;
     return `${item.name} ${item.subtitle} ${item.stopCode}`.toLowerCase().includes(search);
@@ -4765,17 +4770,17 @@ function renderOnboarding() {
   return `
     <main class="screen screen-form">
       <section class="progress-shell">
-        <div class="progress-meta"><span>STEP 3 OF 5</span><span>Bus Stop & Route</span></div>
+        <div class="progress-meta"><span>탑승 지점 설정</span><span>정류장과 노선</span></div>
         <div class="progress-track"><div class="progress-fill" style="width:60%"></div></div>
       </section>
       <section class="panel">
-        <div class="panel-title">Commute basics</div>
+        <div class="panel-title">이동 정보</div>
         <div class="field-help">주소 검색은 현재 ${escapeHtml(placeProviderLabel)} 기준으로 동작합니다. 선택한 좌표는 지도와 목적지 경로 조회에 사용합니다. 집에서 정류장까지의 시간은 지각 계산에서 제외합니다.</div>
         <div class="field-stack">
           <div class="holiday-form">
             <input class="text-field-input" type="text" placeholder="집 주소나 건물명 검색" value="${escapeHtml(state.ui.homeAddressKeyword)}" data-field="ui.homeAddressKeyword" />
             <button class="mini-button add-button" data-action="search-home-address" ${state.ui.homeAddressSearchStatus === "loading" ? "disabled" : ""}>
-              ${state.ui.homeAddressSearchStatus === "loading" ? "Searching..." : "Search"}
+              ${state.ui.homeAddressSearchStatus === "loading" ? "검색 중…" : "검색"}
             </button>
           </div>
           ${
@@ -4802,7 +4807,7 @@ function renderOnboarding() {
                             <div class="holiday-date">${escapeHtml(item.label)}</div>
                             <div class="holiday-copy">${escapeHtml([item.placeName, item.jibunAddress].filter(Boolean).join(" · "))}</div>
                           </div>
-                          <button class="mini-button" data-action="select-home-address" data-index="${index}">Use</button>
+                          <button class="mini-button" data-action="select-home-address" data-index="${index}">선택</button>
                         </article>
                       `,
                     )
@@ -4812,13 +4817,13 @@ function renderOnboarding() {
               : ""
           }
           <label class="field-block compact">
-            <span>Home address</span>
+            <span>집 주소</span>
             <input class="text-field-input" type="text" value="${escapeHtml(state.user.homeAddress)}" data-field="user.homeAddress" />
           </label>
           <div class="holiday-form">
             <input class="text-field-input" type="text" placeholder="회사 주소나 건물명 검색" value="${escapeHtml(state.ui.workAddressKeyword)}" data-field="ui.workAddressKeyword" />
             <button class="mini-button add-button" data-action="search-work-address" ${state.ui.workAddressSearchStatus === "loading" ? "disabled" : ""}>
-              ${state.ui.workAddressSearchStatus === "loading" ? "Searching..." : "Search"}
+              ${state.ui.workAddressSearchStatus === "loading" ? "검색 중…" : "검색"}
             </button>
           </div>
           ${
@@ -4845,7 +4850,7 @@ function renderOnboarding() {
                             <div class="holiday-date">${escapeHtml(item.label)}</div>
                             <div class="holiday-copy">${escapeHtml([item.placeName, item.jibunAddress].filter(Boolean).join(" · "))}</div>
                           </div>
-                          <button class="mini-button" data-action="select-work-address" data-index="${index}">Use</button>
+                          <button class="mini-button" data-action="select-work-address" data-index="${index}">선택</button>
                         </article>
                       `,
                     )
@@ -4855,11 +4860,11 @@ function renderOnboarding() {
               : ""
           }
           <label class="field-block compact">
-            <span>Work address</span>
+            <span>목적지 주소</span>
             <input class="text-field-input" type="text" value="${escapeHtml(state.user.workAddress)}" data-field="user.workAddress" />
           </label>
           <label class="field-block compact">
-            <span>Required arrival time</span>
+            <span>목적지 도착 목표 시간</span>
             <input class="text-field-input time-field-input" type="time" value="${escapeHtml(state.user.requiredArrivalTime)}" data-field="user.requiredArrivalTime" />
           </label>
           <label class="field-block compact" ${isLiveConfigured(state) ? 'hidden' : ''}>
@@ -4871,49 +4876,49 @@ function renderOnboarding() {
       </section>
       ${renderCommuteEstimatePanel(routeEstimate, stop, primaryLine)}
       <section class="stack-panel">
-        <div class="stack-title"><span class="material-symbols-outlined">map</span>Commute Map</div>
+        <div class="stack-title"><span class="material-symbols-outlined">map</span>이동 경로 지도</div>
         <div class="field-help">
           ${escapeHtml(
             placeApiConfig.maps?.kakao?.configured
-              ? "Home, boarding stop, and work coordinates are shown on Kakao Maps."
-              : placeApiConfig.maps?.kakao?.reason || "Kakao Maps is not configured yet.",
+              ? "집, 탑승 정류장과 목적지 위치를 카카오 지도에 표시합니다."
+              : placeApiConfig.maps?.kakao?.reason || "아직 카카오 지도 연결이 설정되지 않았습니다.",
           )}
         </div>
-        <div id="commute-map" class="commute-map" aria-label="Commute location map"></div>
+        <div id="commute-map" class="commute-map" aria-label="집·정류장·목적지 지도"></div>
       </section>
       <section class="panel">
-        <div class="panel-title">Live data binding</div>
+        <div class="panel-title">실시간 교통정보 연결</div>
         <div class="field-stack">
           <label class="field-block compact">
-            <span>Provider</span>
+            <span>정보 제공처</span>
             <select class="text-field-input" data-field="live.provider">
-              <option value="none" ${state.live.provider === "none" ? "selected" : ""}>Demo only</option>
-              <option value="seoul" ${state.live.provider === "seoul" ? "selected" : ""}>Seoul Direct</option>
-              <option value="gyeonggi" ${state.live.provider === "gyeonggi" ? "selected" : ""}>Gyeonggi Direct (Compare accuracy)</option>
-              <option value="tago" ${state.live.provider === "tago" ? "selected" : ""}>TAGO (Recommended for Gyeonggi right now)</option>
+              <option value="none" ${state.live.provider === "none" ? "selected" : ""}>예시 정보</option>
+              <option value="seoul" ${state.live.provider === "seoul" ? "selected" : ""}>서울시 버스정보</option>
+              <option value="gyeonggi" ${state.live.provider === "gyeonggi" ? "selected" : ""}>경기도 버스정보(정확도 비교용)</option>
+              <option value="tago" ${state.live.provider === "tago" ? "selected" : ""}>국토교통부 TAGO(경기 지역 우선 추천)</option>
             </select>
           </label>
-          <div class="field-help">${escapeHtml(getLiveProviderPolicyCopy())}</div>
+          <div class="field-help">${escapeUiMessage(getLiveProviderPolicyCopy())}</div>
           ${
             state.live.provider === "seoul"
               ? `
-                <div class="field-help">Search an official Seoul stop first, then choose a route to auto-fill routeId and station order.</div>
+                <div class="field-help">서울시 정류장을 검색하고 노선을 선택하면 노선 번호와 정류장 순서가 자동 입력됩니다.</div>
                 <div class="holiday-form">
-                  <input class="text-field-input" type="text" placeholder="Seoul stop name" value="${escapeHtml(state.ui.liveSearchKeyword)}" data-field="ui.liveSearchKeyword" />
+                  <input class="text-field-input" type="text" placeholder="서울 정류장 이름" value="${escapeHtml(state.ui.liveSearchKeyword)}" data-field="ui.liveSearchKeyword" />
                   <button class="mini-button add-button" data-action="search-live-stops" ${state.ui.liveSearchStatus === "loading" ? "disabled" : ""}>
-                    ${state.ui.liveSearchStatus === "loading" ? "Searching..." : "Search"}
+                    ${state.ui.liveSearchStatus === "loading" ? "검색 중…" : "검색"}
                   </button>
                 </div>
                 ${
                   state.live.stationName
-                    ? `<div class="field-help">Selected official stop: ${escapeHtml(state.live.stationName)} (${escapeHtml(state.live.arsId || state.live.stationId)})</div>`
+                    ? `<div class="field-help">선택한 공식 정류장: ${escapeHtml(state.live.stationName)} (${escapeHtml(state.live.arsId || state.live.stationId)})</div>`
                     : ""
                 }
                 ${
                   state.ui.liveSearchError
                     ? `<div class="empty-copy">${escapeHtml(state.ui.liveSearchError)}</div>`
                     : !state.ui.liveSearchResults.length && state.ui.liveSearchStatus === "ready"
-                      ? `<div class="empty-copy">No official Seoul stops matched this keyword.</div>`
+                      ? `<div class="empty-copy">일치하는 서울시 정류장이 없습니다.</div>`
                       : ""
                 }
                 ${
@@ -4945,7 +4950,7 @@ function renderOnboarding() {
                     : !state.ui.liveRouteSearchResults.length &&
                         state.ui.liveRouteSearchStatus === "ready" &&
                         state.live.arsId
-                      ? `<div class="empty-copy">No Seoul routes were returned for this stop.</div>`
+                      ? `<div class="empty-copy">이 정류장의 서울시 노선 정보를 찾지 못했습니다.</div>`
                       : ""
                 }
                 ${
@@ -4959,7 +4964,7 @@ function renderOnboarding() {
                                 <div>
                                   <div class="holiday-date">${escapeHtml(item.routeNumber || item.routeId)}</div>
                                   <div class="holiday-copy">${escapeHtml(
-                                    [item.direction, item.order ? `ord ${item.order}` : "", item.routeId].filter(Boolean).join(" · "),
+                                    [item.direction, item.order ? `순서 ${item.order}` : "", item.routeId].filter(Boolean).join(" · "),
                                   )}</div>
                                 </div>
                                 <button class="mini-button" data-action="select-live-route" data-route-id="${escapeHtml(item.routeId)}" data-route-number="${escapeHtml(item.routeNumber)}" data-order="${escapeHtml(item.order)}">
@@ -4972,27 +4977,27 @@ function renderOnboarding() {
                       </div>
                     `
                     : state.ui.liveRouteSearchStatus === "loading"
-                      ? `<div class="empty-copy">Loading official Seoul routes for this stop...</div>`
+                      ? `<div class="empty-copy">정류장을 지나는 서울시 노선을 조회하고 있습니다…</div>`
                       : ""
                 }
                 <label class="field-block compact">
-                  <span>Station ID (stId)</span>
+                  <span>정류장 고유번호(stId)</span>
                   <input class="text-field-input" type="text" value="${escapeHtml(state.live.stationId)}" data-field="live.stationId" />
                 </label>
                 <label class="field-block compact">
-                  <span>ARS ID</span>
+                  <span>정류장 안내 번호(ARS)</span>
                   <input class="text-field-input" type="text" value="${escapeHtml(state.live.arsId)}" data-field="live.arsId" />
                 </label>
                 <label class="field-block compact">
-                  <span>Route ID (busRouteId)</span>
+                  <span>노선 고유번호(busRouteId)</span>
                   <input class="text-field-input" type="text" value="${escapeHtml(state.live.routeId)}" data-field="live.routeId" />
                 </label>
                 <label class="field-block compact">
-                  <span>Route number</span>
+                  <span>버스 번호</span>
                   <input class="text-field-input" type="text" value="${escapeHtml(state.live.routeNumber)}" data-field="live.routeNumber" />
                 </label>
                 <label class="field-block compact">
-                  <span>Station order (ord)</span>
+                  <span>노선 내 정류장 순서(ord)</span>
                   <input class="text-field-input" type="text" value="${escapeHtml(state.live.order)}" data-field="live.order" />
                 </label>
               `
@@ -5001,24 +5006,24 @@ function renderOnboarding() {
           ${
             state.live.provider === "gyeonggi"
               ? `
-                <div class="field-help">Search an official Gyeonggi stop first, then compare this provider only when you need to measure it against the current recommendation for the same route.</div>
+                <div class="field-help">경기도 정류장을 검색하세요. 같은 노선의 도착정보 정확도를 다른 제공처와 비교할 수 있습니다.</div>
                 ${getAccuracyRecommendationButtonMarkup()}
                 <div class="holiday-form">
-                  <input class="text-field-input" type="text" placeholder="Stop name or stop number" value="${escapeHtml(state.ui.liveSearchKeyword)}" data-field="ui.liveSearchKeyword" />
+                  <input class="text-field-input" type="text" placeholder="정류장 이름 또는 번호" value="${escapeHtml(state.ui.liveSearchKeyword)}" data-field="ui.liveSearchKeyword" />
                   <button class="mini-button add-button" data-action="search-live-stops" ${state.ui.liveSearchStatus === "loading" ? "disabled" : ""}>
-                    ${state.ui.liveSearchStatus === "loading" ? "Searching..." : "Search"}
+                    ${state.ui.liveSearchStatus === "loading" ? "검색 중…" : "검색"}
                   </button>
                 </div>
                 ${
                   state.live.stationName
-                    ? `<div class="field-help">Selected official stop: ${escapeHtml(state.live.stationName)} (${escapeHtml(state.live.stationId)})</div>`
+                    ? `<div class="field-help">선택한 공식 정류장: ${escapeHtml(state.live.stationName)} (${escapeHtml(state.live.stationId)})</div>`
                     : ""
                 }
                 ${
                   state.ui.liveSearchError
                     ? `<div class="empty-copy">${escapeHtml(state.ui.liveSearchError)}</div>`
                     : !state.ui.liveSearchResults.length && state.ui.liveSearchStatus === "ready"
-                      ? `<div class="empty-copy">No official Gyeonggi stops matched this keyword.</div>`
+                      ? `<div class="empty-copy">일치하는 경기도 정류장이 없습니다.</div>`
                       : ""
                 }
                 ${
@@ -5052,7 +5057,7 @@ function renderOnboarding() {
                     : !state.ui.liveRouteSearchResults.length &&
                         state.ui.liveRouteSearchStatus === "ready" &&
                         state.live.stationId
-                      ? `<div class="empty-copy">No official Gyeonggi routes were returned for this stop.</div>`
+                      ? `<div class="empty-copy">이 정류장의 경기도 노선 정보를 찾지 못했습니다.</div>`
                       : ""
                 }
                 ${
@@ -5066,7 +5071,7 @@ function renderOnboarding() {
                                 <div>
                                   <div class="holiday-date">${escapeHtml(item.routeNumber || item.routeId)}</div>
                                   <div class="holiday-copy">${escapeHtml(
-                                    [item.destinationName, item.order ? `seq ${item.order}` : "", item.routeId].filter(Boolean).join(" · "),
+                                    [item.destinationName, item.order ? `순서 ${item.order}` : "", item.routeId].filter(Boolean).join(" · "),
                                   )}</div>
                                 </div>
                                 <button class="mini-button" data-action="select-live-route" data-route-id="${escapeHtml(item.routeId)}" data-route-number="${escapeHtml(item.routeNumber)}" data-order="${escapeHtml(item.order)}">
@@ -5079,23 +5084,23 @@ function renderOnboarding() {
                       </div>
                     `
                     : state.ui.liveRouteSearchStatus === "loading"
-                      ? `<div class="empty-copy">Loading official Gyeonggi routes for this stop...</div>`
+                      ? `<div class="empty-copy">정류장을 지나는 경기도 노선을 조회하고 있습니다…</div>`
                       : ""
                 }
                 <label class="field-block compact">
-                  <span>Station ID (stationId)</span>
+                  <span>정류장 고유번호(stationId)</span>
                   <input class="text-field-input" type="text" value="${escapeHtml(state.live.stationId)}" data-field="live.stationId" />
                 </label>
                 <label class="field-block compact">
-                  <span>Route ID (routeId)</span>
+                  <span>노선 고유번호(routeId)</span>
                   <input class="text-field-input" type="text" value="${escapeHtml(state.live.routeId)}" data-field="live.routeId" />
                 </label>
                 <label class="field-block compact">
-                  <span>Route number (routeName)</span>
+                  <span>버스 번호(routeName)</span>
                   <input class="text-field-input" type="text" value="${escapeHtml(state.live.routeNumber)}" data-field="live.routeNumber" />
                 </label>
                 <label class="field-block compact">
-                  <span>Stop order (staOrder)</span>
+                  <span>노선 내 정류장 순서(staOrder)</span>
                   <input class="text-field-input" type="text" value="${escapeHtml(state.live.order)}" data-field="live.order" />
                 </label>
               `
@@ -5125,7 +5130,7 @@ function renderOnboarding() {
                 <div class="holiday-list">${state.ui.liveRouteSearchResults.map((item) => `<article class="holiday-item"><div><div class="holiday-date">${escapeHtml(item.routeNumber)}</div><div class="holiday-copy">${escapeHtml([item.startStationName, item.destinationName, item.routeId].filter(Boolean).join(" · "))}</div></div><button class="mini-button" data-action="select-live-route" data-route-id="${escapeHtml(item.routeId)}" data-route-number="${escapeHtml(item.routeNumber)}">이 버스 선택</button></article>`).join("")}</div>
                 <div class="field-help">기점·종점은 노선 정보이며 현재 운행 방향을 확정하는 정보는 아닙니다.</div>
                 <label class="field-block compact">
-                  <span>Node ID</span>
+                  <span>정류장 고유번호(nodeId)</span>
                   <input class="text-field-input" type="text" value="${escapeHtml(state.live.nodeId)}" data-field="live.nodeId" />
                 </label>
                 <label class="field-block compact">
@@ -5133,7 +5138,7 @@ function renderOnboarding() {
                   <input class="text-field-input" type="text" value="${escapeHtml(state.live.routeId)}" data-field="live.routeId" />
                 </label>
                 <label class="field-block compact">
-                  <span>Route number</span>
+                  <span>버스 번호</span>
                   <input class="text-field-input" type="text" value="${escapeHtml(state.live.routeNumber)}" data-field="live.routeNumber" />
                 </label>
               `
@@ -5143,7 +5148,7 @@ function renderOnboarding() {
       </section>
       ${!isLiveConfigured(state) ? `
       <section class="panel">
-        <div class="panel-title">Where do you board? (Demo)</div>
+        <div class="panel-title">탑승 정류장 선택(예시)</div>
         ${
           recommendedStops.length
             ? `
@@ -5158,7 +5163,7 @@ function renderOnboarding() {
                           <div class="holiday-copy">${escapeHtml(`${item.distanceM}m · ${item.stopCode} · ${item.subtitle}`)}</div>
                         </div>
                         <button class="mini-button" data-action="pick-stop" data-stop-id="${item.id}">
-                          ${item.id === stop.id ? "Selected" : "Use"}
+                          ${item.id === stop.id ? "선택됨" : "선택"}
                         </button>
                       </article>
                     `,
@@ -5170,8 +5175,8 @@ function renderOnboarding() {
         }
         <div class="search-box">
           <span class="material-symbols-outlined">search</span>
-          <input type="text" placeholder="Search stop name or stop ID" value="${escapeHtml(state.ui.routeSearch)}" data-field="ui.routeSearch" />
-          <button class="pill-button" type="button" data-action="pick-stop" data-stop-id="${nearestStop ? nearestStop.id : "GWANGHWAMUN"}">${nearestStop ? "Use nearest" : "Near me"}</button>
+          <input type="text" placeholder="정류장 이름 또는 번호 검색" value="${escapeHtml(state.ui.routeSearch)}" data-field="ui.routeSearch" />
+          <button class="pill-button" type="button" data-action="pick-stop" data-stop-id="${nearestStop ? nearestStop.id : "GWANGHWAMUN"}">${nearestStop ? "가까운 정류장 선택" : "내 주변"}</button>
         </div>
         <div class="stop-list">
           ${filteredStops
@@ -5192,10 +5197,10 @@ function renderOnboarding() {
       <section class="map-card">
         <div class="map-label">${escapeHtml(stop.name)}</div>
         <div class="map-canvas"><div class="map-pin"></div></div>
-        <div class="map-footnote">The interactive Kakao map above shows the saved home, stop, and work markers when its JavaScript key is configured.</div>
+        <div class="map-footnote">카카오 지도 연결을 설정하면 위 지도에 저장한 집, 정류장과 목적지 위치가 표시됩니다.</div>
       </section>
       <section class="panel">
-        <div class="panel-title">Select routes passing here</div>
+        <div class="panel-title">이 정류장을 지나는 노선 선택</div>
         <div class="route-list">
           ${stop.lines
             .map((line) => {
@@ -5207,14 +5212,14 @@ function renderOnboarding() {
                     <div class="route-badge">${escapeHtml(line.number)}</div>
                     <div>
                       <div class="route-title">${escapeHtml(line.label)}</div>
-                      <div class="route-subtitle">To: ${escapeHtml(line.destination)}</div>
+                      <div class="route-subtitle">방면: ${escapeHtml(line.destination)}</div>
                     </div>
                   </div>
                   <div class="route-actions">
                     ${
                       checked
                         ? `<button type="button" class="mini-button ${primary ? "selected" : ""}" data-action="set-primary-line" data-line-id="${line.id}">
-                             ${primary ? "Primary line" : "Set primary"}
+                             ${primary ? "주 이용 노선" : "주 이용 노선으로 선택"}
                            </button>`
                         : ""
                     }
@@ -5228,9 +5233,9 @@ function renderOnboarding() {
       </section>
       ` : `<section class="panel"><div class="panel-title">선택한 실시간 교통편</div><p>${escapeHtml(state.live.stationName || "정류장 선택 필요")}</p><p>${escapeHtml(state.live.routeNumber ? `${state.live.routeNumber}번 · ${state.live.routeId || "노선 고유번호 미입력"}` : "이용할 버스 선택 필요")}</p></section>`}
       <footer class="action-bar action-bar-static">
-        <button class="secondary-button" data-action="goto" data-screen="home">Back</button>
+        <button class="secondary-button" data-action="goto" data-screen="home">뒤로</button>
         <button class="primary-button" data-action="goto" data-screen="schedule">
-          Continue
+          다음
           <span class="material-symbols-outlined">arrow_forward</span>
         </button>
       </footer>
@@ -5242,24 +5247,24 @@ function renderSchedule(screen, model) {
   return `
     <main class="screen screen-form with-bottom-nav">
       <section class="headline-block">
-        <h1>Schedule Settings</h1>
-        <p>Adjust the start time, repeat interval, weekday rules, and holiday skips here.</p>
+        <h1>알람 일정</h1>
+        <p>알람 시작·종료 시간, 반복 간격과 요일, 쉬는 날을 설정하세요.</p>
       </section>
       <section class="stack-panel">
-        <div class="stack-title"><span class="material-symbols-outlined">schedule</span>Time Window</div>
+        <div class="stack-title"><span class="material-symbols-outlined">schedule</span>알람 시간대</div>
         <div class="field-grid">
-          <label class="field-block"><span>Start Alarm</span><input type="time" value="${state.schedule.startTime}" data-field="schedule.startTime" /></label>
-          <label class="field-block"><span>End Alarm</span><input type="time" value="${state.schedule.endTime}" data-field="schedule.endTime" /></label>
+          <label class="field-block"><span>알람 시작</span><input type="time" value="${state.schedule.startTime}" data-field="schedule.startTime" /></label>
+          <label class="field-block"><span>알람 종료</span><input type="time" value="${state.schedule.endTime}" data-field="schedule.endTime" /></label>
         </div>
       </section>
       <section class="stack-panel">
-        <div class="stack-title"><span class="material-symbols-outlined">update</span>Alert Frequency</div>
+        <div class="stack-title"><span class="material-symbols-outlined">update</span>알람 반복 간격</div>
         <div class="choice-grid">
           ${[1, 2, 3, 5, 10]
             .map(
               (minute) => `
                 <button class="choice-chip ${state.schedule.repeatIntervalMin === minute ? "selected" : ""}" data-action="set-interval" data-value="${minute}">
-                  ${minute}m
+                  ${minute}분
                 </button>
               `,
             )
@@ -5267,7 +5272,7 @@ function renderSchedule(screen, model) {
         </div>
       </section>
       <section class="stack-panel">
-        <div class="stack-title"><span class="material-symbols-outlined">calendar_month</span>Repeat</div>
+        <div class="stack-title"><span class="material-symbols-outlined">calendar_month</span>반복 요일</div>
         <div class="option-list">
           ${REPEAT_PRESETS.map(
             (preset) => `
@@ -5298,34 +5303,34 @@ function renderSchedule(screen, model) {
       <section class="stack-panel">
         <div class="toggle-row">
           <div>
-            <div class="stack-title no-margin"><span class="material-symbols-outlined">beach_access</span>Holiday Skip</div>
+            <div class="stack-title no-margin"><span class="material-symbols-outlined">beach_access</span>공휴일에는 알람 쉬기</div>
           </div>
           <button class="toggle ${state.schedule.skipHolidays ? "on" : ""}" data-action="toggle-field" data-field="schedule.skipHolidays"><span></span></button>
         </div>
-        <p class="field-help">When this stays on, the scheduler skips both official Korean public holidays and any extra manual skip dates you add below.</p>
+        <p class="field-help">켜 두면 대한민국 공휴일과 아래에서 직접 추가한 날짜에는 알람이 울리지 않습니다.</p>
         <div class="live-sync-grid">
           <article class="live-sync-card">
-            <div class="live-sync-label">Official API</div>
-            <div class="live-sync-value">${model.holidayApiConfigured ? "READY" : "KEY MISSING"}</div>
+            <div class="live-sync-label">공휴일 정보 연결</div>
+            <div class="live-sync-value">${model.holidayApiConfigured ? "연결됨" : "연결 키 없음"}</div>
             <div class="live-sync-copy">
               ${
                 state.holidaySync.status === "loading"
-                  ? "Loading the official holiday calendar now."
+                  ? "공휴일 정보를 불러오고 있습니다."
                   : state.holidaySync.lastError
                     ? escapeHtml(state.holidaySync.lastError)
                     : model.holidayApiConfigured
-                      ? "The Korea Astronomy and Space Science Institute holiday feed can be synced on demand."
-                      : "Add HOLIDAY_API_SERVICE_KEY to enable official holiday sync."
+                      ? "한국천문연구원의 공식 공휴일 정보를 불러올 수 있습니다."
+                      : "공휴일 자동 조회를 사용하려면 운영 서버에 공휴일 API 키를 설정해야 합니다."
               }
             </div>
           </article>
           <article class="live-sync-card">
-            <div class="live-sync-label">Loaded</div>
-            <div class="live-sync-value">${state.officialHolidays.length} dates</div>
+            <div class="live-sync-label">불러온 공휴일</div>
+            <div class="live-sync-value">${state.officialHolidays.length}일</div>
             <div class="live-sync-copy">
-              Years: ${escapeHtml(state.holidaySync.loadedYears.length ? state.holidaySync.loadedYears.join(", ") : "none")}
+              연도: ${escapeHtml(state.holidaySync.loadedYears.length ? state.holidaySync.loadedYears.join(", ") : "없음")}
               <br />
-              Last sync: ${escapeHtml(formatSyncStamp(state.holidaySync.lastSyncedAt))}
+              마지막 갱신: ${escapeHtml(formatSyncStamp(state.holidaySync.lastSyncedAt))}
             </div>
           </article>
         </div>
@@ -5340,7 +5345,7 @@ function renderSchedule(screen, model) {
             data-field="ui.holidaySyncYear"
             placeholder="2026"
           />
-          <button class="mini-button add-button" data-action="sync-official-holidays">${state.holidaySync.status === "loading" ? "Syncing..." : "Sync"}</button>
+          <button class="mini-button add-button" data-action="sync-official-holidays">${state.holidaySync.status === "loading" ? "동기화 중…" : "동기화"}</button>
         </div>
         <div class="holiday-list">
           ${
@@ -5351,22 +5356,22 @@ function renderSchedule(screen, model) {
                       <article class="holiday-item">
                         <div>
                           <div class="holiday-date">${escapeHtml(holiday.date)}</div>
-                          <div class="holiday-copy">${escapeHtml(holiday.name || "Official public holiday")}</div>
+                          <div class="holiday-copy">${escapeHtml(holiday.name || "공휴일")}</div>
                         </div>
-                        <div class="holiday-copy">Official</div>
+                        <div class="holiday-copy">공휴일</div>
                       </article>
                     `,
                   )
                   .join("")
-              : `<div class="empty-copy">No official holidays have been loaded for the upcoming schedule yet.</div>`
+              : `<div class="empty-copy">앞으로의 일정에 적용할 공휴일을 아직 불러오지 않았습니다.</div>`
           }
         </div>
       </section>
       <section class="stack-panel">
-        <div class="stack-title"><span class="material-symbols-outlined">event</span>Manual extra skip dates</div>
+        <div class="stack-title"><span class="material-symbols-outlined">event</span>알람을 쉴 날짜 추가</div>
         <div class="holiday-form">
           <input class="text-field-input" type="date" value="${escapeHtml(state.ui.holidayDraft)}" data-field="ui.holidayDraft" />
-          <button class="mini-button add-button" data-action="add-holiday">Add</button>
+          <button class="mini-button add-button" data-action="add-holiday">추가</button>
         </div>
         <div class="holiday-list">
           ${
@@ -5377,26 +5382,26 @@ function renderSchedule(screen, model) {
                       <article class="holiday-item">
                         <div>
                           <div class="holiday-date">${escapeHtml(holiday)}</div>
-                          <div class="holiday-copy">This extra date will be skipped together with the official holiday feed.</div>
+                          <div class="holiday-copy">이 날짜에는 공휴일과 마찬가지로 알람이 울리지 않습니다.</div>
                         </div>
-                        <button class="icon-button soft" data-action="remove-holiday" data-value="${holiday}" aria-label="Remove holiday ${escapeHtml(holiday)}">
+                        <button class="icon-button soft" data-action="remove-holiday" data-value="${holiday}" aria-label="알람 쉴 날짜 삭제 ${escapeHtml(holiday)}">
                           <span class="material-symbols-outlined">close</span>
                         </button>
                       </article>
                     `,
                   )
                   .join("")
-              : `<div class="empty-copy">No extra manual skip dates added yet.</div>`
+              : `<div class="empty-copy">추가한 날짜가 없습니다.</div>`
           }
         </div>
       </section>
       <section class="preview-card">
         <div class="preview-label">${escapeHtml(model.scheduleState.badge)}</div>
         <div class="preview-title">${escapeHtml(model.scheduleState.detail)}</div>
-        <div class="preview-meta">Local device time: ${escapeHtml(formatLongDate(model.now))}</div>
+        <div class="preview-meta">현재 날짜: ${escapeHtml(formatLongDate(model.now))}</div>
       </section>
       <section class="stack-panel">
-        <div class="stack-title"><span class="material-symbols-outlined">view_week</span>Next 7 days preview</div>
+        <div class="stack-title"><span class="material-symbols-outlined">view_week</span>앞으로 7일 알람 일정</div>
         <div class="forecast-grid">
           ${model.forecast
             .map(
@@ -5404,14 +5409,14 @@ function renderSchedule(screen, model) {
                 <article class="forecast-item ${item.firing ? "on" : "off"}">
                   <div class="forecast-date">${escapeHtml(formatShortDate(item.date))}</div>
                   <div class="forecast-badge">${escapeHtml(item.badge)}</div>
-                  <div class="forecast-copy">${escapeHtml(item.detail)}</div>
+                  <div class="forecast-copy">${escapeUiMessage(item.detail)}</div>
                 </article>
               `,
             )
             .join("")}
         </div>
       </section>
-      <button class="footer-cta" data-action="save-schedule">Save Settings</button>
+      <button class="footer-cta" data-action="save-schedule">설정 저장</button>
     </main>
     ${renderBottomNav(screen)}
   `;
@@ -5424,7 +5429,7 @@ function renderSettings(screen, model) {
       ${renderAccountPanel()}
       ${renderDeviceDeliveryPanel()}
       <section class="stack-panel">
-        <div class="stack-title"><span class="material-symbols-outlined">volume_up</span>Sound Alert</div>
+        <div class="stack-title"><span class="material-symbols-outlined">volume_up</span>알람 소리</div>
         <div class="option-list">
           ${SOUND_PRESETS.map(
             (preset) => `
@@ -5436,7 +5441,7 @@ function renderSettings(screen, model) {
                     <small>${escapeHtml(preset.detail)}</small>
                   </span>
                 </button>
-                <button class="icon-button soft" data-action="preview-sound" data-value="${preset.id}" aria-label="${escapeHtml(preset.name)} 誘몃━?ｊ린">
+                <button class="icon-button soft" data-action="preview-sound" data-value="${preset.id}" aria-label="${escapeHtml(preset.name)} 미리 듣기">
                   <span class="material-symbols-outlined">play_arrow</span>
                 </button>
               </div>
@@ -5445,25 +5450,25 @@ function renderSettings(screen, model) {
         </div>
       </section>
       <section class="stack-panel">
-        <div class="stack-title"><span class="material-symbols-outlined">vibration</span>Vibration</div>
+        <div class="stack-title"><span class="material-symbols-outlined">vibration</span>진동</div>
         <div class="slider-row">
           <div class="slider-header">
-            <span>Vibration Strength</span>
-            <strong>${state.notification.vibrationStrength >= 70 ? "Heavy" : state.notification.vibrationStrength >= 40 ? "Medium" : "Light"}</strong>
+            <span>진동 세기</span>
+            <strong>${state.notification.vibrationStrength >= 70 ? "강하게" : state.notification.vibrationStrength >= 40 ? "보통" : "약하게"}</strong>
           </div>
           <input class="range-input" type="range" min="0" max="100" value="${state.notification.vibrationStrength}" data-field="notification.vibrationStrength" />
-          <div class="slider-scale"><span>Light</span><span>Medium</span><span>Heavy</span></div>
+          <div class="slider-scale"><span>약하게</span><span>보통</span><span>강하게</span></div>
         </div>
         <div class="toggle-row inset">
           <div>
-            <div class="toggle-title">Escalation Mode</div>
+            <div class="toggle-title">알람을 점점 강하게</div>
             <p class="field-help">15초, 30초 무응답 시 단계적으로 진동과 소리를 더 강하게 올립니다.</p>
           </div>
           <button class="toggle ${state.notification.escalationEnabled ? "on" : ""}" data-action="toggle-field" data-field="notification.escalationEnabled"><span></span></button>
         </div>
       </section>
       <section class="stack-panel">
-        <div class="stack-title"><span class="material-symbols-outlined">record_voice_over</span>Voice Guidance (TTS)</div>
+        <div class="stack-title"><span class="material-symbols-outlined">record_voice_over</span>음성 안내</div>
         <div class="choice-grid two-cols">
           ${TTS_VOICES.map(
             (voice) => `
@@ -5474,28 +5479,28 @@ function renderSettings(screen, model) {
           ).join("")}
         </div>
         <div class="slider-row">
-          <div class="slider-header"><span>Speaking Speed</span><strong>${state.notification.ttsSpeed.toFixed(1)}x</strong></div>
+          <div class="slider-header"><span>말하기 속도</span><strong>${state.notification.ttsSpeed.toFixed(1)}배</strong></div>
           <input class="range-input" type="range" min="0.8" max="1.3" step="0.1" value="${state.notification.ttsSpeed}" data-field="notification.ttsSpeed" />
-          <div class="slider-scale"><span>0.8x</span><span>Normal</span><span>1.3x</span></div>
+          <div class="slider-scale"><span>0.8배</span><span>보통</span><span>1.3배</span></div>
         </div>
-        <button class="soft-button wide" data-action="preview-tts">Listen to Sample</button>
+        <button class="soft-button wide" data-action="preview-tts">미리 듣기</button>
         <div class="sample-copy">${escapeHtml(model.notificationSpec.spokenText)}</div>
       </section>
       <section class="stack-panel">
-        <div class="stack-title"><span class="material-symbols-outlined">crisis_alert</span>Escalation Preview</div>
+        <div class="stack-title"><span class="material-symbols-outlined">crisis_alert</span>단계별 알림 미리보기</div>
         <div class="forecast-grid">
           ${model.notificationTimeline
             .map(
               (item) => `
                 <article class="forecast-item ${item.stage === 2 ? "off" : "on"}">
-                  <div class="forecast-date">${escapeHtml(item.escalationLabel)} · +${item.secondsSinceTrigger}s</div>
-                  <div class="forecast-badge">${escapeHtml(item.riskLevel)} · ${escapeHtml(item.volumePercent.toString())}% volume</div>
+                  <div class="forecast-date">${escapeHtml(item.escalationLabel)} · +${item.secondsSinceTrigger}초</div>
+                  <div class="forecast-badge">${escapeUiMessage(item.riskLevel)} · ${escapeHtml(item.volumePercent.toString())}% 음량</div>
                   <div class="forecast-copy">
-                    Vibrate ${escapeHtml(item.vibrationPattern.join("-"))} x ${escapeHtml(String(item.vibrationRepeats))}
+                    진동 ${escapeHtml(item.vibrationPattern.join("-"))} x ${escapeHtml(String(item.vibrationRepeats))}
                     <br />
-                    ${escapeHtml(item.fullScreen ? "Full-screen alert enabled." : "Standard heads-up alert.")}
+                    ${escapeHtml(item.fullScreen ? "전체 화면 알림 설정 켜짐." : "일반 배너 알림.")}
                     <br />
-                    ${escapeHtml(item.criticalBypass ? "DND bypass requested." : "No DND bypass requested.")}
+                    ${escapeHtml(item.criticalBypass ? "방해금지 우회 요청." : "방해금지 우회를 요청하지 않습니다.")}
                   </div>
                 </article>
               `,
@@ -5505,8 +5510,8 @@ function renderSettings(screen, model) {
         <div class="sample-copy">${escapeHtml(model.notificationSpec.title)} · ${escapeHtml(model.notificationSpec.body)}</div>
       </section>
       <section class="warning-panel">
-        <div class="warning-head"><span class="material-symbols-outlined">warning</span>Critical Alert Bypass</div>
-        <p>These web controls save your alert preference. The Android app requests exact-alarm, full-screen, and DND permissions; iPhone support remains subject to Apple notification policy.</p>
+        <div class="warning-head"><span class="material-symbols-outlined">warning</span>긴급 알림의 방해금지 우회</div>
+        <p>여기서는 원하는 알림 방식을 저장합니다. 실제 권한은 안드로이드 앱에서 별도로 허용해야 하며, 아이폰은 애플의 알림 정책에 따라 지원 범위가 제한됩니다.</p>
         <button class="toggle ${state.notification.dndBypass ? "on" : ""}" data-action="toggle-field" data-field="notification.dndBypass"><span></span></button>
       </section>
     </main>
@@ -5617,7 +5622,7 @@ function playSoundPreset(presetId, options = {}) {
 
 function previewTts() {
   if (!("speechSynthesis" in window)) {
-    window.alert("This browser does not support SpeechSynthesis.");
+    window.alert("이 브라우저는 음성 안내를 지원하지 않습니다.");
     return;
   }
 
@@ -5669,22 +5674,22 @@ app.addEventListener("click", (event) => {
     const today = dateOnlyKey(new Date());
     const turningOff = state.schedule.snoozeDate !== today;
     state.schedule.snoozeDate = turningOff ? today : null;
-    pushHistory(turningOff ? "Today alarms off" : "Today alarms restored", "Home dashboard quick action toggled.");
+    pushHistory(turningOff ? "오늘 알람 중지" : "오늘 알람 다시 켜짐", "홈 화면에서 오늘 알람 설정을 변경했습니다.");
     return render();
   }
   if (action === "ack-active-alarm") {
     runAlarmDeliveryAction(
       "ACK_DEPARTED",
-      "Departed",
-      "The active server alarm was acknowledged and the rest of today's alerts were stopped.",
+      "출발 완료",
+      "현재 알람을 확인하고 오늘 남은 알람을 중지했습니다.",
     );
     return;
   }
   if (action === "snooze-active-alarm") {
     runAlarmDeliveryAction(
       "SNOOZE_1M",
-      "Alarm snoozed",
-      "The active server alarm was snoozed for one minute.",
+      "알람 잠시 미룸",
+      "현재 알람을 1분 뒤로 미뤘습니다.",
     );
     return;
   }
@@ -5692,14 +5697,14 @@ app.addEventListener("click", (event) => {
     if (alarmRuntimeMeta.delivery?.currentAlert) {
       runAlarmDeliveryAction(
         "ACK_DEPARTED",
-        "Departed",
-        "The active server alarm was acknowledged and the rest of today's alerts were stopped.",
+        "출발 완료",
+        "현재 알람을 확인하고 오늘 남은 알람을 중지했습니다.",
       );
       return;
     }
 
     state.schedule.snoozeDate = dateOnlyKey(new Date());
-    pushHistory("Departed", "The user marked the morning route as completed.", "INFO", "APP_ACTION", {
+    pushHistory("출발 완료", "출발 완료로 표시했습니다.", "INFO", "APP_ACTION", {
       includeLiveEtaContext: true,
     });
     return render();
@@ -5729,7 +5734,7 @@ app.addEventListener("click", (event) => {
     return render();
   }
   if (action === "preview-sound") {
-    pushHistory("Sound preview", `${target.dataset.value} preset preview played.`);
+    pushHistory("알람 소리 미리 듣기", `${SOUND_PRESETS.find((item) => item.id === target.dataset.value)?.name || "알람 소리"}를 미리 재생했습니다.`);
     playSoundPreset(target.dataset.value);
     return render();
   }
@@ -5739,19 +5744,19 @@ app.addEventListener("click", (event) => {
     return render();
   }
   if (action === "preview-tts") {
-    pushHistory("TTS preview", "Voice guidance sample played.");
+    pushHistory("TTS preview", "음성 안내를 미리 재생했습니다.");
     previewTts();
     return render();
   }
   if (action === "run-push-gateway") {
     if (!deviceMeta.dispatchBundles.length) {
       deviceMeta.pushGatewayDispatchStatus = "error";
-      deviceMeta.pushGatewayDispatchError = "There is no active dispatch bundle to hand off yet.";
+      deviceMeta.pushGatewayDispatchError = "현재 전송할 알림이 없습니다.";
       return render();
     }
     if (
       deviceMeta.pushGatewayConfig?.mode === "execute" &&
-      !window.confirm("The push gateway is in execute mode and may send a real notification. Continue?")
+      !window.confirm("실제 전송 모드이므로 휴대폰에 알림이 전송될 수 있습니다. 계속할까요?")
     ) {
       return;
     }
@@ -5800,15 +5805,15 @@ app.addEventListener("click", (event) => {
         deviceMeta.tokenRegisterStatus = "sent";
         deviceMeta.tokenRegisterError = "";
         pushHistory(
-          "Device token registered",
-          payload.tokenHealth?.reason || "The device push token was normalized and saved on the server.",
+          "기기 토큰 등록 완료",
+          payload.tokenHealth?.reason || "기기 푸시 토큰의 형식을 확인하고 서버에 저장했습니다.",
         );
         queueAlarmRuntimeRefresh(0);
         render();
       })
       .catch((error) => {
         deviceMeta.tokenRegisterStatus = "error";
-        deviceMeta.tokenRegisterError = error instanceof Error ? error.message : "Unknown device token registration error.";
+        deviceMeta.tokenRegisterError = userErrorMessage(error, "기기 토큰 등록 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.");
         render();
       });
     return;
@@ -5830,13 +5835,13 @@ app.addEventListener("click", (event) => {
         deviceMeta.tokenHealthError = "";
         deviceMeta.tokenRegisterStatus = "sent";
         deviceMeta.tokenRegisterError = "";
-        pushHistory("Browser push subscribed", payload.tokenHealth?.reason || "A complete Web Push subscription was saved on the server.");
+        pushHistory("브라우저 알림 등록 완료", payload.tokenHealth?.reason || "브라우저 푸시 알림 구독 정보를 서버에 저장했습니다.");
         queueAlarmRuntimeRefresh(0);
         render();
       })
       .catch((error) => {
         deviceMeta.tokenRegisterStatus = "error";
-        deviceMeta.tokenRegisterError = error instanceof Error ? error.message : "Could not subscribe this browser to Web Push.";
+        deviceMeta.tokenRegisterError = userErrorMessage(error, "이 브라우저의 푸시 알림을 등록하지 못했습니다.");
         render();
       });
     return;
@@ -5893,7 +5898,7 @@ app.addEventListener("click", (event) => {
   if (action === "search-live-stops") {
     if (!state.ui.liveSearchKeyword.trim()) {
       state.ui.liveSearchStatus = "error";
-      state.ui.liveSearchError = "Enter a stop name or stop number first.";
+      state.ui.liveSearchError = "먼저 정류장 이름 또는 번호를 입력하세요.";
       persist();
       return render();
     }
@@ -5913,15 +5918,15 @@ app.addEventListener("click", (event) => {
         state.ui.liveSearchStatus = "ready";
         state.ui.liveSearchError = "";
         state.ui.liveSearchResults = Array.isArray(payload.stations) ? payload.stations : [];
-        pushHistory("Official stops loaded", `${state.ui.liveSearchResults.length} ${payload.provider} stop candidates were returned.`);
+        pushHistory("공식 정류장 조회 완료", `${payload.provider} 정류장 ${state.ui.liveSearchResults.length}개를 조회했습니다.`);
         render();
       })
       .catch((error) => {
         if (!isCurrent()) return;
         state.ui.liveSearchStatus = "error";
         state.ui.liveSearchResults = [];
-        state.ui.liveSearchError = error instanceof Error ? error.message : "Unknown stop search error.";
-        pushHistory("Official stop search failed", state.ui.liveSearchError, "ERROR");
+        state.ui.liveSearchError = userErrorMessage(error, "정류장 검색 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.");
+        pushHistory("공식 정류장 조회 실패", state.ui.liveSearchError, "ERROR");
         render();
       });
     return;
@@ -5937,7 +5942,7 @@ app.addEventListener("click", (event) => {
       render();
     }).catch((error) => {
       tagoCitiesMeta.status = "error";
-      tagoCitiesMeta.error = error instanceof Error ? error.message : "도시목록 조회 실패";
+      tagoCitiesMeta.error = userErrorMessage(error, "도시목록 조회 실패");
       render();
     });
     return;
@@ -5959,8 +5964,8 @@ app.addEventListener("click", (event) => {
     resetLiveRouteSearchState();
     syncLiveBindingState();
     pushHistory(
-      "Provider switched",
-      `The live binding was moved to ${getLiveProviderLabel(recommendedProvider)} because it is the current ETA recommendation for this route.`,
+      "정보 제공처 변경",
+      `현재 추천 제공처인 ${getLiveProviderLabel(recommendedProvider)}로 실시간 연결을 변경했습니다.`,
     );
     persist();
     return render();
@@ -5992,7 +5997,7 @@ app.addEventListener("click", (event) => {
     state.ui.liveSearchError = "";
     resetLiveRouteSearchState();
     syncLiveBindingState();
-    pushHistory("Official stop selected", `${state.live.stationName || state.live.stationId} was linked to ${state.live.provider} live sync.`);
+    pushHistory("공식 정류장 선택", `${state.live.stationName || state.live.stationId}을(를) ${state.live.provider} 실시간 정보에 연결했습니다.`);
     persist();
     if (
       (state.live.provider === "seoul" && state.live.arsId) ||
@@ -6015,7 +6020,7 @@ app.addEventListener("click", (event) => {
     state.commute.transitJourney = null;
     commuteEstimateMeta.snapshot = null;
     persist();
-    pushHistory("Official route selected", `${state.live.routeNumber || state.live.routeId} was linked to the live route binding.`);
+    pushHistory("공식 노선 선택", `${state.live.routeNumber || state.live.routeId} 노선을 실시간 정보에 연결했습니다.`);
     return render();
   }
   if (action === "sync-live-arrivals") {
@@ -6030,7 +6035,7 @@ app.addEventListener("click", (event) => {
         state.live.lastSyncedAt = payload.servedAt || payload.fetchedAt || new Date().toISOString();
         state.live.lastError =
           payload.cacheStatus === "stale-fallback"
-            ? payload.fallbackError || "Latest live request failed, so the app is showing the last successful provider response."
+            ? payload.fallbackError || "최근 실시간 조회에 실패해 마지막으로 확인한 정보를 표시합니다."
             : "";
         syncLiveBindingState();
         const modeLabel =
@@ -6040,8 +6045,8 @@ app.addEventListener("click", (event) => {
               ? "cache hit"
               : "fresh live";
         pushHistory(
-          "Live arrivals synced",
-          `${payload.provider} provider returned ${payload.arrivalsMin.join(", ")} minute arrivals (${modeLabel}).`,
+          "실시간 도착정보 갱신 완료",
+          `${payload.provider} 도착 예정: ${payload.arrivalsMin.join(", ")}분 (${modeLabel}).`,
         );
         void refreshBusAccuracySummary();
         void runAutoBusAccuracyProbeCycle();
@@ -6050,8 +6055,8 @@ app.addEventListener("click", (event) => {
       .catch((error) => {
         state.live.status = "error";
         state.live.snapshot = null;
-        state.live.lastError = error instanceof Error ? error.message : "Unknown live sync error.";
-        pushHistory("Live sync failed", state.live.lastError, "ERROR");
+        state.live.lastError = userErrorMessage(error, "실시간 정보 조회 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.");
+        pushHistory("실시간 정보 갱신 실패", state.live.lastError, "ERROR");
         render();
       });
     return;
@@ -6063,7 +6068,7 @@ app.addEventListener("click", (event) => {
     }
     syncHomeToStopWalkEstimate();
     state.live.snapshot = null;
-    pushHistory("Primary route updated", `Route ${target.dataset.lineId} is now the main alert route.`);
+    pushHistory("주 이용 노선 변경", `${target.dataset.lineId}번을 주 이용 알람 노선으로 설정했습니다.`);
     refreshCommuteEstimate();
     return render();
   }
@@ -6074,7 +6079,7 @@ app.addEventListener("click", (event) => {
     state.commute.primaryLineId = stop.lines[0].id;
     syncHomeToStopWalkEstimate(stop, stop.lines[0]);
     state.live.snapshot = null;
-    pushHistory("Stop updated", `Boarding stop changed to ${stop.name}.`);
+    pushHistory("정류장 변경", `탑승 정류장을 ${stop.name}(으)로 변경했습니다.`);
     refreshCommuteEstimate();
     return render();
   }
@@ -6082,8 +6087,8 @@ app.addEventListener("click", (event) => {
     const year = String(state.ui.holidaySyncYear || "").trim();
     if (!/^\d{4}$/.test(year)) {
       state.holidaySync.status = "error";
-      state.holidaySync.lastError = "Enter a four-digit year first.";
-      pushHistory("Holiday sync blocked", state.holidaySync.lastError, "ERROR");
+      state.holidaySync.lastError = "연도를 네 자리 숫자로 입력하세요.";
+      pushHistory("공휴일 조회 불가", state.holidaySync.lastError, "ERROR");
       return render();
     }
 
@@ -6098,13 +6103,13 @@ app.addEventListener("click", (event) => {
         state.holidaySync.lastSyncedAt = payload.fetchedAt || new Date().toISOString();
         state.holidaySync.lastError = "";
         state.holidaySync.loadedYears = [...new Set([...state.holidaySync.loadedYears, year])].sort();
-        pushHistory("Official holidays synced", `${year} calendar loaded with ${holidays.length} official skip dates.`);
+        pushHistory("공휴일 정보 갱신 완료", `${year}년 공휴일 ${holidays.length}개를 불러왔습니다.`);
         render();
       })
       .catch((error) => {
         state.holidaySync.status = "error";
-        state.holidaySync.lastError = error instanceof Error ? error.message : "Unknown holiday sync error.";
-        pushHistory("Official holiday sync failed", state.holidaySync.lastError, "ERROR");
+        state.holidaySync.lastError = userErrorMessage(error, "공휴일 조회 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.");
+        pushHistory("공휴일 정보 갱신 실패", state.holidaySync.lastError, "ERROR");
         render();
       });
     return;
@@ -6113,7 +6118,7 @@ app.addEventListener("click", (event) => {
     if (!state.ui.holidayDraft) return;
     if (!state.holidayDates.includes(state.ui.holidayDraft)) {
       state.holidayDates = [...state.holidayDates, state.ui.holidayDraft].sort();
-      pushHistory("Manual skip date added", `${state.ui.holidayDraft} will now be skipped together with the official holiday feed.`);
+      pushHistory("알람을 쉴 날짜 추가", `${state.ui.holidayDraft}에는 공휴일과 마찬가지로 알람이 울리지 않습니다.`);
     }
     state.ui.holidayDraft = "";
     persist();
@@ -6121,11 +6126,11 @@ app.addEventListener("click", (event) => {
   }
   if (action === "remove-holiday") {
     state.holidayDates = state.holidayDates.filter((holiday) => holiday !== target.dataset.value);
-    pushHistory("Manual skip date removed", `${target.dataset.value} was removed from the extra skip list.`);
+    pushHistory("알람을 쉴 날짜 삭제", `${target.dataset.value}을(를) 알람 쉴 날짜에서 삭제했습니다.`);
     return render();
   }
   if (action === "save-schedule") {
-    pushHistory("Schedule saved", `${state.schedule.startTime}-${state.schedule.endTime}, every ${state.schedule.repeatIntervalMin} minutes.`);
+    pushHistory("알람 일정 저장 완료", `${state.schedule.startTime}~${state.schedule.endTime}, ${state.schedule.repeatIntervalMin}분마다 반복합니다.`);
     goTo("home");
     return render();
   }

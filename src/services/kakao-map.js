@@ -66,9 +66,9 @@ export async function mountKakaoCommuteMap(element, { appKey, home, stop, work }
     });
     const bounds = new maps.LatLngBounds();
     [
-      [home, "Home"],
-      [stop, "Boarding stop"],
-      [work, "Work"],
+      [home, "집"],
+      [stop, "탑승 정류장"],
+      [work, "목적지"],
     ].forEach(([coordinate, title]) => {
       if (!isCoordinate(coordinate)) return;
       bounds.extend(buildMarker(maps, map, coordinate, title));

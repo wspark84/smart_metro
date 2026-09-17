@@ -1,11 +1,11 @@
 const SOURCE_LABELS = {
-  server_event: "Server event",
-  dispatch_bundle: "Dispatch bundle",
-  dispatch_execution: "Dispatch execution",
-  push_attempt: "Push gateway",
-  retry_queue: "Retry queue",
+  server_event: "서버 기록",
+  dispatch_bundle: "알림 전송 묶음",
+  dispatch_execution: "알림 전송 처리",
+  push_attempt: "푸시 전송",
+  retry_queue: "재시도 대기열",
 };
-const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const WEEKDAY_LABELS = ["일요일", "월요일", "화요일", "수요일", "목요일", "금요일", "토요일"];
 
 function normalizeText(value) {
   return String(value || "").trim().toLowerCase();
@@ -90,7 +90,7 @@ function normalizeSignal({
   const timeMeta = classifySignalTime(safeCreatedAt);
   return {
     source,
-    sourceLabel: SOURCE_LABELS[source] || "Trace",
+    sourceLabel: SOURCE_LABELS[source] || "처리 기록",
     routeNumber: String(routeNumber || "").trim(),
     stopName: String(stopName || "").trim(),
     title: String(title || "").trim(),
@@ -494,7 +494,8 @@ export function buildConservativeReliabilityReport(input = {}) {
       if (right.count !== left.count) {
         return right.count - left.count;
       }
-      return String(left.sourceLabel).localeCompare(String(right.sourceLabel));
+      // Tie-breaking must not change when display labels are translated.
+      return String(left.source).localeCompare(String(right.source));
     }),
     weekdayWindow,
     watchlist,
