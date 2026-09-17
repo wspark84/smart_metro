@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "./document-storage.mjs";
 import { dirname, join } from "node:path";
 
 export const DEFAULT_DISPATCH_QUEUE_FILE = join(process.cwd(), "data", "dispatch-queue.json");

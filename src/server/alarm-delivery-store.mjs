@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "./document-storage.mjs";
 import { dirname, join } from "node:path";
 
 export const DEFAULT_ALARM_DELIVERY_FILE = join(process.cwd(), "data", "alarm-delivery.json");

@@ -14,7 +14,12 @@
     "mobile:build:apk:debug": "powershell -ExecutionPolicy Bypass -File .\\scripts\\mobile-flutter.ps1 build-apk-debug"
   },
   "dependencies": {
+    "@supabase/ssr": "0.12.7",
+    "@supabase/supabase-js": "2.116.0",
     "nodemailer": "^9.0.3",
     "web-push": "^3.6.7"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "0.5.8"
   }
 }

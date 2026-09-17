@@ -30,14 +30,8 @@ import {
   fetchAccountSummary,
   fetchAuthProviders,
   fetchAuthSession,
-  confirmPasswordReset,
-  loginAuth,
   logoutAuth,
-  requestPasswordReset,
-  registerAuth,
-  resendAccountEmailVerification,
   startSocialAuth,
-  updateAccountPassword,
   updateAccountProfile,
 } from "./services/auth.js";
 import { loadRemoteAppState, saveRemoteAppState } from "./services/app-state.js";
@@ -543,85 +537,6 @@ async function hydrateAccountSummary() {
   }
 }
 
-async function submitAuth(mode = authMeta.mode) {
-  authMeta.submitStatus = "submitting";
-  authMeta.submitError = "";
-  render();
-
-  try {
-    if (mode === "reset-request") {
-      const payload = await requestPasswordReset({ email: authDraft.email });
-      authMeta.submitStatus = "saved";
-      authMeta.submitError = payload.message || "If this email is registered, a password reset link has been sent.";
-      render();
-      return;
-    }
-
-    if (mode === "reset") {
-      await confirmPasswordReset({
-        token: authMeta.resetToken,
-        newPassword: authDraft.password,
-      });
-      authMeta.status = "anonymous";
-      authMeta.user = null;
-      authMeta.session = null;
-      authMeta.mode = "login";
-      authMeta.resetToken = "";
-      authMeta.submitStatus = "saved";
-      authMeta.submitError = "Password changed. Please sign in with your new password.";
-      authDraft.password = "";
-      window.history.replaceState({}, document.title, `${window.location.pathname}#/home`);
-      render();
-      return;
-    }
-
-    const payload =
-      mode === "register"
-        ? await registerAuth({
-            name: authDraft.name,
-            email: authDraft.email,
-            password: authDraft.password,
-          })
-        : await loginAuth({
-            email: authDraft.email,
-            password: authDraft.password,
-          });
-
-    authMeta.status = "authenticated";
-    authMeta.mode = mode;
-    authMeta.user = payload.user || null;
-    authMeta.session = payload.session || null;
-    authMeta.lastCheckedAt = payload.savedAt || new Date().toISOString();
-    authMeta.submitStatus = "saved";
-    authDraft.password = "";
-    await hydrateAuthenticatedWorkspace();
-    render();
-  } catch (error) {
-    authMeta.submitStatus = "error";
-    authMeta.submitError = error instanceof Error ? error.message : "Unknown sign-in error.";
-    render();
-  }
-}
-
-async function resendEmailVerification() {
-  accountMeta.emailVerificationStatus = "sending";
-  accountMeta.emailVerificationError = "";
-  render();
-
-  try {
-    const payload = await resendAccountEmailVerification();
-    accountMeta.emailVerificationStatus = payload.alreadyVerified ? "verified" : "sent";
-    accountMeta.emailVerificationError = payload.delivered
-      ? "Verification email sent. Open the link in the email to complete verification."
-      : "The verification link was created, but email delivery is not configured on this server yet.";
-    await hydrateAccountSummary();
-    render();
-  } catch (error) {
-    accountMeta.emailVerificationStatus = "error";
-    accountMeta.emailVerificationError = error instanceof Error ? error.message : "Could not send a verification email.";
-    render();
-  }
-}
 
 async function beginSocialAuth(provider) {
   authMeta.submitStatus = "submitting";
@@ -684,27 +599,6 @@ async function submitAccountProfileUpdate() {
   }
 }
 
-async function submitAccountPasswordUpdate() {
-  accountMeta.passwordStatus = "saving";
-  accountMeta.passwordError = "";
-  render();
-
-  try {
-    await updateAccountPassword({
-      currentPassword: accountDraft.currentPassword,
-      newPassword: accountDraft.newPassword,
-    });
-    accountMeta.passwordStatus = "saved";
-    accountMeta.passwordError = "";
-    accountDraft.currentPassword = "";
-    accountDraft.newPassword = "";
-    render();
-  } catch (error) {
-    accountMeta.passwordStatus = "error";
-    accountMeta.passwordError = error instanceof Error ? error.message : "Unknown password update error.";
-    render();
-  }
-}
 
 function persist() {
   saveState(state);
@@ -2653,113 +2547,21 @@ function renderTopBar(screen, model) {
 }
 
 function renderAuthScreen() {
-  const isResetRequest = authMeta.mode === "reset-request";
-  const isResetConfirmation = authMeta.mode === "reset";
-  const isResetFlow = isResetRequest || isResetConfirmation;
-  const heading =
-    authMeta.status === "loading"
-      ? "Checking your workspace"
-      : isResetConfirmation
-        ? "Set a new password"
-        : isResetRequest
-          ? "Reset your password"
-          : authMeta.mode === "login"
-            ? "Sign in to BusWakeUp"
-            : "Create your BusWakeUp account";
-  const copy =
-    authMeta.status === "loading"
-      ? "The local server is checking whether this browser already has a saved session."
-      : isResetConfirmation
-        ? "Choose a new password with at least 8 characters. This reset link can only be used once."
-        : isResetRequest
-          ? "Enter your email. If it is registered, we will send a password reset link without revealing whether an account exists."
-          : authMeta.mode === "login"
-            ? "Sign in to load your route, schedule, device token, and alarm history."
-            : "Create an account so your route, alarm plan, push token, and event history stay separated per user.";
-  const statusCopy =
-    authMeta.submitStatus === "submitting"
-      ? "Sending your account request to the local server..."
-      : authMeta.submitError
-        ? authMeta.submitError
-        : authMeta.status === "anonymous"
-          ? "No active session yet. Register a new account or sign in with an existing email."
-          : "The browser session is ready.";
-  const googleProvider = authMeta.providerConfig?.providers?.google || null;
-  const appleProvider = authMeta.providerConfig?.providers?.apple || null;
-  const submitLabel =
-    authMeta.mode === "login"
-      ? "Sign In"
-      : isResetRequest
-        ? "Send Reset Link"
-        : isResetConfirmation
-          ? "Save New Password"
-          : "Create Account";
-
-  return `
-    <div class="app-shell">
-      <main class="screen screen-form">
-        <section class="headline-block">
-          <h1>${escapeHtml(heading)}</h1>
-          <p>${escapeHtml(copy)}</p>
-        </section>
-        <section class="stack-panel auth-panel">
-          <div class="stack-title"><span class="material-symbols-outlined">verified_user</span>Account Access</div>
-          <div class="live-sync-copy">${escapeHtml(statusCopy)}</div>
-          <div class="choice-grid two-cols">
-            <button class="choice-chip ${authMeta.mode === "register" ? "selected" : ""}" data-action="set-auth-mode" data-mode="register">Register</button>
-            <button class="choice-chip ${authMeta.mode === "login" ? "selected" : ""}" data-action="set-auth-mode" data-mode="login">Login</button>
-          </div>
-          <div class="field-grid">
-            ${
-              authMeta.mode === "register"
-                ? `<label class="field-card">
-                    <span>Name</span>
-                    <input class="text-field-input" type="text" data-auth-field="name" value="${escapeHtml(authDraft.name)}" placeholder="이름 또는 닉네임" />
-                  </label>`
-                : ""
-            }
-            ${
-              isResetConfirmation
-                ? ""
-                : `<label class="field-card">
-                    <span>Email</span>
-                    <input class="text-field-input" type="email" data-auth-field="email" value="${escapeHtml(authDraft.email)}" placeholder="name@example.com" />
-                  </label>`
-            }
-            ${
-              isResetRequest
-                ? ""
-                : `<label class="field-card">
-                    <span>${isResetConfirmation ? "New Password" : "Password"}</span>
-                    <input class="text-field-input" type="password" data-auth-field="password" value="${escapeHtml(authDraft.password)}" placeholder="8자 이상 비밀번호" />
-                  </label>`
-            }
-          </div>
-          <button class="primary-cta" data-action="submit-auth">
-            ${submitLabel}
-          </button>
-          ${
-            isResetFlow
-              ? `<button class="soft-button wide" data-action="set-auth-mode" data-mode="login">Back to Sign In</button>`
-              : authMeta.mode === "login"
-                ? `<button class="soft-button wide" data-action="set-auth-mode" data-mode="reset-request">Forgot Password?</button>`
-                : ""
-          }
-          ${
-            isResetFlow
-              ? ""
-              : `<div class="stack-title"><span class="material-symbols-outlined">hub</span>Social Sign-In Readiness</div>
-                 <div class="choice-grid two-cols">
-                   <button class="choice-chip ${googleProvider?.ready ? "selected" : ""}" data-action="start-social-auth" data-provider="google" ${googleProvider?.ready ? "" : "disabled"}>Google</button>
-                   <button class="choice-chip ${appleProvider?.ready ? "selected" : ""}" data-action="start-social-auth" data-provider="apple" ${appleProvider?.ready ? "" : "disabled"}>Apple</button>
-                 </div>
-                 <div class="field-help">${escapeHtml(googleProvider?.reason || "Google provider status has not loaded yet.")}</div>
-                 <div class="field-help">${escapeHtml(appleProvider?.reason || "Apple provider status has not loaded yet.")}</div>`
-          }
-        </section>
-      </main>
-    </div>
-  `;
+  const pending = authMeta.status === "loading" || authMeta.submitStatus === "submitting";
+  const buttons = [["google", "구글"], ["kakao", "카카오"], ["naver", "네이버"]].map(([id, label]) => {
+    const provider = authMeta.providerConfig?.providers?.[id];
+    return `<button class="soft-button wide" data-action="start-social-auth" data-provider="${id}" ${provider?.ready && !pending ? "" : "disabled"}>${label}로 시작하기</button>
+      ${provider?.ready ? "" : `<div class="field-help">${label}: ${escapeHtml(provider?.reason || "연결 상태를 확인하고 있습니다.")}</div>`}`;
+  }).join("");
+  return `<div class="app-shell"><main class="screen screen-form">
+    <section class="headline-block"><h1>늦지 않게, Smart Metro</h1>
+      <p>자주 쓰는 계정으로 시작하세요. 처음 로그인하면 계정이 만들어집니다.</p></section>
+    <section class="stack-panel auth-panel">
+      <div class="stack-title"><span class="material-symbols-outlined">verified_user</span>간편 로그인</div>
+      <div class="live-sync-copy" role="status">${escapeHtml(authMeta.submitError || (pending ? "로그인 상태를 확인하고 있습니다." : "별도 비밀번호나 이메일 인증이 필요하지 않습니다."))}</div>
+      ${buttons}
+      <p class="field-help">설정한 경로와 알람을 다시 불러오려면 이전에 사용한 로그인 방법을 선택해 주세요. 계정 복구는 해당 로그인 서비스에서 진행합니다.</p>
+    </section></main></div>`;
 }
 
 function renderStatusCard(model) {
@@ -4832,82 +4634,22 @@ function renderDeviceDeliveryPanel() {
 
 function renderAccountPanel() {
   const snapshot = accountMeta.snapshot;
-  const workspace = snapshot?.workspace || {};
-  const session = snapshot?.session || authMeta.session || null;
   const user = snapshot?.user || authMeta.user || {};
-  const providers = Array.isArray(user.providers) ? user.providers : [];
-  const emailVerified = user.emailVerified === true;
-  const profileCopy =
-    accountMeta.profileStatus === "saving"
-      ? "Saving the updated display name..."
-      : accountMeta.profileStatus === "saved"
-        ? "Display name saved."
-        : accountMeta.profileStatus === "error"
-          ? accountMeta.profileError || "Profile update failed."
-          : "Change the visible account name used by this local BusWakeUp workspace.";
-  const passwordCopy =
-    accountMeta.passwordStatus === "saving"
-      ? "Changing the account password..."
-      : accountMeta.passwordStatus === "saved"
-        ? "Password changed successfully."
-        : accountMeta.passwordStatus === "error"
-          ? accountMeta.passwordError || "Password change failed."
-          : "Use the current password once, then save a new one with at least 8 characters.";
-  const verificationCopy =
-    emailVerified
-      ? "This email address has been verified."
-      : accountMeta.emailVerificationStatus === "sending"
-        ? "Creating and sending a new verification link..."
-        : accountMeta.emailVerificationStatus === "sent"
-          ? accountMeta.emailVerificationError
-          : accountMeta.emailVerificationStatus === "error"
-            ? accountMeta.emailVerificationError || "Could not send a verification email."
-            : "Verify this email address to complete account recovery and email ownership checks.";
-
-  return `
-    <section class="stack-panel">
-      <div class="stack-title"><span class="material-symbols-outlined">manage_accounts</span>My Account</div>
-      <div class="live-sync-grid">
-        <article class="live-sync-card">
-          <div class="live-sync-label">Email</div>
-          <div class="live-sync-value">${escapeHtml(user.email || "-")}</div>
-          <div class="live-sync-copy">${emailVerified ? "Verified email" : "Email verification pending"} · Session expires ${escapeHtml(session?.expiresAt ? formatLongDate(new Date(session.expiresAt)) : "unknown")}</div>
-        </article>
-        <article class="live-sync-card">
-          <div class="live-sync-label">Workspace</div>
-          <div class="live-sync-value">${escapeHtml(String(workspace.eventCount || 0))} events</div>
-          <div class="live-sync-copy">${escapeHtml(`${workspace.pushAttemptCount || 0} push attempts · ${workspace.retryPending || 0} retry pending`)}</div>
-        </article>
-      </div>
-      <div class="field-help">
-        ${providers.length ? `Linked providers: ${escapeHtml(providers.join(", "))}` : "Linked providers: email/password only"}
-      </div>
-      <div class="field-help">${escapeHtml(verificationCopy)}</div>
-      ${
-        emailVerified
-          ? ""
-          : `<button class="soft-button wide" data-action="resend-email-verification" ${accountMeta.emailVerificationStatus === "sending" ? "disabled" : ""}>Resend Verification Email</button>`
-      }
-      <label class="field-card">
-        <span>Display Name</span>
-        <input class="text-field-input" type="text" data-account-field="name" value="${escapeHtml(accountDraft.name)}" placeholder="대표님 이름 또는 닉네임" />
-      </label>
-      <div class="field-help">${escapeHtml(profileCopy)}</div>
-      <button class="soft-button wide" data-action="save-account-profile">Save Display Name</button>
-      <div class="field-grid">
-        <label class="field-card">
-          <span>Current Password</span>
-          <input class="text-field-input" type="password" data-account-field="currentPassword" value="${escapeHtml(accountDraft.currentPassword)}" placeholder="현재 비밀번호" />
-        </label>
-        <label class="field-card">
-          <span>New Password</span>
-          <input class="text-field-input" type="password" data-account-field="newPassword" value="${escapeHtml(accountDraft.newPassword)}" placeholder="새 비밀번호 8자 이상" />
-        </label>
-      </div>
-      <div class="field-help">${escapeHtml(passwordCopy)}</div>
-      <button class="soft-button wide" data-action="save-account-password">Change Password</button>
-    </section>
-  `;
+  const labels = { google: "구글", kakao: "카카오", naver: "네이버" };
+  const providers = (user.providers || []).map((id) => labels[id] || id);
+  const copy = accountMeta.profileStatus === "saving" ? "이름을 저장하고 있습니다."
+    : accountMeta.profileStatus === "saved" ? "이름을 저장했습니다."
+    : accountMeta.profileError || "앱에서 사용할 이름을 설정하세요.";
+  return `<section class="stack-panel">
+    <div class="stack-title"><span class="material-symbols-outlined">manage_accounts</span>내 계정</div>
+    <div class="field-help">로그인 방법: ${escapeHtml(providers.join(", ") || "소셜 로그인")}</div>
+    <div class="field-help">비밀번호와 계정 복구는 로그인에 사용한 서비스에서 관리합니다.</div>
+    <label class="field-card"><span>표시 이름</span>
+      <input class="text-field-input" type="text" maxlength="80" data-account-field="name" value="${escapeHtml(accountDraft.name)}" placeholder="이름 또는 닉네임" />
+    </label>
+    <div class="field-help">${escapeHtml(copy)}</div>
+    <button class="soft-button wide" data-action="save-account-profile">이름 저장</button>
+  </section>`;
 }
 
 function renderServerEventPanel() {
@@ -5773,7 +5515,7 @@ function renderSettings(screen, model) {
 }
 
 function render() {
-  if (!isAuthenticated() || authMeta.mode === "reset") {
+  if (!isAuthenticated()) {
     app.innerHTML = renderAuthScreen();
     return;
   }
@@ -5897,18 +5639,6 @@ app.addEventListener("click", (event) => {
   if (!target) return;
   const action = target.dataset.action;
 
-  if (action === "set-auth-mode") {
-    const requestedMode = String(target.dataset.mode || "");
-    authMeta.mode = ["register", "login", "reset-request"].includes(requestedMode) ? requestedMode : "login";
-    authMeta.submitError = "";
-    authMeta.submitStatus = "idle";
-    authMeta.resetToken = "";
-    return render();
-  }
-  if (action === "submit-auth") {
-    void submitAuth(authMeta.mode);
-    return;
-  }
   if (action === "logout") {
     void signOutWorkspace();
     return;
@@ -5919,14 +5649,6 @@ app.addEventListener("click", (event) => {
   }
   if (action === "save-account-profile") {
     void submitAccountProfileUpdate();
-    return;
-  }
-  if (action === "save-account-password") {
-    void submitAccountPasswordUpdate();
-    return;
-  }
-  if (action === "resend-email-verification") {
-    void resendEmailVerification();
     return;
   }
 
@@ -6623,31 +6345,14 @@ if (!window.location.hash) {
 
 async function bootstrap() {
   const searchParams = new URL(window.location.href).searchParams;
-  const hashQuery = window.location.hash.includes("?") ? window.location.hash.split("?").slice(1).join("?") : "";
-  const resetToken = String(new URLSearchParams(hashQuery).get("password_reset_token") || "").trim();
-  const authError = String(searchParams.get("auth_error") || "").trim();
-  const authProvider = String(searchParams.get("auth_provider") || "").trim();
-  const emailVerification = String(searchParams.get("email_verification") || "").trim();
-  if (resetToken) {
-    authMeta.mode = "reset";
-    authMeta.resetToken = resetToken;
-  }
-  if (authError) {
-    authMeta.submitError = `OAuth sign-in returned: ${authError}`;
-  } else if (authProvider) {
-    authMeta.submitError = `${authProvider} sign-in completed. Checking your new session now.`;
-  } else if (emailVerification === "verified") {
-    authMeta.submitError = "Email address verified successfully.";
-  } else if (emailVerification) {
-    authMeta.submitError = "The email verification link is invalid, expired, or could not be completed.";
-  }
-  if (authError || authProvider || emailVerification) {
+  if (searchParams.has("login_error")) {
+    authMeta.submitError = "로그인을 완료하지 못했습니다. 같은 브라우저에서 다시 시도해 주세요.";
     window.history.replaceState({}, document.title, window.location.pathname + window.location.hash);
   }
 
   const authenticated = await hydrateAuthSession();
   await Promise.all([refreshBusApiConfig(), refreshPlaceApiConfig(), refreshCommuteApiConfig(), refreshHolidayApiConfig(), hydrateAuthProviders()]);
-  if (authenticated && !resetToken) {
+  if (authenticated) {
     await hydrateAuthenticatedWorkspace();
   }
   render();

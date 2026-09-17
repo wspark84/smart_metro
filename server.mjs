@@ -9,33 +9,7 @@ import { dateOnlyKey, mergeHolidayDates } from "./src/logic/commute.js";
 import { buildDeliveryIntensityReport } from "./src/logic/delivery-intensity-report.js";
 import { applyAlarmDeliveryAction, createAlarmDeliveryState, reconcileAlarmDelivery } from "./src/server/alarm-delivery.mjs";
 import { resetDispatchQueueForAlert, resetPushGatewayHandledKeysForAlert } from "./src/server/alert-pipeline-reset.mjs";
-import {
-  authenticateAuthUser,
-  AUTH_SESSION_COOKIE,
-  changeAuthUserPassword,
-  createClearedSessionCookieValue,
-  createSessionCookieValue,
-  ensureSocialAuthUser,
-  findAuthSession,
-  issueAuthSession,
-  parseCookieHeader,
-  pruneExpiredAuthSessions,
-  registerAuthUser,
-  markAuthUserEmailVerified,
-  resetAuthUserPassword,
-  sanitizeAuthUser,
-  touchAuthSession,
-  updateAuthUserProfile,
-} from "./src/server/auth-service.mjs";
-import { readAuthSessions, readAuthUsers, writeAuthSessions, writeAuthUsers } from "./src/server/auth-store.mjs";
-import {
-  consumeAuthActionToken,
-  createAuthActionToken,
-  pruneAuthActionTokens,
-  readAuthActionTokens,
-  replacePendingAuthActionToken,
-  writeAuthActionTokens,
-} from "./src/server/auth-action-store.mjs";
+import { sanitizeAuthUser } from "./src/server/auth-service.mjs";
 import { readAlarmDeliveryState, writeAlarmDeliveryState } from "./src/server/alarm-delivery-store.mjs";
 import { readAppState, writeAppState } from "./src/server/app-state-store.mjs";
 import { appendAlarmEvents, readAlarmEvents } from "./src/server/alarm-event-store.mjs";
@@ -79,8 +53,6 @@ import { readDomainSnapshot, writeDomainSnapshot } from "./src/server/domain-sto
 import { readFcmAuthStatus } from "./src/server/fcm-auth.mjs";
 import { fetchOfficialHolidays, getHolidayApiConfig } from "./src/server/holiday-providers.mjs";
 import { buildMobileHealthPayload } from "./src/server/mobile-health.mjs";
-import { getMailConfig, sendAccountEmail } from "./src/server/mail-service.mjs";
-import { readOAuthStates, writeOAuthStates } from "./src/server/oauth-state-store.mjs";
 import { createAsyncMutex } from "./src/server/async-mutex.mjs";
 import { createAlarmRuntimeState, reconcileAlarmRuntime } from "./src/server/alarm-runtime.mjs";
 import { readAlarmRuntimeState, writeAlarmRuntimeState } from "./src/server/alarm-runtime-store.mjs";
@@ -104,22 +76,15 @@ import { getPlaceApiConfig, searchAddressPlaces } from "./src/server/place-provi
 import { loadWithCache } from "./src/server/request-cache.mjs";
 import { estimateCommuteRoute, getRouteApiConfig } from "./src/server/route-providers.mjs";
 import { fetchTransitRoutes, refreshTransitJourney } from "./src/server/transit-providers.mjs";
-import {
-  buildAppleAuthorizationUrl,
-  buildGoogleAuthorizationUrl,
-  consumeOAuthStateRecord,
-  createOAuthStateRecord,
-  exchangeAppleCodeForProfile,
-  exchangeGoogleCodeForProfile,
-  getAppBaseUrl,
-  getSocialAuthConfig,
-  pruneExpiredOAuthStates,
-} from "./src/server/social-auth.mjs";
 import { buildTestPushPreview } from "./src/server/test-push.mjs";
 import { buildUserDataFilePath } from "./src/server/user-storage.mjs";
 import { isAssetPath, resolvePublicStaticFile } from "./src/server/static-assets.mjs";
 import { ensureLiveBindingState } from "./src/logic/live-bindings.js";
 import { STOP_LIBRARY } from "./src/mock-data.js";
+import { createRequestAuth, isTrustedMutation } from "./src/server/supabase-session.mjs";
+import { createSupabaseGateway } from "./src/server/supabase-gateway.mjs";
+import { bufferedResponse, runWithDocumentStorage } from "./src/server/document-storage.mjs";
+import { handleSocialLoginRoute, sendAuthJson } from "./src/server/social-login-routes.mjs";
 
 const PORT = Number(process.env.PORT || 4173);
 const ROOT = process.cwd();
@@ -127,18 +92,6 @@ const LIVE_ARRIVAL_CACHE_TTL_MS = 10_000;
 const MAX_REQUEST_BODY_BYTES = 256 * 1024;
 const runWithRuntimeLock = createAsyncMutex();
 const PUBLIC_API_PATHS = new Set([
-  "/api/auth/session",
-  "/api/auth/register",
-  "/api/auth/login",
-  "/api/auth/logout",
-  "/api/auth/providers",
-  "/api/auth/oauth/start",
-  "/api/auth/oauth/google/callback",
-  "/api/auth/oauth/apple/callback",
-  "/api/auth/email-status",
-  "/api/auth/verify-email",
-  "/api/auth/password-reset/request",
-  "/api/auth/password-reset/confirm",
   "/api/bus/config",
   "/api/holidays/config",
   "/api/holidays",
@@ -203,116 +156,6 @@ async function readJsonBody(request) {
   return body ? JSON.parse(body) : {};
 }
 
-async function readFormBody(request) {
-  const body = await readRequestBody(request);
-  return Object.fromEntries(new URLSearchParams(body || ""));
-}
-
-function serializeSocialAuthConfig(config) {
-  return {
-    baseUrl: config.baseUrl,
-    providers: Object.fromEntries(
-      Object.entries(config.providers || {}).map(([providerName, provider]) => [
-        providerName,
-        {
-          id: provider.id,
-          label: provider.label,
-          ready: provider.ready,
-          reason: provider.reason,
-          callbackUrl: provider.callbackUrl,
-        },
-      ]),
-    ),
-  };
-}
-
-function buildAuthRedirectLocation(path = "/#/home", extras = {}) {
-  const requestedPath = String(path || "/#/home").trim();
-  const safePath =
-    requestedPath.startsWith("/") && !requestedPath.startsWith("//") && !requestedPath.includes("\\")
-      ? requestedPath
-      : "/#/home";
-  const hashIndex = safePath.indexOf("#");
-  const pathBeforeHash = hashIndex >= 0 ? safePath.slice(0, hashIndex) : safePath;
-  const hash = hashIndex >= 0 ? safePath.slice(hashIndex) : "";
-  const [basePath, existingQuery = ""] = pathBeforeHash.split("?");
-  const params = new URLSearchParams(existingQuery);
-  for (const [key, value] of Object.entries(extras || {})) {
-    if (value !== null && value !== undefined && String(value).trim() !== "") {
-      params.set(key, String(value));
-    }
-  }
-
-  const query = params.toString();
-  return `${query ? `${basePath}?${query}` : basePath}${hash}`;
-}
-
-function buildAccountActionLink(pathname, token) {
-  const baseUrl = getAppBaseUrl(process.env, PORT);
-  const url = new URL(pathname, `${baseUrl}/`);
-  url.searchParams.set("token", String(token || ""));
-  return url.toString();
-}
-
-function escapeEmailHtml(value) {
-  return String(value || "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
-}
-
-async function issueAccountActionEmail({ purpose, user, now = new Date() }) {
-  const safeUser = user && typeof user === "object" ? user : {};
-  const action = createAuthActionToken(purpose, safeUser.id, now);
-  const existingTokens = await readAuthActionTokens();
-  await writeAuthActionTokens(
-    replacePendingAuthActionToken(pruneAuthActionTokens(existingTokens, now), action.record),
-  );
-
-  const isVerification = purpose === "verify-email";
-  const link = isVerification
-    ? buildAccountActionLink("/api/auth/verify-email", action.token)
-    : `${getAppBaseUrl(process.env, PORT)}/#/?password_reset_token=${encodeURIComponent(action.token)}`;
-  const subject = isVerification ? "BusWakeUp 이메일 인증" : "BusWakeUp 비밀번호 재설정";
-  const actionCopy = isVerification
-    ? "아래 링크를 열어 이메일 주소를 인증해 주세요."
-    : "아래 링크를 연 뒤 새 비밀번호를 설정해 주세요.";
-  const expiresCopy = isVerification ? "24시간" : "30분";
-
-  try {
-    const delivery = await sendAccountEmail(
-      {
-        to: safeUser.email,
-        subject,
-        text: `${actionCopy}\n\n${link}\n\n이 링크는 ${expiresCopy} 동안만 유효합니다. 본인이 요청하지 않았다면 이 이메일을 무시해 주세요.`,
-        html: `<p>${escapeEmailHtml(actionCopy)}</p><p><a href="${escapeEmailHtml(link)}">${escapeEmailHtml(
-          isVerification ? "이메일 인증하기" : "비밀번호 재설정하기",
-        )}</a></p><p>이 링크는 ${escapeEmailHtml(expiresCopy)} 동안만 유효합니다. 본인이 요청하지 않았다면 이 이메일을 무시해 주세요.</p>`,
-      },
-      process.env,
-    );
-    return { delivery, expiresAt: action.record.expiresAt };
-  } catch (error) {
-    return {
-      delivery: {
-        delivered: false,
-        mode: "smtp",
-        reason: error instanceof Error ? error.message : "Account email delivery failed.",
-      },
-      expiresAt: action.record.expiresAt,
-    };
-  }
-}
-
-function shouldUseSecureSessionCookies() {
-  try {
-    return new URL(String(process.env.APP_BASE_URL || "")).protocol === "https:";
-  } catch {
-    return false;
-  }
-}
 
 async function ensureUserWorkspaceSeeded(user) {
   await activateUserContext(user);
@@ -495,48 +338,10 @@ async function activateUserContext(user) {
   return activeUserContext;
 }
 
-async function readPersistedAuthState(now = new Date()) {
-  const [users, sessions] = await Promise.all([readAuthUsers(), readAuthSessions()]);
-  const prunedSessions = pruneExpiredAuthSessions(sessions, now);
-  if (prunedSessions.length !== sessions.length) {
-    await writeAuthSessions(prunedSessions);
-  }
-
-  return {
-    users,
-    sessions: prunedSessions,
-  };
-}
 
 async function resolveAuthenticatedRequest(request, now = new Date()) {
-  const cookies = parseCookieHeader(request.headers.cookie || "");
-  const sessionId = cookies[AUTH_SESSION_COOKIE] || "";
-  if (!sessionId) {
-    return null;
-  }
-
-  const authState = await readPersistedAuthState(now);
-  const session = findAuthSession(authState.sessions, sessionId, now);
-  if (!session) {
-    return null;
-  }
-
-  const user = authState.users.find((item) => item.id === session.userId) || null;
-  if (!user) {
-    return null;
-  }
-
-  const touchedSession = touchAuthSession(session, now);
-  if (touchedSession.updatedAt !== session.updatedAt) {
-    await writeAuthSessions(
-      authState.sessions.map((item) => (item.id === touchedSession.id ? touchedSession : item)),
-    );
-  }
-
-  return {
-    user,
-    session: touchedSession,
-  };
+  // Legacy cookies are never accepted by the social-only HTTP entry point.
+  return request.smartMetroAuth || null;
 }
 
 function inferRegionHint(provider = "", hint = "") {
@@ -1370,24 +1175,6 @@ async function safeTickAlarmRuntime(user = activeUserContext?.user, now = new Da
   }
 }
 
-async function tickAllUserAlarmRuntimesUnsafe(now = new Date()) {
-  const users = await readAuthUsers();
-  for (const user of users) {
-    await safeTickAlarmRuntime(user, now);
-  }
-}
-
-async function tickAllUserAlarmRuntimes(now = new Date()) {
-  return runWithRuntimeLock(() => tickAllUserAlarmRuntimesUnsafe(now));
-}
-
-const alarmRuntimeInterval = setInterval(() => {
-  void tickAllUserAlarmRuntimes();
-}, 15_000);
-
-if (typeof alarmRuntimeInterval.unref === "function") {
-  alarmRuntimeInterval.unref();
-}
 
 function parseRequestUrl(request) {
   const target = String(request?.url || "/");
@@ -1406,37 +1193,6 @@ async function handleRequest(request, response) {
   const requestUrl = parseRequestUrl(request);
   const now = new Date();
   let requestAuth = null;
-  if (requestUrl.pathname === "/api/auth/session" && request.method === "GET") {
-    try {
-      const auth = await resolveAuthenticatedRequest(request, now);
-      response.writeHead(200, {
-        "Content-Type": "application/json; charset=utf-8",
-        "Cache-Control": "no-store",
-      });
-      response.end(
-        JSON.stringify({
-          authenticated: Boolean(auth),
-          user: auth ? sanitizeAuthUser(auth.user) : null,
-          session: auth
-            ? {
-                id: auth.session.id,
-                expiresAt: auth.session.expiresAt,
-                updatedAt: auth.session.updatedAt,
-              }
-            : null,
-          fetchedAt: now.toISOString(),
-        }),
-      );
-      return;
-    } catch (error) {
-      response.writeHead(500, {
-        "Content-Type": "application/json; charset=utf-8",
-        "Cache-Control": "no-store",
-      });
-      response.end(JSON.stringify({ error: error instanceof Error ? error.message : "Unknown auth session error." }));
-      return;
-    }
-  }
 
   if (requestUrl.pathname === "/api/mobile/health" && request.method === "GET") {
     try {
@@ -1457,424 +1213,6 @@ async function handleRequest(request, response) {
     }
   }
 
-  if (requestUrl.pathname === "/api/auth/email-status" && request.method === "GET") {
-    const config = getMailConfig(process.env);
-    response.writeHead(200, {
-      "Content-Type": "application/json; charset=utf-8",
-      "Cache-Control": "no-store",
-    });
-    response.end(
-      JSON.stringify({
-        configured: config.configured,
-        mode: config.mode,
-        senderConfigured: Boolean(config.from),
-        savedAt: now.toISOString(),
-      }),
-    );
-    return;
-  }
-
-  if (requestUrl.pathname === "/api/auth/verify-email" && request.method === "GET") {
-    try {
-      const token = String(requestUrl.searchParams.get("token") || "").trim();
-      const actionTokens = await readAuthActionTokens();
-      const consumed = consumeAuthActionToken(actionTokens, "verify-email", token, now);
-      await writeAuthActionTokens(consumed.records);
-      if (!consumed.record) {
-        response.writeHead(302, {
-          Location: buildAuthRedirectLocation("/#/home", { email_verification: "invalid_or_expired" }),
-        });
-        response.end();
-        return;
-      }
-
-      const authState = await readPersistedAuthState(now);
-      const updated = markAuthUserEmailVerified(authState.users, consumed.record.userId, now);
-      await writeAuthUsers(updated.users);
-      response.writeHead(302, {
-        Location: buildAuthRedirectLocation("/#/home", { email_verification: "verified" }),
-      });
-      response.end();
-      return;
-    } catch {
-      response.writeHead(302, {
-        Location: buildAuthRedirectLocation("/#/home", { email_verification: "failed" }),
-      });
-      response.end();
-      return;
-    }
-  }
-
-  if (requestUrl.pathname === "/api/auth/password-reset/request" && request.method === "POST") {
-    try {
-      const payload = await readJsonBody(request);
-      const email = String(payload?.email || "").trim().toLowerCase();
-      const authState = await readPersistedAuthState(now);
-      const user = authState.users.find((item) => String(item?.email || "").trim().toLowerCase() === email);
-      if (user) {
-        await issueAccountActionEmail({ purpose: "reset-password", user, now });
-      }
-      response.writeHead(200, {
-        "Content-Type": "application/json; charset=utf-8",
-        "Cache-Control": "no-store",
-      });
-      response.end(
-        JSON.stringify({
-          ok: true,
-          message: "If the email address is registered, a password reset link has been sent.",
-          savedAt: now.toISOString(),
-        }),
-      );
-      return;
-    } catch (error) {
-      response.writeHead(error?.statusCode || 400, {
-        "Content-Type": "application/json; charset=utf-8",
-        "Cache-Control": "no-store",
-      });
-      response.end(JSON.stringify({ error: "Could not start the password reset request." }));
-      return;
-    }
-  }
-
-  if (requestUrl.pathname === "/api/auth/password-reset/confirm" && request.method === "POST") {
-    try {
-      const payload = await readJsonBody(request);
-      const actionTokens = await readAuthActionTokens();
-      const consumed = consumeAuthActionToken(actionTokens, "reset-password", payload?.token, now);
-      if (!consumed.record) {
-        const error = new Error("This password reset link is invalid or has expired.");
-        error.statusCode = 400;
-        throw error;
-      }
-
-      const authState = await readPersistedAuthState(now);
-      const updated = await resetAuthUserPassword(authState.users, consumed.record.userId, payload?.newPassword, now);
-      await Promise.all([
-        writeAuthUsers(updated.users),
-        writeAuthSessions(authState.sessions.filter((session) => session.userId !== updated.user.id)),
-      ]);
-      await writeAuthActionTokens(consumed.records);
-      response.writeHead(200, {
-        "Content-Type": "application/json; charset=utf-8",
-        "Cache-Control": "no-store",
-        "Set-Cookie": createClearedSessionCookieValue({ secure: shouldUseSecureSessionCookies() }),
-      });
-      response.end(JSON.stringify({ ok: true, savedAt: now.toISOString() }));
-      return;
-    } catch (error) {
-      response.writeHead(error?.statusCode || 400, {
-        "Content-Type": "application/json; charset=utf-8",
-        "Cache-Control": "no-store",
-      });
-      response.end(JSON.stringify({ error: error instanceof Error ? error.message : "Could not reset the password." }));
-      return;
-    }
-  }
-
-  if (requestUrl.pathname === "/api/auth/register" && request.method === "POST") {
-    try {
-      const payload = await readJsonBody(request);
-      const authState = await readPersistedAuthState(now);
-      const newUser = await registerAuthUser(authState.users, payload, now);
-      const nextUsers = [...authState.users, newUser];
-      const session = issueAuthSession(newUser.id, now);
-      const nextSessions = [...authState.sessions, session];
-      await Promise.all([writeAuthUsers(nextUsers), writeAuthSessions(nextSessions)]);
-      await ensureUserWorkspaceSeeded(newUser);
-      await safeTickAlarmRuntime(newUser, now);
-      const emailVerification = await issueAccountActionEmail({ purpose: "verify-email", user: newUser, now });
-
-      response.writeHead(200, {
-        "Content-Type": "application/json; charset=utf-8",
-        "Cache-Control": "no-store",
-        "Set-Cookie": createSessionCookieValue(session.id, { secure: shouldUseSecureSessionCookies() }),
-      });
-      response.end(
-        JSON.stringify({
-          ok: true,
-          authenticated: true,
-          user: sanitizeAuthUser(newUser),
-          session: {
-            id: session.id,
-            expiresAt: session.expiresAt,
-            updatedAt: session.updatedAt,
-          },
-          emailVerification: {
-            required: true,
-            delivered: emailVerification.delivery.delivered,
-            mode: emailVerification.delivery.mode,
-            expiresAt: emailVerification.expiresAt,
-          },
-          savedAt: now.toISOString(),
-        }),
-      );
-      return;
-    } catch (error) {
-      response.writeHead(error?.statusCode || 400, {
-        "Content-Type": "application/json; charset=utf-8",
-        "Cache-Control": "no-store",
-      });
-      response.end(JSON.stringify({ error: error instanceof Error ? error.message : "Unknown auth register error." }));
-      return;
-    }
-  }
-
-  if (requestUrl.pathname === "/api/auth/login" && request.method === "POST") {
-    try {
-      const payload = await readJsonBody(request);
-      const authState = await readPersistedAuthState(now);
-      const user = await authenticateAuthUser(authState.users, payload);
-      if (!user) {
-        response.writeHead(401, {
-          "Content-Type": "application/json; charset=utf-8",
-          "Cache-Control": "no-store",
-        });
-        response.end(JSON.stringify({ error: "Email or password did not match." }));
-        return;
-      }
-
-      const session = issueAuthSession(user.id, now);
-      await writeAuthSessions([...authState.sessions, session]);
-      response.writeHead(200, {
-        "Content-Type": "application/json; charset=utf-8",
-        "Cache-Control": "no-store",
-        "Set-Cookie": createSessionCookieValue(session.id, { secure: shouldUseSecureSessionCookies() }),
-      });
-      response.end(
-        JSON.stringify({
-          ok: true,
-          authenticated: true,
-          user: sanitizeAuthUser(user),
-          session: {
-            id: session.id,
-            expiresAt: session.expiresAt,
-            updatedAt: session.updatedAt,
-          },
-          savedAt: now.toISOString(),
-        }),
-      );
-      return;
-    } catch (error) {
-      response.writeHead(error?.statusCode || 400, {
-        "Content-Type": "application/json; charset=utf-8",
-        "Cache-Control": "no-store",
-      });
-      response.end(JSON.stringify({ error: error instanceof Error ? error.message : "Unknown auth login error." }));
-      return;
-    }
-  }
-
-  if (requestUrl.pathname === "/api/auth/logout" && request.method === "POST") {
-    try {
-      const authState = await readPersistedAuthState(now);
-      const cookies = parseCookieHeader(request.headers.cookie || "");
-      const sessionId = String(cookies[AUTH_SESSION_COOKIE] || "").trim();
-      if (sessionId) {
-        await writeAuthSessions(authState.sessions.filter((session) => session.id !== sessionId));
-      }
-
-      response.writeHead(200, {
-        "Content-Type": "application/json; charset=utf-8",
-        "Cache-Control": "no-store",
-        "Set-Cookie": createClearedSessionCookieValue({ secure: shouldUseSecureSessionCookies() }),
-      });
-      response.end(JSON.stringify({ ok: true, authenticated: false, savedAt: now.toISOString() }));
-      return;
-    } catch (error) {
-      response.writeHead(500, {
-        "Content-Type": "application/json; charset=utf-8",
-        "Cache-Control": "no-store",
-      });
-      response.end(JSON.stringify({ error: error instanceof Error ? error.message : "Unknown auth logout error." }));
-      return;
-    }
-  }
-
-  if (requestUrl.pathname === "/api/auth/providers" && request.method === "GET") {
-    try {
-      const config = getSocialAuthConfig(process.env, PORT);
-      response.writeHead(200, {
-        "Content-Type": "application/json; charset=utf-8",
-        "Cache-Control": "no-store",
-      });
-      response.end(
-        JSON.stringify({
-          config: serializeSocialAuthConfig(config),
-          fetchedAt: now.toISOString(),
-        }),
-      );
-      return;
-    } catch (error) {
-      response.writeHead(500, {
-        "Content-Type": "application/json; charset=utf-8",
-        "Cache-Control": "no-store",
-      });
-      response.end(JSON.stringify({ error: error instanceof Error ? error.message : "Unknown auth provider error." }));
-      return;
-    }
-  }
-
-  if (requestUrl.pathname === "/api/auth/oauth/start" && (request.method === "POST" || request.method === "GET")) {
-    try {
-      const payload = request.method === "POST" ? await readJsonBody(request) : Object.fromEntries(requestUrl.searchParams);
-      const provider = String(payload?.provider || "").trim().toLowerCase();
-      if (!provider || !["google", "apple"].includes(provider)) {
-        response.writeHead(400, {
-          "Content-Type": "application/json; charset=utf-8",
-          "Cache-Control": "no-store",
-        });
-        response.end(JSON.stringify({ error: "Choose either google or apple as the OAuth provider." }));
-        return;
-      }
-
-      const config = getSocialAuthConfig(process.env, PORT);
-      const providerConfig = config.providers[provider];
-      if (!providerConfig?.ready) {
-        response.writeHead(400, {
-          "Content-Type": "application/json; charset=utf-8",
-          "Cache-Control": "no-store",
-        });
-        response.end(JSON.stringify({ error: providerConfig?.reason || "This OAuth provider is not configured yet." }));
-        return;
-      }
-
-      const existingStates = await readOAuthStates();
-      const stateRecord = createOAuthStateRecord(provider, now, payload?.redirectAfterAuth || "/#/home");
-      await writeOAuthStates([...pruneExpiredOAuthStates(existingStates, now), stateRecord]);
-      const authorizationUrl =
-        provider === "google"
-          ? buildGoogleAuthorizationUrl(config, stateRecord)
-          : buildAppleAuthorizationUrl(config, stateRecord);
-
-      response.writeHead(200, {
-        "Content-Type": "application/json; charset=utf-8",
-        "Cache-Control": "no-store",
-      });
-      response.end(
-        JSON.stringify({
-          ok: true,
-          provider,
-          authorizationUrl,
-          savedAt: now.toISOString(),
-        }),
-      );
-      return;
-    } catch (error) {
-      response.writeHead(400, {
-        "Content-Type": "application/json; charset=utf-8",
-        "Cache-Control": "no-store",
-      });
-      response.end(JSON.stringify({ error: error instanceof Error ? error.message : "Unknown OAuth start error." }));
-      return;
-    }
-  }
-
-  if (requestUrl.pathname === "/api/auth/oauth/google/callback" && request.method === "GET") {
-    try {
-      const code = String(requestUrl.searchParams.get("code") || "").trim();
-      const stateValue = String(requestUrl.searchParams.get("state") || "").trim();
-      const providerError = String(requestUrl.searchParams.get("error") || "").trim();
-      const config = getSocialAuthConfig(process.env, PORT);
-      const existingStates = await readOAuthStates();
-      const consumed = consumeOAuthStateRecord(existingStates, stateValue, "google", now);
-      await writeOAuthStates(consumed.remainingRecords);
-
-      if (!consumed.stateRecord) {
-        response.writeHead(302, { Location: buildAuthRedirectLocation("/#/home", { auth_error: "google_state_mismatch" }) });
-        response.end();
-        return;
-      }
-
-      if (providerError) {
-        response.writeHead(302, {
-          Location: buildAuthRedirectLocation(consumed.stateRecord.redirectAfterAuth, {
-            auth_error: providerError,
-          }),
-        });
-        response.end();
-        return;
-      }
-
-      const profile = await exchangeGoogleCodeForProfile(config, code);
-      const authState = await readPersistedAuthState(now);
-      const linked = ensureSocialAuthUser(authState.users, "google", profile, now);
-      const session = issueAuthSession(linked.user.id, now);
-      await Promise.all([
-        writeAuthUsers(linked.users),
-        writeAuthSessions([...authState.sessions, session]),
-      ]);
-      await ensureUserWorkspaceSeeded(linked.user);
-      await safeTickAlarmRuntime(linked.user, now);
-
-      response.writeHead(302, {
-        Location: buildAuthRedirectLocation(consumed.stateRecord.redirectAfterAuth, {
-          auth_provider: "google",
-        }),
-        "Set-Cookie": createSessionCookieValue(session.id, { secure: shouldUseSecureSessionCookies() }),
-      });
-      response.end();
-      return;
-    } catch (error) {
-      response.writeHead(302, { Location: buildAuthRedirectLocation("/#/home", { auth_error: "google_callback_failed" }) });
-      response.end();
-      return;
-    }
-  }
-
-  if (requestUrl.pathname === "/api/auth/oauth/apple/callback" && (request.method === "POST" || request.method === "GET")) {
-    try {
-      const payload = request.method === "POST" ? await readFormBody(request) : Object.fromEntries(requestUrl.searchParams);
-      const code = String(payload?.code || "").trim();
-      const stateValue = String(payload?.state || "").trim();
-      const providerError = String(payload?.error || "").trim();
-      const config = getSocialAuthConfig(process.env, PORT);
-      const existingStates = await readOAuthStates();
-      const consumed = consumeOAuthStateRecord(existingStates, stateValue, "apple", now);
-      await writeOAuthStates(consumed.remainingRecords);
-
-      if (!consumed.stateRecord) {
-        response.writeHead(302, { Location: buildAuthRedirectLocation("/#/home", { auth_error: "apple_state_mismatch" }) });
-        response.end();
-        return;
-      }
-
-      if (providerError) {
-        response.writeHead(302, {
-          Location: buildAuthRedirectLocation(consumed.stateRecord.redirectAfterAuth, {
-            auth_error: providerError,
-          }),
-        });
-        response.end();
-        return;
-      }
-
-      const profile = await exchangeAppleCodeForProfile(config, code, payload?.user || "", {
-        expectedNonce: consumed.stateRecord.nonce,
-      });
-      const authState = await readPersistedAuthState(now);
-      const linked = ensureSocialAuthUser(authState.users, "apple", profile, now);
-      const session = issueAuthSession(linked.user.id, now);
-      await Promise.all([
-        writeAuthUsers(linked.users),
-        writeAuthSessions([...authState.sessions, session]),
-      ]);
-      await ensureUserWorkspaceSeeded(linked.user);
-      await safeTickAlarmRuntime(linked.user, now);
-
-      response.writeHead(302, {
-        Location: buildAuthRedirectLocation(consumed.stateRecord.redirectAfterAuth, {
-          auth_provider: "apple",
-        }),
-        "Set-Cookie": createSessionCookieValue(session.id, { secure: shouldUseSecureSessionCookies() }),
-      });
-      response.end();
-      return;
-    } catch (error) {
-      response.writeHead(302, { Location: buildAuthRedirectLocation("/#/home", { auth_error: "apple_callback_failed" }) });
-      response.end();
-      return;
-    }
-  }
 
   if (requestUrl.pathname.startsWith("/api/") && !PUBLIC_API_PATHS.has(requestUrl.pathname)) {
     requestAuth = await resolveAuthenticatedRequest(request, now);
@@ -1890,63 +1228,6 @@ async function handleRequest(request, response) {
     await activateUserContext(requestAuth.user);
   }
 
-  if (requestUrl.pathname === "/api/account/email-verification" && request.method === "GET") {
-    const mailConfig = getMailConfig(process.env);
-    response.writeHead(200, {
-      "Content-Type": "application/json; charset=utf-8",
-      "Cache-Control": "no-store",
-    });
-    response.end(
-      JSON.stringify({
-        email: activeUserContext.user.email,
-        verified: activeUserContext.user.emailVerified === true,
-        emailDeliveryConfigured: mailConfig.configured,
-        deliveryMode: mailConfig.mode,
-        fetchedAt: now.toISOString(),
-      }),
-    );
-    return;
-  }
-
-  if (requestUrl.pathname === "/api/account/email-verification" && request.method === "POST") {
-    try {
-      if (activeUserContext.user.emailVerified === true) {
-        response.writeHead(200, {
-          "Content-Type": "application/json; charset=utf-8",
-          "Cache-Control": "no-store",
-        });
-        response.end(JSON.stringify({ ok: true, alreadyVerified: true, savedAt: now.toISOString() }));
-        return;
-      }
-
-      const emailVerification = await issueAccountActionEmail({
-        purpose: "verify-email",
-        user: activeUserContext.user,
-        now,
-      });
-      response.writeHead(200, {
-        "Content-Type": "application/json; charset=utf-8",
-        "Cache-Control": "no-store",
-      });
-      response.end(
-        JSON.stringify({
-          ok: true,
-          delivered: emailVerification.delivery.delivered,
-          mode: emailVerification.delivery.mode,
-          expiresAt: emailVerification.expiresAt,
-          savedAt: now.toISOString(),
-        }),
-      );
-      return;
-    } catch (error) {
-      response.writeHead(error?.statusCode || 400, {
-        "Content-Type": "application/json; charset=utf-8",
-        "Cache-Control": "no-store",
-      });
-      response.end(JSON.stringify({ error: error instanceof Error ? error.message : "Could not send a verification email." }));
-      return;
-    }
-  }
 
   if (requestUrl.pathname === "/api/account" && request.method === "GET") {
     try {
@@ -1995,65 +1276,6 @@ async function handleRequest(request, response) {
     }
   }
 
-  if (requestUrl.pathname === "/api/account/profile" && request.method === "PUT") {
-    try {
-      const payload = await readJsonBody(request);
-      const authState = await readPersistedAuthState(now);
-      const updated = updateAuthUserProfile(authState.users, activeUserContext.user.id, payload, now);
-      await writeAuthUsers(updated.users);
-      activeUserContext.user = updated.user;
-
-      response.writeHead(200, {
-        "Content-Type": "application/json; charset=utf-8",
-        "Cache-Control": "no-store",
-      });
-      response.end(
-        JSON.stringify({
-          ok: true,
-          user: sanitizeAuthUser(updated.user),
-          savedAt: now.toISOString(),
-        }),
-      );
-      return;
-    } catch (error) {
-      response.writeHead(error?.statusCode || 400, {
-        "Content-Type": "application/json; charset=utf-8",
-        "Cache-Control": "no-store",
-      });
-      response.end(JSON.stringify({ error: error instanceof Error ? error.message : "Unknown account profile error." }));
-      return;
-    }
-  }
-
-  if (requestUrl.pathname === "/api/account/password" && request.method === "PUT") {
-    try {
-      const payload = await readJsonBody(request);
-      const authState = await readPersistedAuthState(now);
-      const updated = await changeAuthUserPassword(authState.users, activeUserContext.user.id, payload, now);
-      await writeAuthUsers(updated.users);
-      activeUserContext.user = updated.user;
-
-      response.writeHead(200, {
-        "Content-Type": "application/json; charset=utf-8",
-        "Cache-Control": "no-store",
-      });
-      response.end(
-        JSON.stringify({
-          ok: true,
-          user: sanitizeAuthUser(updated.user),
-          savedAt: now.toISOString(),
-        }),
-      );
-      return;
-    } catch (error) {
-      response.writeHead(error?.statusCode || 400, {
-        "Content-Type": "application/json; charset=utf-8",
-        "Cache-Control": "no-store",
-      });
-      response.end(JSON.stringify({ error: error instanceof Error ? error.message : "Unknown account password error." }));
-      return;
-    }
-  }
 
   if (requestUrl.pathname === "/api/app-state" && request.method === "GET") {
     try {
@@ -3905,17 +3127,44 @@ function sendLivenessResponse(response) {
 const server = createServer((request, response) => {
   const requestUrl = parseRequestUrl(request);
   if (request.method === "GET" && requestUrl.pathname === "/api/healthz") {
-    // This deliberately bypasses the file-backed runtime mutex and external provider checks.
+    // This deliberately bypasses the runtime mutex and external provider checks.
     sendLivenessResponse(response);
     return;
   }
 
-  void runWithRuntimeLock(() => handleRequest(request, response)).catch((error) => {
-    sendUnhandledServerError(response, error);
+  void runWithRuntimeLock(async () => {
+    if (await handleSocialLoginRoute(request, response, readJsonBody)) return;
+    const isApi = requestUrl.pathname.startsWith("/api/");
+    if (isApi && !["GET", "HEAD"].includes(request.method) && !isTrustedMutation(request)) {
+      sendAuthJson(response, 403, { error: "허용되지 않은 요청입니다." });
+      return;
+    }
+    if (!isApi || PUBLIC_API_PATHS.has(requestUrl.pathname)) {
+      await handleRequest(request, response);
+      return;
+    }
+    const auth = await createRequestAuth(request, response).resolve();
+    if (!auth) {
+      sendAuthJson(response, 401, { error: "소셜 계정으로 로그인해 주세요." });
+      return;
+    }
+    request.smartMetroAuth = auth;
+    response.setHeader("Cache-Control", "private, no-store");
+    const buffered = bufferedResponse();
+    await runWithDocumentStorage(auth, createSupabaseGateway(), async () => {
+      await ensureUserWorkspaceSeeded(auth.user);
+      await handleRequest(request, buffered);
+      return buffered;
+    });
+    buffered.flush(response);
+  }).catch((error) => {
+    if (!response.headersSent) sendAuthJson(response, error?.statusCode || 503, {
+      error: error?.code === "DOCUMENT_CONFLICT" ? error.message : "요청을 저장하지 못했습니다. 새로고침 후 다시 시도해 주세요.",
+    });
+    else sendUnhandledServerError(response, error);
   });
 });
 
 server.listen(PORT, () => {
-  void tickAllUserAlarmRuntimes();
   console.log(`BusWakeUp prototype running at http://127.0.0.1:${PORT}`);
 });
