@@ -1,3 +1,11 @@
+async function fetchSearch(input) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 30000);
+  try { return await fetch(input,{signal:controller.signal}); }
+  catch(error) { if (error.name === "AbortError") throw new Error("검색이 지연되고 있습니다. 다시 검색해 주세요."); throw error; }
+  finally { clearTimeout(timer); }
+}
+
 export async function fetchBusApiConfig() {
   const response = await fetch("/api/bus/config");
   if (!response.ok) {
@@ -39,7 +47,7 @@ export async function searchLiveStations(binding) {
     }
   }
 
-  const response = await fetch(`/api/bus/stations?${params.toString()}`);
+  const response = await fetchSearch(`/api/bus/stations?${params.toString()}`);
   const payload = await response.json();
   if (!response.ok) {
     throw new Error(payload.error || `정류장 검색 실패 (응답 코드 ${response.status}).`);
@@ -56,7 +64,7 @@ export async function searchLiveStationRoutes(binding) {
     }
   }
 
-  const response = await fetch(`/api/bus/station-routes?${params.toString()}`);
+  const response = await fetchSearch(`/api/bus/station-routes?${params.toString()}`);
   const payload = await response.json();
   if (!response.ok) {
     throw new Error(payload.error || `경유 노선 검색 실패 (응답 코드 ${response.status}).`);

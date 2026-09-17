@@ -90,3 +90,16 @@ test('last-chance countdown requires live evidence, not demo values or unknown d
   assert.match(html(live+"model.risk.lastChanceConfirmed=false;"), /마지막 탑승편으로 확정되지/);
   assert.match(html("model.risk.targetResult.level='UNKNOWN';model.risk.lastChanceConfirmed=false;"), /정보 확인 필요/);
 });
+
+test('boarding UI offers subway, map preview, and confirmation without committing a candidate', async () => {
+  const {context,app} = await makeView();
+  vm.runInContext(`homeEditor='departure';state.live.provider='subway';state.ui.liveSearchResults=[{stationId:'kakao:1',stationName:'광교중앙',displayName:'광교중앙역 신분당선',posX:'127.05',posY:'37.28'}];render();`,context);
+  assert.match(app.innerHTML,/data-mode="bus"/);assert.match(app.innerHTML,/data-mode="subway"/);
+  assert.match(app.innerHTML,/id="boarding-map"/);
+  assert.match(app.innerHTML,/data-action="preview-boarding-stop"/);
+  assert.doesNotMatch(app.innerHTML,/지하철 실시간 연결은 아직 지원되지/);
+  vm.runInContext(`boardingPreview.candidate=state.ui.liveSearchResults[0];boardingPreview.status='ready';boardingPreview.routes=[{routeId:'route',routeNumber:'신분당선',label:'상행 · 성복 방면 · 신사행 · 일반'}];boardingPreview.route=boardingPreview.routes[0];render();`,context);
+  assert.match(app.innerHTML,/상행 · 성복 방면 · 신사행 · 일반/);
+  assert.match(app.innerHTML,/지도·노선·방향 확인 후 선택/);
+  assert.equal(vm.runInContext('state.live.routeId',context),'');
+});

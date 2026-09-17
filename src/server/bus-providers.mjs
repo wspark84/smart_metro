@@ -1,4 +1,6 @@
 import { fetchWithTimeout } from "./upstream-fetch.mjs";
+import { fetchSubwayArrival, fetchSubwayRows, searchSubwayStations, subwayDirections } from "./subway-providers.mjs";
+import { stationSearchQueries, rankStationCandidates } from "../logic/station-search.js";
 import { fetchTagoArrivalRows, searchTagoStations, searchTagoStationRoutes } from "./tago-api.mjs";
 export { fetchTagoCities } from "./tago-api.mjs";
 
@@ -543,6 +545,7 @@ export function getBusApiConfig() {
       },
     },
     providers: {
+      subway: { configured: Boolean(process.env.SEOUL_SUBWAY_API_KEY), label: "지하철 실시간 도착정보", note: "서울시 제공 역만 지원합니다. 전국 모든 역의 실시간 정보를 보장하지 않습니다." },
       seoul: {
         configured: Boolean(process.env.SEOUL_OPEN_API_KEY),
         label: "Seoul Direct",
@@ -607,6 +610,7 @@ export function getBusApiConfig() {
 }
 
 export async function fetchLiveArrival(binding) {
+  if (binding.provider === "subway") return fetchSubwayArrival(binding);
   if (binding.provider === "seoul") {
     return {
       provider: "seoul",
@@ -648,6 +652,17 @@ export async function fetchLiveArrival(binding) {
 }
 
 export async function searchLiveStations(binding) {
+  if (binding.provider === "subway") return {provider:"subway",stations:await searchSubwayStations(binding.keyword)};
+  const queries = stationSearchQueries(binding.keyword);
+  if (!queries.length) throw new Error("정류장 이름 또는 번호를 입력해 주세요.");
+  for (const keyword of queries) {
+    const result = await searchLiveStationsExact({...binding,keyword});
+    if (result.stations.length) return {...result, stations:rankStationCandidates(result.stations,binding.keyword), matchedQuery:keyword};
+  }
+  return {provider:binding.provider,stations:[]};
+}
+
+async function searchLiveStationsExact(binding) {
   if (binding.provider === "tago") {
     return { provider: "tago", stations: await searchTagoStations({ serviceKey: process.env.TAGO_SERVICE_KEY,
       cityCode: binding.cityCode, keyword: binding.keyword }) };
@@ -676,6 +691,7 @@ export async function searchLiveStations(binding) {
 }
 
 export async function searchLiveStationRoutes(binding) {
+  if (binding.provider === "subway") return {provider:"subway",routes:subwayDirections(await fetchSubwayRows(binding.stationName))};
   if (binding.provider === "tago") {
     return { provider: "tago", routes: await searchTagoStationRoutes({ serviceKey: process.env.TAGO_SERVICE_KEY,
       cityCode: binding.cityCode, nodeId: binding.nodeId, routeNumber: binding.routeNumber }) };

@@ -41,6 +41,7 @@ import { readDispatchExecutionState, writeDispatchExecutionState } from "./src/s
 import { buildAlarmPlan } from "./src/server/alarm-plan.mjs";
 import { refreshAlarmArrivals, isAlarmRefreshWindow } from "./src/server/alarm-arrival-refresh.mjs";
 import { fetchLiveArrival, fetchTagoCities, getBusApiConfig, searchLiveStationRoutes, searchLiveStations } from "./src/server/bus-providers.mjs";
+import { TRANSIT_LOOKUP_PATHS, transitLookup } from "./src/server/transit-lookups.mjs";
 import { createDispatchQueueState, reconcileDispatchQueue } from "./src/server/dispatch-engine.mjs";
 import { readDispatchQueueState, writeDispatchQueueState } from "./src/server/dispatch-queue-store.mjs";
 import { readDeviceProfile, writeDeviceProfile } from "./src/server/device-profile-store.mjs";
@@ -937,7 +938,7 @@ async function tickAlarmRuntime(now = new Date()) {
   });
   state = await refreshAlarmArrivals(state, now, (live) => {
     const binding = Object.fromEntries(
-      ['provider', 'stationId', 'arsId', 'routeId', 'order', 'cityCode', 'nodeId', 'routeNumber']
+      ['provider', 'stationId', 'stationName', 'arsId', 'routeId', 'order', 'cityCode', 'nodeId', 'routeNumber']
         .map((key) => [key, live[key] || '']),
     );
     return loadWithCache({key:['alarm-arrivals', binding], ttlMs:LIVE_ARRIVAL_CACHE_TTL_MS,
@@ -2566,6 +2567,7 @@ async function handleRequest(request, response) {
 
       const binding = {
         provider: requestUrl.searchParams.get("provider") || "",
+        stationName: requestUrl.searchParams.get("stationName") || "",
         stationId: requestUrl.searchParams.get("stationId") || "",
         arsId: requestUrl.searchParams.get("arsId") || "",
         routeId: requestUrl.searchParams.get("routeId") || "",
@@ -2701,6 +2703,7 @@ async function handleRequest(request, response) {
     try {
       const payload = await searchLiveStationRoutes({
         provider: requestUrl.searchParams.get("provider") || "",
+        stationName: requestUrl.searchParams.get("stationName") || "",
         arsId: requestUrl.searchParams.get("arsId") || "",
         stationId: requestUrl.searchParams.get("stationId") || "",
         routeNumber: requestUrl.searchParams.get("routeNumber") || "",
@@ -3138,6 +3141,18 @@ const server = createServer((request, response) => {
     return;
   }
 
+  // Station/place lookups are read-only and do not access per-user runtime documents.
+  // Authenticate them without waiting behind alarm processing or workspace writes.
+  if (request.method === "GET" && TRANSIT_LOOKUP_PATHS.has(requestUrl.pathname)) {
+    void (async () => {
+      if (!PUBLIC_API_PATHS.has(requestUrl.pathname) && !await createRequestAuth(request,response).resolve()) {
+        sendAuthJson(response,401,{error:"소셜 계정으로 로그인해 주세요."}); return;
+      }
+      try { sendAuthJson(response,200,await transitLookup(requestUrl)); }
+      catch(error) { sendAuthJson(response,400,{error:error instanceof Error ? error.message : "검색에 실패했습니다. 다시 시도해 주세요."}); }
+    })().catch(() => sendAuthJson(response,503,{error:"검색 연결이 지연되고 있습니다. 잠시 후 다시 시도해 주세요."}));
+    return;
+  }
   void runWithRuntimeLock(async () => {
     if (await handleSocialLoginRoute(request, response, readJsonBody)) return;
     const isApi = requestUrl.pathname.startsWith("/api/");

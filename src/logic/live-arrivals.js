@@ -19,7 +19,7 @@ export function isLiveConfigured(state) {
 
 export function resolveCommuteLine(state, demoLine) {
   if (!isLiveConfigured(state) || !state.live.routeNumber) return demoLine;
-  return { ...demoLine, number: String(state.live.routeNumber), label: "등록한 노선",
+  return { ...demoLine, number: String(state.live.routeNumber), label: state.live.provider === "subway" ? "지하철" : "등록한 노선",
     destination: "", rideMin: state.commute.busRideMin };
 }
 
@@ -29,6 +29,6 @@ export function resolveCommuteStop(state, library) {
   return { ...stop, id: state.commute.selectedStopId,
     lat: state.commute.stopLocation?.lat ?? null,
     lng: state.commute.stopLocation?.lng ?? null,
-    name: state.live.stationName || stop.name,
+    name: state.live.stationName || "탑승 지점을 선택하세요",
     stopCode: state.live.arsId || state.live.stationId || state.live.nodeId || "" };
 }

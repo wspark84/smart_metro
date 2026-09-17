@@ -42,6 +42,16 @@
 .home-search-results { display: grid; gap: 8px; }
 .home-search-result { display: flex; flex-direction: column; gap: 5px; padding: 12px; min-height: 48px; border-radius: 10px; background: var(--surface-low); text-align: left; font-size: 16px; overflow-wrap: anywhere; }
 .home-search-result span { font-size: 13px; color: var(--surface-muted); }
+.home-search-result.selected { box-shadow: inset 0 0 0 2px var(--primary); background: var(--primary-soft); }
+.boarding-modes { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.boarding-modes button { min-height: 48px; border-radius: 12px; background: var(--surface-low); font-size: 16px; }
+.boarding-modes button[aria-pressed="true"] { background: var(--primary); color: white; font-weight: 700; }
+.boarding-map { height: 280px; min-width: 0; width: 100%; background: var(--surface-low); border-radius: 12px; overflow: hidden; font-size: 14px; }
+.boarding-map-label { background: white; color: var(--primary); padding: 8px; border: 1px solid var(--primary); border-radius: 8px; font-size: 12px; min-height: 36px; white-space: nowrap; }
+.boarding-map-label.selected { background: var(--primary); color: white; }
+.boarding-confirm { display: grid; gap: 12px; padding: 16px 0; }
+.boarding-confirm h3 { margin: 0; font-size: 18px; line-height: 1.5; }
+.boarding-confirm p { margin: 0; overflow-wrap: anywhere; font-size: 14px; line-height: 1.6; }
 .home-countdown { padding: 24px 8px; text-align: center; }
 .home-countdown h2 { font-size: 18px; line-height: 1.4; margin: 0; }
 .home-countdown-value { display: flex; align-items: baseline; justify-content: center; gap: 12px; font-size: 72px; font-weight: 800; line-height: 1.3; color: var(--primary); font-variant-numeric: tabular-nums; }

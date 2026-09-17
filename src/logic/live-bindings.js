@@ -9,7 +9,7 @@ export const LIVE_PROVIDER_FIELDS = [
   "routeNumber",
 ];
 
-export const MANAGED_LIVE_PROVIDERS = ["seoul", "gyeonggi", "tago"];
+export const MANAGED_LIVE_PROVIDERS = ["seoul", "gyeonggi", "tago", "subway"];
 
 export function createEmptyLiveBinding() {
   return {
@@ -29,6 +29,7 @@ export function createDefaultLiveBindings() {
     seoul: createEmptyLiveBinding(),
     gyeonggi: createEmptyLiveBinding(),
     tago: createEmptyLiveBinding(),
+    subway: createEmptyLiveBinding(),
   };
 }
 

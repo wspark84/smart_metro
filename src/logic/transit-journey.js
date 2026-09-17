@@ -41,7 +41,7 @@ export function resolveJourneyDuration(state, now = new Date()) {
   return {
     durationAvailable: Boolean(valid),
     onboardToDestinationMin: valid ? duration / 60 : null,
-    vehicleType: journey?.vehicleType || "BUS",
+    vehicleType: state?.live?.provider === "subway" ? "SUBWAY" : journey?.vehicleType || "BUS",
     source: valid ? "kakao-transit-estimate" : "route-unavailable",
   };
 }

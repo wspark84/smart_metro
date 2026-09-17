@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { isValidLocation } from "../logic/commute.js";
 import { transitQueryKey, transitQueryForState } from "../logic/transit-journey.js";
 import { fetchWithTimeout } from "./upstream-fetch.mjs";
+import { parseSubwayRouteId } from "../logic/station-search.js";
 
 // Official contract: https://developers.kakao.com/docs/ko/kakaomap/rest-api
 const PUBLIC_TRANSIT_URL = "https://dapi.kakao.com/v2/routing/publictraffic";
@@ -38,19 +39,24 @@ export function normalizeTransitRoutes(payload, query, fetchedAt = new Date().to
     // Segment times are estimates, not real-time transfer/traffic guarantees.
     const identity = remaining.map((step) => [step.type, step.stops, step.vehicles]);
     const id = createHash("sha256").update(JSON.stringify(identity)).digest("hex").slice(0, 24);
-    const stationMatches = Boolean(query.stationName && first.stops[0] && sameName(query.stationName, first.stops[0]));
+    const subway = query.provider === "subway" ? parseSubwayRouteId(query.routeId) : null;
+    const stationEqual = (a,b) => sameName(clean(a).replace(/\([^)]*\)/g, "").replace(/역$/, ""),clean(b).replace(/\([^)]*\)/g, "").replace(/역$/, ""));
+    const stationMatches = Boolean(query.stationName && first.stops[0] && (subway ? stationEqual(query.stationName, first.stops[0]) : sameName(query.stationName, first.stops[0])));
     const lineMatches = Boolean(query.routeNumber && first.vehicles.some((vehicle) => sameName(vehicle.name, query.routeNumber)));
     const bindingReady = query.provider === "seoul" ? Boolean(query.stationId && query.routeId && query.order) :
       query.provider === "gyeonggi" ? Boolean(query.stationId && query.routeId) :
-      query.provider === "tago" ? Boolean(query.cityCode && query.nodeId) : false;
-    const compatible = stationMatches && lineMatches && Boolean(first.stops[1]) && first.type === "BUS" && bindingReady;
+      query.provider === "tago" ? Boolean(query.cityCode && query.nodeId) : Boolean(subway && query.stationId === subway.stationId);
+    const endIndex = subway ? first.stops.findIndex(stop => stationEqual(stop,subway.destination)) : -1;
+    const subwayCompatible = Boolean(subway && first.type === "SUBWAY" && stationEqual(subway.nextStation,first.stops[1]) &&
+      first.vehicles.some(vehicle => sameName(vehicle.type,subway.trainType)) && (endIndex < 0 || endIndex === first.stops.length - 1));
+    const compatible = stationMatches && lineMatches && Boolean(first.stops[1]) && (query.provider === "subway" ? subwayCompatible : first.type === "BUS") && bindingReady;
     return [{ id, queryKey, fetchedAt, provider: "kakao-transit", vehicleType: first.type,
       boardingStation: first.stops[0] || "", nextStation: first.stops[1] || "",
       firstVehicles: first.vehicles, guidance: first.guidance, steps: remaining,
       onboardDurationSec, excludedAccessWalkSec: steps.slice(0, firstIndex).reduce((sum, step) => sum + step.durationSec, 0),
       transfers: Math.max(0, remaining.filter((step) => step.type !== "WALKING").length - 1),
       compatible, boardingConfirmed: false,
-      unavailableReason: compatible ? "" : first.type === "SUBWAY" ? "지하철 실시간 도착정보 연결은 아직 지원되지 않습니다." :
+      unavailableReason: compatible ? "" : first.type === "SUBWAY" ? "선택한 지하철역·노선·다음 역·열차 종류가 경로와 일치하지 않습니다. 탑승 방향을 다시 선택해 주세요." :
         "선택한 정류장·버스 번호·방향 또는 공식 실시간 연결 정보가 확인되지 않았습니다.",
       durationBasis: "provider-step-estimate", warning: "탑승 후 경로 예상시간입니다. 환승 대기와 실제 운행 지연은 달라질 수 있습니다. 선택한 노선 안에서만 비교합니다." }];
   });
