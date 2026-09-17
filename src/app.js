@@ -2032,6 +2032,8 @@ function applyAddressResult(targetKey, result) {
 function runAddressSearch(targetKey) {
   const safeTarget = targetKey === "home" ? "home" : "work";
   const keyword = String(state.ui[`${safeTarget}AddressKeyword`] || "").trim();
+  const requestUserId = authMeta.user?.id;
+  const isCurrent = () => authMeta.user?.id === requestUserId && String(state.ui[`${safeTarget}AddressKeyword`] || "").trim() === keyword;
   if (!keyword) {
     state.ui[`${safeTarget}AddressSearchStatus`] = "error";
     state.ui[`${safeTarget}AddressSearchError`] = "먼저 주소나 건물명을 입력해 주세요.";
@@ -2048,6 +2050,7 @@ function runAddressSearch(targetKey) {
 
   searchAddressPlaces(keyword)
     .then((payload) => {
+      if (!isCurrent()) return;
       const results = Array.isArray(payload.results) ? payload.results.slice(0, 8) : [];
       state.ui[`${safeTarget}AddressSearchStatus`] = "ready";
       state.ui[`${safeTarget}AddressSearchError`] = "";
@@ -2127,7 +2130,7 @@ function hasUsableLiveSnapshot(primaryLine) {
 
 function routeToScreen(hash) {
   const screen = hash.replace(/^#\/?/, "") || "home";
-  return ["home", "schedule", "settings", "onboarding"].includes(screen) ? screen : "home";
+  return ["home", "schedule", "settings", "onboarding", "diagnostics"].includes(screen) ? screen : "home";
 }
 
 function goTo(screen) {
@@ -2168,6 +2171,7 @@ async function refreshVisibleTransit() {
 }
 
 function focusPanel(screen, panelId, panelItemId = "", panelItemKind = "", panelItemKey = "") {
+  if (screen === "home") screen = "diagnostics";
   if (!screen || !panelId) {
     return;
   }
@@ -2518,6 +2522,7 @@ function renderTopBar(screen, model) {
   }
 
   const titles = {
+    diagnostics: "진단 및 기록",
     onboarding: "이동 경로 등록",
     schedule: "알람 일정",
     settings: "알림 설정",
@@ -2536,7 +2541,7 @@ function renderTopBar(screen, model) {
               ? `<div class="topbar-subtitle">${model.scheduleState.badge}</div>`
               : screen === "settings"
                 ? `<div class="topbar-subtitle">웹에서는 알림 설정을 저장합니다. 휴대폰 권한은 앱에서 별도로 허용해야 합니다.</div>`
-                : `<div class="topbar-subtitle">탑승 정류장과 노선을 등록하세요</div>`
+                : screen === "diagnostics" ? `<div class="topbar-subtitle">도착정보 정확도와 알림 처리 내역</div>` : `<div class="topbar-subtitle">탑승 정류장과 노선을 등록하세요</div>`
           }
         </div>
       </div>
@@ -3665,6 +3670,7 @@ function renderBottomNav(screen) {
   const items = [
     { id: "home", label: "홈", icon: "dashboard" },
     { id: "schedule", label: "일정", icon: "event_repeat" },
+    { id: "diagnostics", label: "진단", icon: "monitoring" },
     { id: "settings", label: "설정", icon: "tune" },
   ];
 
@@ -4704,12 +4710,82 @@ function renderServerEventPanel() {
   `;
 }
 
+let homeEditor = "";
+
+function renderHomeDepartureEditor() {
+  const provider = state.live.provider;
+  const searching = state.ui.liveSearchStatus === "loading";
+  return `<div class="home-editor field-stack" id="home-departure-editor">
+    <label class="field-block"><span>버스 정보 지역</span><select data-field="live.provider">
+      ${[["tago", "전국 버스"], ["seoul", "서울 버스"], ["gyeonggi", "경기 버스"], ["none", "예시 정류장·역"]].map(([id, name]) => `<option value="${id}" ${provider === id ? "selected" : ""}>${name}</option>`).join("")}
+    </select></label>
+    ${provider === "tago" ? `<button class="mini-button" data-action="load-tago-cities" ${tagoCitiesMeta.status === "loading" ? "disabled" : ""}>도시 목록 불러오기</button>
+      <label class="field-block"><span>도시</span><select data-field="live.cityCode"><option value="">도시를 선택하세요</option>
+      ${state.live.cityCode && !tagoCitiesMeta.cities.some(city => String(city.cityCode) === String(state.live.cityCode)) ? `<option value="${escapeHtml(state.live.cityCode)}" selected>저장된 도시 (${escapeHtml(state.live.cityCode)})</option>` : ""}
+      ${tagoCitiesMeta.cities.map(city => `<option value="${escapeHtml(city.cityCode)}" ${String(city.cityCode) === String(state.live.cityCode) ? "selected" : ""}>${escapeHtml(city.cityName)}</option>`).join("")}</select></label>
+      ${tagoCitiesMeta.error ? `<p role="alert">${escapeHtml(tagoCitiesMeta.error)}</p>` : ""}` : ""}
+    ${provider !== "none" ? `<div class="holiday-form"><input class="text-field-input" aria-label="출발 정류장 검색" placeholder="정류장 이름 또는 번호" data-field="ui.liveSearchKeyword" value="${escapeHtml(state.ui.liveSearchKeyword)}" />
+      <button class="mini-button" data-action="search-live-stops" ${searching || (provider === "tago" && !state.live.cityCode) ? "disabled" : ""}>${searching ? "검색 중…" : "검색"}</button></div>
+      ${state.ui.liveSearchError ? `<p role="alert">${escapeHtml(state.ui.liveSearchError)}</p>` : ""}
+      ${state.ui.liveSearchStatus === "ready" && !state.ui.liveSearchResults.length ? `<p class="field-help">검색 결과가 없습니다. 지역과 정류장 이름을 확인해 주세요.</p>` : ""}
+      <div class="home-search-results">${state.ui.liveSearchResults.map(item => `<button class="home-search-result" data-action="select-live-stop" data-station-id="${escapeHtml(item.stationId)}" data-station-name="${escapeHtml(item.stationName)}" data-ars-id="${escapeHtml(item.arsId || "")}"><strong>${escapeHtml(item.stationName)}</strong><span>${escapeHtml(item.stationNumber || item.arsId || item.stationId)}</span></button>`).join("")}</div>
+      ${state.ui.liveRouteSearchStatus === "loading" ? `<p class="field-help">이 정류장을 지나는 노선을 확인하고 있습니다…</p>` : ""}
+      ${state.ui.liveRouteSearchError ? `<p role="alert">${escapeHtml(state.ui.liveRouteSearchError)}</p>` : ""}
+      <div class="home-search-results">${state.ui.liveRouteSearchResults.map(item => `<button class="home-search-result" data-action="select-live-route" data-route-id="${escapeHtml(item.routeId)}" data-route-number="${escapeHtml(item.routeNumber)}" data-order="${escapeHtml(item.order || "")}"><strong>${escapeHtml(item.routeNumber)}번 선택</strong><span>${escapeHtml(item.direction || [item.startStationName, item.destinationName].filter(Boolean).join(" → "))}</span></button>`).join("")}</div>
+      <p class="field-help">반대편 정류장과 혼동하지 않도록 번호와 방향을 확인하세요. 지하철 실시간 연결은 아직 지원되지 않습니다.</p>` : `<p class="field-help">실제 도착정보가 아닌 예시입니다.</p>
+      <div class="home-search-results">${STOP_LIBRARY.map(stop => `<button class="home-search-result" data-action="pick-stop" data-stop-id="${escapeHtml(stop.id)}">${escapeHtml(stop.name)}</button>`).join("")}</div>`}
+    <button class="ghost-link" data-action="goto" data-screen="onboarding">경로 상세 설정</button>
+  </div>`;
+}
+
+function renderHomeDestinationEditor() {
+  return `<div class="home-editor field-stack" id="home-destination-editor">
+    <div class="holiday-form"><input class="text-field-input" aria-label="도착지 검색" placeholder="주소나 건물명 검색" data-field="ui.workAddressKeyword" value="${escapeHtml(state.ui.workAddressKeyword)}" />
+    <button class="mini-button" data-action="search-work-address" ${state.ui.workAddressSearchStatus === "loading" ? "disabled" : ""}>${state.ui.workAddressSearchStatus === "loading" ? "검색 중…" : "검색"}</button></div>
+    ${state.ui.workAddressSearchError ? `<p role="alert">${escapeHtml(state.ui.workAddressSearchError)}</p>` : ""}
+    ${state.ui.workAddressSearchStatus === "ready" && !state.ui.workAddressSearchResults.length ? `<p class="field-help">검색 결과가 없습니다. 다른 주소나 건물명을 입력해 주세요.</p>` : ""}
+    <div class="home-search-results">${state.ui.workAddressSearchResults.map((item, index) => `<button class="home-search-result" data-action="select-work-address" data-index="${index}"><strong>${escapeHtml(item.placeName || item.label)}</strong><span>${escapeHtml(item.roadAddress || item.jibunAddress || item.label)}</span></button>`).join("")}</div>
+  </div>`;
+}
+
 function renderHome(screen, model) {
+  const target = model.risk.targetResult;
+  const hasPrediction = model.dataSource === "LIVE" && target.level !== "UNKNOWN" && Number.isFinite(target.arrivalMinutes);
+  const confirmed = hasPrediction && model.risk.lastChanceConfirmed;
+  const title = confirmed ? "놓치면 늦는 마지막 탑승편" : hasPrediction ? (model.risk.urgency === "HURRY" ? "지금 오는 차도 지각 예상" : "확인된 정시 도착 가능 편") : "마지막 탑승편 확인 대기";
+  const paused = state.schedule.snoozeDate === dateOnlyKey(model.now);
+  return `<main class="screen screen-home">
+    <section class="home-trip" aria-labelledby="home-trip-title">
+      <h1 id="home-trip-title">어디에, 몇 시까지 가세요?</h1>
+      <button class="home-trip-field" data-action="edit-home-trip" data-editor="departure" aria-expanded="${homeEditor === "departure"}" aria-controls="home-departure-editor"><span>출발지 · 탑승 정류장 / 역</span><strong>${escapeHtml(model.stop.name || "출발지를 선택하세요")}</strong><small>${escapeHtml(state.live.routeNumber ? `${state.live.routeNumber}번 · 변경` : "탑승 지점 선택·변경")}</small></button>
+      ${homeEditor === "departure" ? renderHomeDepartureEditor() : ""}
+      <button class="home-trip-field" data-action="edit-home-trip" data-editor="destination" aria-expanded="${homeEditor === "destination"}" aria-controls="home-destination-editor"><span>도착지</span><strong>${escapeHtml(state.user.workAddress || "도착지를 선택하세요")}</strong><small>주소·건물 검색</small></button>
+      ${homeEditor === "destination" ? renderHomeDestinationEditor() : ""}
+      <label class="home-target field-block"><span>도착 목표</span><input aria-label="목적지 도착 목표 시간" type="time" value="${escapeHtml(state.user.requiredArrivalTime)}" data-field="user.requiredArrivalTime" required /></label>
+    </section>
+    <section class="home-countdown ${confirmed ? "is-urgent" : ""}" aria-labelledby="home-countdown-title">
+      <h2 id="home-countdown-title">${title}</h2>
+      <div class="home-countdown-value">${hasPrediction ? Math.ceil(target.arrivalMinutes) : "—"}<span>${hasPrediction ? "분 남음" : "정보 확인 필요"}</span></div>
+      <p class="home-countdown-route">${escapeHtml(model.stop.name)}${state.live.routeNumber ? ` · ${escapeHtml(state.live.routeNumber)}번` : ""}</p>
+      <p>${escapeHtml(model.dataSource === "DEMO" ? "현재 예시 설정입니다. 실제 정류장과 노선을 연결해 주세요." : model.risk.message)}</p>
+      ${hasPrediction && target.arriveWorkAt ? `<p class="home-arrival">목적지 도착 예상 <strong>${escapeHtml(formatClock(target.arriveWorkAt))}</strong></p>` : ""}
+      ${hasPrediction && !confirmed ? `<p class="field-help">조회된 교통편 기준입니다. 마지막 탑승편으로 확정되지 않았습니다.</p>` : ""}
+      <div class="home-countdown-actions"><button class="mini-button" data-action="sync-live-arrivals" ${!isLiveConfigured(state) || state.live.status === "loading" ? "disabled" : ""}>${state.live.status === "loading" ? "확인 중…" : "도착정보 새로고침"}</button><button class="ghost-link" data-action="edit-home-trip" data-editor="route" aria-expanded="${homeEditor === "route"}">목적지 경로 확인</button></div>
+      <p class="home-footnote">집에서 정류장·역까지 이동시간은 계산하지 않습니다.</p>
+    </section>
+    ${homeEditor === "route" ? renderCommuteEstimatePanel() : ""}
+    <section class="home-alarm-actions" aria-label="오늘 알림">
+      <div><strong>${model.scheduleState.firing ? "알람 켜짐" : "알람 꺼짐"}</strong><button class="ghost-link" data-action="toggle-today-snooze">${paused ? "오늘 알람 다시 켜기" : "오늘 알람 끄기"}</button></div>
+      <button class="primary-cta" data-action="departed">출발했어요<span class="material-symbols-outlined">arrow_forward</span></button>
+      <p class="field-help">출발하면 오늘 남은 알람을 중지합니다.</p>
+    </section>
+  </main>${renderBottomNav(screen)}`;
+}
+
+function renderDiagnostics(screen, model) {
   return `
-    <main class="screen screen-home">
+    <main class="screen screen-diagnostics with-bottom-nav">
       ${renderStatusCard(model)}
-      ${renderGauge(model)}
-      ${renderCommuteSummary(model)}
       ${renderLiveSyncPanel(model)}
       ${renderBusAccuracyPanel()}
       ${renderBusAccuracyLeaderboardPanel()}
@@ -4724,32 +4800,8 @@ function renderHome(screen, model) {
       ${renderFcmAuthPanel()}
       ${renderPushGatewayPanel()}
       ${renderStateSyncPanel()}
-      <section class="panel-section">
-        <div class="section-heading-row">
-          <div>
-            <div class="section-title">다음 버스 · 노선 ${escapeHtml(model.primaryLine.number)}</div>
-            <div class="section-caption">${escapeHtml(model.stop.name)} 탑승 정류장</div>
-          </div>
-          <button class="ghost-link" data-action="goto" data-screen="onboarding">경로 수정</button>
-        </div>
-        ${model.risk.results.map((result, index) => renderBusCard(result, index === model.risk.targetResult.index ? "this" : "next", model.primaryLine, model.risk.lastChanceConfirmed && index === model.risk.targetResult.index ? "orange" : "")).join("")}
-      </section>
-      <section class="message-panel">
-        <div class="message-icon"><span class="material-symbols-outlined">tips_and_updates</span></div>
-        <div>
-          <div class="message-title">지각 위험 안내</div>
-          <div class="message-body">${escapeHtml(model.risk.message)}</div>
-        </div>
-      </section>
       ${renderHistoryPanel()}
       ${renderServerEventPanel()}
-      <section class="quick-actions">
-        <button class="primary-cta" data-action="departed">
-          <span>출발했어요</span>
-          <span class="material-symbols-outlined">arrow_forward</span>
-        </button>
-        <div class="quick-actions-copy">출발 버튼을 누르면 오늘 남은 알람을 중지합니다.</div>
-      </section>
     </main>
     ${renderBottomNav(screen)}
   `;
@@ -5527,6 +5579,8 @@ function render() {
   }
 
   const screen = routeToScreen(window.location.hash);
+  const activeField = screen === "home" ? document.activeElement?.dataset?.field : null;
+  const selection = activeField ? [document.activeElement.selectionStart, document.activeElement.selectionEnd] : null;
   const model = getDashboardModel();
   const content =
     screen === "home"
@@ -5535,9 +5589,14 @@ function render() {
         ? renderSchedule(screen, model)
         : screen === "settings"
           ? renderSettings(screen, model)
-          : renderOnboarding();
+          : screen === "diagnostics" ? renderDiagnostics(screen, model) : renderOnboarding();
 
   app.innerHTML = `<div class="app-shell">${renderTopBar(screen, model)}${content}</div>`;
+  if (activeField) {
+    const input = [...app.querySelectorAll("[data-field]")].find(element => element.dataset.field === activeField);
+    input?.focus({ preventScroll: true });
+    if (input && selection?.[0] !== null && typeof input.setSelectionRange === "function") input.setSelectionRange(...selection);
+  }
   flushPendingPanelFocus();
   if (screen === "onboarding") {
     const stop = getSelectedStop();
@@ -5660,6 +5719,10 @@ app.addEventListener("click", (event) => {
 
   if (!isAuthenticated()) return;
 
+  if (action === "edit-home-trip") {
+    homeEditor = homeEditor === target.dataset.editor ? "" : target.dataset.editor;
+    return render();
+  }
   if (action === "goto") return goTo(target.dataset.screen);
   if (action === "focus-panel") {
     focusPanel(
@@ -5872,6 +5935,7 @@ app.addEventListener("click", (event) => {
       return;
     }
     applyAddressResult("work", item);
+    if (routeToScreen(window.location.hash) === "home") homeEditor = "route";
     persist();
     render();
     refreshCommuteEstimate({ announce: true });
@@ -5881,6 +5945,7 @@ app.addEventListener("click", (event) => {
     const route = commuteEstimateMeta.snapshot?.routes?.find((item) => item.id === target.dataset.routeId);
     if (!route?.compatible || route.queryKey !== transitQueryKey(transitQueryForState(state))) return;
     state.commute.transitJourney = { ...route, boardingConfirmed: true };
+    if (routeToScreen(window.location.hash) === "home") homeEditor = "";
     persist();
     return render();
   }
@@ -6012,6 +6077,7 @@ app.addEventListener("click", (event) => {
     return render();
   }
   if (action === "select-live-route") {
+    if (routeToScreen(window.location.hash) === "home") homeEditor = "route";
     state.live.routeId = target.dataset.routeId || "";
     state.live.routeNumber = target.dataset.routeNumber || "";
     state.live.order = target.dataset.order || "";
@@ -6164,6 +6230,7 @@ app.addEventListener("input", (event) => {
   if (!path) return;
 
   const value = target.type === "range" ? Number(target.value) : target.value;
+  if (path === "user.requiredArrivalTime" && !/^([01]\d|2[0-3]):[0-5]\d$/.test(value)) return;
   if (path === "live.provider") {
     switchLiveProvider(state.live, value);
   } else {
@@ -6242,6 +6309,7 @@ app.addEventListener("change", (event) => {
   if (!path) return;
 
   const value = target.type === "range" ? Number(target.value) : target.value;
+  if (path === "user.requiredArrivalTime" && !/^([01]\d|2[0-3]):[0-5]\d$/.test(value)) return render();
   if (path === "live.provider") {
     switchLiveProvider(state.live, value);
   } else {
