@@ -3126,6 +3126,12 @@ function sendLivenessResponse(response) {
 
 const server = createServer((request, response) => {
   const requestUrl = parseRequestUrl(request);
+  // Public screen assets do not read account state. A slow provider or storage
+  // request must not block the HTML and scripts needed to open the app.
+  if (!requestUrl.pathname.startsWith("/api/") && ["GET", "HEAD"].includes(request.method)) {
+    void handleRequest(request, response).catch((error) => sendUnhandledServerError(response, error));
+    return;
+  }
   if (request.method === "GET" && requestUrl.pathname === "/api/healthz") {
     // This deliberately bypasses the runtime mutex and external provider checks.
     sendLivenessResponse(response);
