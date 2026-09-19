@@ -92,8 +92,10 @@ let deviceSyncTimer = null;
 let deviceSyncToken = 0;
 let alarmPlanTimer = null;
 let alarmPlanToken = 0;
+let alarmPlanRefreshInFlight = false;
 let alarmRuntimeTimer = null;
 let alarmRuntimeToken = 0;
+let alarmRuntimeRefreshInFlight = false;
 let pendingPanelFocus = null;
 let busApiConfig = {
   policy: {
@@ -511,8 +513,10 @@ async function hydrateAuthenticatedWorkspace() {
   await hydrateStateFromServer();
   await hydrateStateFromDomain();
   await hydrateDeviceProfileFromServer();
-  await hydrateAccountSummary();
-  await refreshBusAccuracySummary();
+  // The route and device settings are ready. Diagnostic history is not a
+  // prerequisite for showing home, and must not extend the login spinner.
+  render();
+  void Promise.all([hydrateAccountSummary(), refreshBusAccuracySummary()]).then(() => render());
   void runAutoBusAccuracyProbeCycle();
   ensureDemoHistory();
   refreshCommuteEstimate();
@@ -932,7 +936,7 @@ function ensureDemoHistory() {
 }
 
 function queueAlarmPlanRefresh(delayMs = 250) {
-  if (!isAuthenticated()) {
+  if (!isAuthenticated() || alarmPlanRefreshInFlight) {
     return;
   }
   if (alarmPlanTimer) {
@@ -942,6 +946,7 @@ function queueAlarmPlanRefresh(delayMs = 250) {
   const snapshot = JSON.parse(JSON.stringify(state));
   alarmPlanMeta.status = alarmPlanMeta.plan ? "refreshing" : "loading";
   alarmPlanTimer = window.setTimeout(() => {
+    alarmPlanRefreshInFlight = true;
     const currentToken = alarmPlanToken + 1;
     alarmPlanToken = currentToken;
     fetchAlarmPlanPreview(snapshot, new Date().toISOString())
@@ -964,12 +969,12 @@ function queueAlarmPlanRefresh(delayMs = 250) {
         alarmPlanMeta.status = "error";
         alarmPlanMeta.lastError = userErrorMessage(error, "알람 계획 조회 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.");
         render();
-      });
+      }).finally(() => { alarmPlanRefreshInFlight = false; });
   }, delayMs);
 }
 
 function queueAlarmRuntimeRefresh(delayMs = 250) {
-  if (!isAuthenticated()) {
+  if (!isAuthenticated() || alarmRuntimeRefreshInFlight) {
     return;
   }
   if (alarmRuntimeTimer) {
@@ -978,9 +983,10 @@ function queueAlarmRuntimeRefresh(delayMs = 250) {
 
   alarmRuntimeMeta.status = alarmRuntimeMeta.runtime ? "refreshing" : "loading";
   alarmRuntimeTimer = window.setTimeout(() => {
+    alarmRuntimeRefreshInFlight = true;
     const currentToken = alarmRuntimeToken + 1;
     alarmRuntimeToken = currentToken;
-    Promise.all([
+    Promise.allSettled([
       fetchAlarmRuntimeStatus(),
       fetchAlarmDeliveryState(),
       fetchAlarmEvents(6),
@@ -992,6 +998,11 @@ function queueAlarmRuntimeRefresh(delayMs = 250) {
       fetchPushGatewayConfig(),
       fetchPushGatewayAttempts(4),
     ])
+      .then((results) => {
+        const failed = results.find(result => result.status === "rejected");
+        if (failed) throw failed.reason;
+        return results.map(result => result.value);
+      })
       .then(
         ([
           runtimePayload,
@@ -1058,7 +1069,7 @@ function queueAlarmRuntimeRefresh(delayMs = 250) {
         deviceMeta.pushGatewayConfigError = alarmRuntimeMeta.lastError;
         deviceMeta.pushGatewayAttemptsError = alarmRuntimeMeta.lastError;
         render();
-      });
+      }).finally(() => { alarmRuntimeRefreshInFlight = false; });
   }, delayMs);
 }
 
@@ -1791,7 +1802,7 @@ async function recordCurrentBusArrival() {
 }
 
 async function runAutoBusAccuracyProbeCycle() {
-  if (!isAuthenticated()) {
+  if (!isAuthenticated() || accuracyMeta.autoProbeStatus === "loading") {
     return null;
   }
 
@@ -6589,8 +6600,16 @@ async function bootstrap() {
     window.history.replaceState({}, document.title, window.location.pathname + window.location.hash);
   }
 
+  const providers = hydrateAuthProviders().then(() => {
+    if (!isAuthenticated()) render();
+  });
   const authenticated = await hydrateAuthSession();
-  await Promise.all([refreshBusApiConfig(), refreshPlaceApiConfig(), refreshCommuteApiConfig(), refreshHolidayApiConfig(), hydrateAuthProviders()]);
+  if (!authenticated) {
+    // Unrelated transport configuration is not needed to display login buttons.
+    await providers;
+    render();
+    return;
+  }
   if (authenticated) {
     await hydrateAuthenticatedWorkspace();
   }

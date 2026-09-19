@@ -327,15 +327,23 @@ async function activateUserContext(user) {
     user: safeUser,
     files,
   };
-  alarmRuntimeState = (await readAlarmRuntimeState(files.alarmRuntime)) || createAlarmRuntimeState();
-  alarmDeliveryState = (await readAlarmDeliveryState(files.alarmDelivery)) || createAlarmDeliveryState();
-  busAccuracyState = (await readBusAccuracyState(files.busAccuracy)) || createBusAccuracyState();
-  busAccuracyRuntimeState =
-    (await readBusAccuracyRuntimeState(files.busAccuracyRuntime)) || createBusAccuracyRuntimeState();
-  dispatchQueueState = (await readDispatchQueueState(files.dispatchQueue)) || createDispatchQueueState();
-  dispatchExecutionState = (await readDispatchExecutionState(files.dispatchExecutions)) || createDispatchExecutionState();
-  pushGatewayState = (await readPushGatewayState(files.pushGateway)) || createPushGatewayState();
-  deviceProfileState = (await readEffectiveDeviceProfile()) || sanitizeDeviceProfile(DEFAULT_DEVICE_PROFILE);
+  // Independent document reads share this request's storage context. Keep the
+  // runtime lock, but do not pay one network round trip per document in series.
+  const [alarmRuntime, alarmDelivery, busAccuracy, busAccuracyRuntime, dispatchQueue,
+    dispatchExecution, pushGateway, deviceProfile] = await Promise.all([
+    readAlarmRuntimeState(files.alarmRuntime), readAlarmDeliveryState(files.alarmDelivery),
+    readBusAccuracyState(files.busAccuracy), readBusAccuracyRuntimeState(files.busAccuracyRuntime),
+    readDispatchQueueState(files.dispatchQueue), readDispatchExecutionState(files.dispatchExecutions),
+    readPushGatewayState(files.pushGateway), readEffectiveDeviceProfile(),
+  ]);
+  alarmRuntimeState = alarmRuntime || createAlarmRuntimeState();
+  alarmDeliveryState = alarmDelivery || createAlarmDeliveryState();
+  busAccuracyState = busAccuracy || createBusAccuracyState();
+  busAccuracyRuntimeState = busAccuracyRuntime || createBusAccuracyRuntimeState();
+  dispatchQueueState = dispatchQueue || createDispatchQueueState();
+  dispatchExecutionState = dispatchExecution || createDispatchExecutionState();
+  pushGatewayState = pushGateway || createPushGatewayState();
+  deviceProfileState = deviceProfile || sanitizeDeviceProfile(DEFAULT_DEVICE_PROFILE);
   return activeUserContext;
 }
 
@@ -3138,6 +3146,20 @@ const server = createServer((request, response) => {
   if (request.method === "GET" && requestUrl.pathname === "/api/healthz") {
     // This deliberately bypasses the runtime mutex and external provider checks.
     sendLivenessResponse(response);
+    return;
+  }
+
+  // Auth uses a fresh request-scoped Supabase client, never the mutable alarm
+  // workspace. Slow account/alarms must not queue login, callback or logout.
+  // The auth handler retains its own origin, PKCE and identity checks.
+  if (requestUrl.pathname.startsWith("/api/auth/") || requestUrl.pathname === "/api/account/profile") {
+    void handleSocialLoginRoute(request, response, readJsonBody)
+      .catch((error) => sendUnhandledServerError(response, error));
+    return;
+  }
+  // These public configuration reads only inspect environment configuration.
+  if (request.method === "GET" && ["/api/holidays/config", "/api/commute/config"].includes(requestUrl.pathname)) {
+    void handleRequest(request, response).catch((error) => sendUnhandledServerError(response, error));
     return;
   }
 

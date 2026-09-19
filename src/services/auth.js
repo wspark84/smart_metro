@@ -7,14 +7,26 @@ async function parsePayload(response, fallbackMessage) {
   return payload;
 }
 
+async function requestAuthJson(path, options, fallbackMessage) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 12000);
+  try {
+    const response = await fetch(path, { ...options, signal: controller.signal });
+    return await parsePayload(response, fallbackMessage);
+  } catch (error) {
+    if (controller.signal.aborted) throw new Error("로그인 연결이 지연되고 있습니다. 잠시 후 다시 시도해 주세요.");
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export async function fetchAuthSession() {
-  const response = await fetch("/api/auth/session");
-  return parsePayload(response, `로그인 상태 확인 실패 (응답 코드 ${response.status}).`);
+  return requestAuthJson("/api/auth/session", {}, "로그인 상태를 확인하지 못했습니다.");
 }
 
 export async function fetchAuthProviders() {
-  const response = await fetch("/api/auth/providers");
-  return parsePayload(response, `로그인 제공처 조회 실패 (응답 코드 ${response.status}).`);
+  return requestAuthJson("/api/auth/providers", {}, "로그인 제공처를 확인하지 못했습니다.");
 }
 
 export async function registerAuth(payload) {
@@ -74,15 +86,13 @@ export async function confirmPasswordReset(payload) {
 }
 
 export async function startSocialAuth(payload) {
-  const response = await fetch("/api/auth/oauth/start", {
+  return requestAuthJson("/api/auth/oauth/start", {
     method: "POST",
     headers: {
       "Content-Type": "application/json; charset=utf-8",
     },
     body: JSON.stringify(payload),
-  });
-
-  return parsePayload(response, `소셜 로그인 연결 실패 (응답 코드 ${response.status}).`);
+  }, "소셜 로그인에 연결하지 못했습니다.");
 }
 
 export async function fetchAccountSummary() {
