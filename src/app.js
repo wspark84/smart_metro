@@ -2519,10 +2519,10 @@ function renderTopBar(screen, model) {
   if (screen === "home") {
     return `
       <header class="topbar topbar-home">
-        <div class="profile-chip"><div class="avatar">${escapeHtml(userInitial)}</div></div>
         <div class="brandmark">스마트 메트로</div>
+        <div class="topbar-goal"><b>${escapeHtml(state.user.requiredArrivalTime)}</b> 도착 목표</div>
         <button class="icon-button" data-action="logout" aria-label="로그아웃">
-          <span class="material-symbols-outlined">logout</span>
+          ${renderUiIcon("logout")}
         </button>
       </header>
     `;
@@ -2539,7 +2539,7 @@ function renderTopBar(screen, model) {
     <header class="topbar">
       <div class="topbar-side">
         <button class="icon-button" data-action="goto" data-screen="home" aria-label="뒤로">
-          <span class="material-symbols-outlined">arrow_back</span>
+          ${renderUiIcon("back")}
         </button>
         <div>
           <div class="topbar-title">${titles[screen]}</div>
@@ -2556,7 +2556,7 @@ function renderTopBar(screen, model) {
         screen === "onboarding"
           ? `<div class="avatar avatar-small">${escapeHtml(userInitial)}</div>`
           : `<button class="icon-button" data-action="logout" aria-label="로그아웃">
-              <span class="material-symbols-outlined">logout</span>
+              ${renderUiIcon("logout")}
             </button>`
       }
     </header>
@@ -3673,6 +3673,18 @@ function renderAlarmPlanPanel() {
   `;
 }
 
+function renderUiIcon(name) {
+  const paths = {
+    home: '<path d="M3 10.5 12 3l9 7.5M5.5 9.5V20h13V9.5"/>',
+    schedule: '<rect x="3.5" y="5" width="17" height="15.5" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/>',
+    diagnostics: '<path d="M3 12.5h4l2.5-6 4 12 2.5-6h5"/>',
+    settings: '<path d="M4 7h11M19 7h1M4 17h5M13 17h7"/><circle cx="17" cy="7" r="2.3"/><circle cx="11" cy="17" r="2.3"/>',
+    back: '<path d="m10 5-7 7 7 7M3 12h18"/>',
+    logout: '<path d="M10 4H4v16h6M14 8l4 4-4 4M8 12h10"/>',
+  };
+  return `<svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[name] || paths.home}</svg>`;
+}
+
 function renderBottomNav(screen) {
   const items = [
     { id: "home", label: "홈", icon: "dashboard" },
@@ -3682,12 +3694,12 @@ function renderBottomNav(screen) {
   ];
 
   return `
-    <nav class="bottom-nav">
+    <nav class="bottom-nav" aria-label="주 메뉴">
       ${items
         .map(
           (item) => `
-            <button class="nav-item ${screen === item.id ? "active" : ""}" data-action="goto" data-screen="${item.id}">
-              <span class="material-symbols-outlined">${item.icon}</span>
+            <button class="nav-item ${screen === item.id ? "active" : ""}" data-action="goto" data-screen="${item.id}" ${screen === item.id ? 'aria-current="page"' : ""}>
+              ${renderUiIcon(item.id)}
               <span>${item.label}</span>
             </button>
           `,
@@ -4798,38 +4810,64 @@ function renderHomeDestinationEditor() {
   </div>`;
 }
 
+function renderHomeTimetable(model, lineLabel, direction) {
+  // Never turn demo, stale/unavailable data, or a missing journey into an on-time claim.
+  const rows = model.dataSource === "LIVE" ? model.risk.results.filter(item => Number.isFinite(item.arrivalMinutes)) : [];
+  return `<section class="home-timetable" aria-label="선택한 노선의 실시간 탑승 시간표">
+    <table><caption>선택한 노선 · 실시간 도착 예측</caption>
+      <thead><tr><th scope="col">탑승 예상</th><th scope="col">노선 / 방면</th><th scope="col">목적지</th><th scope="col">판정</th></tr></thead>
+      <tbody>${rows.length ? rows.map(item => {
+        const known = item.level !== "UNKNOWN" && Number.isFinite(item.deltaMinutes) && item.arriveWorkAt;
+        const late = known && item.deltaMinutes < 0;
+        const cut = known && model.risk.lastChanceConfirmed && item.index === model.risk.targetResult.index;
+        return `<tr class="${known ? late ? "is-late" : "is-ontime" : "is-unknown"} ${cut ? "is-cut" : ""}">
+          <td class="timetable-time">${escapeHtml(formatClock(addMinutes(model.now, item.arrivalMinutes)))}</td>
+          <td class="timetable-line"><strong>${escapeHtml(lineLabel || "선택한 노선")}</strong><span>${escapeHtml(direction || model.stop.name)}</span></td>
+          <td class="timetable-arrival">${known ? escapeHtml(formatClock(item.arriveWorkAt)) : "—"}</td>
+          <td class="timetable-verdict">${known ? late ? `지각<br><small>+${Math.abs(item.deltaMinutes)}분</small>` : "정시" : "미확인"}</td>
+        </tr>${cut ? `<tr class="timetable-cut-label"><td colspan="4">지각선 · 이 차를 놓치면 다음 차는 지각 예상</td></tr>` : ""}`;
+      }).join("") : `<tr><td colspan="4" class="timetable-empty">실시간 정보가 연결되면 탑승 가능한 차를 여기에 표시합니다.</td></tr>`}</tbody>
+    </table>
+  </section>`;
+}
+
 function renderHome(screen, model) {
   const subwayDirection = state.live.provider === "subway" ? parseSubwayRouteId(state.live.routeId) : null;
   const lineLabel = state.live.routeNumber ? `${state.live.routeNumber}${state.live.provider === "subway" ? "" : "번"}${subwayDirection ? ` · ${subwayDirection.direction} · ${subwayDirection.nextStation} 방면` : ""}` : "";
   const target = model.risk.targetResult;
   const hasPrediction = model.dataSource === "LIVE" && target.level !== "UNKNOWN" && Number.isFinite(target.arrivalMinutes);
   const confirmed = hasPrediction && model.risk.lastChanceConfirmed;
+  const urgent = hasPrediction && (model.risk.urgency === "HURRY" || (confirmed && target.arrivalMinutes <= 5));
   const title = confirmed ? "놓치면 늦는 마지막 탑승편" : hasPrediction ? (model.risk.urgency === "HURRY" ? "지금 오는 차도 지각 예상" : "확인된 정시 도착 가능 편") : "마지막 탑승편 확인 대기";
   const paused = state.schedule.snoozeDate === dateOnlyKey(model.now);
+  const verdict = model.dataSource === "DEMO" ? "출발지와 노선을 연결해 주세요."
+    : confirmed ? "선택한 노선 기준, 이 차를 놓치면 다음 차는 지각 예상"
+    : hasPrediction && model.risk.urgency === "HURRY" ? "지금 오는 차도 목적지에 늦을 것으로 예상됩니다."
+    : hasPrediction ? "이 교통편에 탑승하면 정시 도착이 예상됩니다."
+    : model.risk.message;
   return `<main class="screen screen-home">
+    <section class="home-countdown ${urgent ? "is-urgent" : ""}" aria-labelledby="home-countdown-title">
+      <h1 id="home-countdown-title">${title}</h1>
+      <div class="home-countdown-value">${hasPrediction ? Math.ceil(target.arrivalMinutes) : "—"}<span>${hasPrediction ? "분 남음" : "정보 확인 필요"}</span></div>
+      <p class="home-countdown-route">${hasPrediction ? `${escapeHtml(formatClock(addMinutes(model.now, target.arrivalMinutes)))} 탑승 예상 · ` : ""}${escapeHtml(lineLabel || model.stop.name)}</p>
+      <p class="home-verdict"><i aria-hidden="true"></i><span>${escapeHtml(verdict)}</span></p>
+      ${hasPrediction && !confirmed ? `<p class="home-evidence-note">조회된 교통편 기준이며, 마지막 탑승편으로 확정되지 않았습니다.</p>` : ""}
+    </section>
+    ${renderHomeTimetable(model, state.live.routeNumber ? `${state.live.routeNumber}${state.live.provider === "subway" ? "" : "번"}` : "", subwayDirection ? `${subwayDirection.direction} · ${subwayDirection.nextStation} 방면` : "")}
+    <div class="home-countdown-actions"><button class="ghost-link" data-action="sync-live-arrivals" ${!isLiveConfigured(state) || state.live.status === "loading" ? "disabled" : ""}>${state.live.status === "loading" ? "확인 중…" : "도착정보 새로고침"}</button><button class="ghost-link" data-action="edit-home-trip" data-editor="route" aria-expanded="${homeEditor === "route"}">목적지 경로 확인</button></div>
+    ${homeEditor === "route" ? renderCommuteEstimatePanel() : ""}
     <section class="home-trip" aria-labelledby="home-trip-title">
-      <h1 id="home-trip-title">어디에, 몇 시까지 가세요?</h1>
-      <button class="home-trip-field" data-action="edit-home-trip" data-editor="departure" aria-expanded="${homeEditor === "departure"}" aria-controls="home-departure-editor"><span>출발지 · 탑승 정류장 / 역</span><strong>${escapeHtml(model.stop.name || "출발지를 선택하세요")}</strong><small>${escapeHtml(lineLabel || "탑승 지점 선택·변경")}</small></button>
+      <h2 id="home-trip-title">어디에, 몇 시까지 가세요?</h2>
+      <button class="home-trip-field" data-action="edit-home-trip" data-editor="departure" aria-expanded="${homeEditor === "departure"}" aria-controls="home-departure-editor"><span>출발지 · 탑승 정류장 / 역</span><strong>${escapeHtml(model.stop.name || "출발지를 선택하세요")}</strong><small>${homeEditor === "departure" ? "닫기 −" : "변경 +"}</small></button>
       ${homeEditor === "departure" ? renderHomeDepartureEditor() : ""}
-      <button class="home-trip-field" data-action="edit-home-trip" data-editor="destination" aria-expanded="${homeEditor === "destination"}" aria-controls="home-destination-editor"><span>도착지</span><strong>${escapeHtml(state.user.workAddress || "도착지를 선택하세요")}</strong><small>주소·건물 검색</small></button>
+      <button class="home-trip-field" data-action="edit-home-trip" data-editor="destination" aria-expanded="${homeEditor === "destination"}" aria-controls="home-destination-editor"><span>도착지</span><strong>${escapeHtml(state.user.workAddress || "도착지를 선택하세요")}</strong><small>${homeEditor === "destination" ? "닫기 −" : "변경 +"}</small></button>
       ${homeEditor === "destination" ? renderHomeDestinationEditor() : ""}
       <label class="home-target field-block"><span>도착 목표</span><input aria-label="목적지 도착 목표 시간" type="time" value="${escapeHtml(state.user.requiredArrivalTime)}" data-field="user.requiredArrivalTime" required /></label>
     </section>
-    <section class="home-countdown ${confirmed ? "is-urgent" : ""}" aria-labelledby="home-countdown-title">
-      <h2 id="home-countdown-title">${title}</h2>
-      <div class="home-countdown-value">${hasPrediction ? Math.ceil(target.arrivalMinutes) : "—"}<span>${hasPrediction ? "분 남음" : "정보 확인 필요"}</span></div>
-      <p class="home-countdown-route">${escapeHtml(model.stop.name)}${lineLabel ? ` · ${escapeHtml(lineLabel)}` : ""}</p>
-      <p>${escapeHtml(model.dataSource === "DEMO" ? "현재 예시 설정입니다. 실제 정류장과 노선을 연결해 주세요." : model.risk.message)}</p>
-      ${hasPrediction && target.arriveWorkAt ? `<p class="home-arrival">목적지 도착 예상 <strong>${escapeHtml(formatClock(target.arriveWorkAt))}</strong></p>` : ""}
-      ${hasPrediction && !confirmed ? `<p class="field-help">조회된 교통편 기준입니다. 마지막 탑승편으로 확정되지 않았습니다.</p>` : ""}
-      <div class="home-countdown-actions"><button class="mini-button" data-action="sync-live-arrivals" ${!isLiveConfigured(state) || state.live.status === "loading" ? "disabled" : ""}>${state.live.status === "loading" ? "확인 중…" : "도착정보 새로고침"}</button><button class="ghost-link" data-action="edit-home-trip" data-editor="route" aria-expanded="${homeEditor === "route"}">목적지 경로 확인</button></div>
-      <p class="home-footnote">집에서 정류장·역까지 이동시간은 계산하지 않습니다.</p>
-    </section>
-    ${homeEditor === "route" ? renderCommuteEstimatePanel() : ""}
     <section class="home-alarm-actions" aria-label="오늘 알림">
       <div><strong>${model.scheduleState.firing ? "알람 켜짐" : "알람 꺼짐"}</strong><button class="ghost-link" data-action="toggle-today-snooze">${paused ? "오늘 알람 다시 켜기" : "오늘 알람 끄기"}</button></div>
-      <button class="primary-cta" data-action="departed">출발했어요<span class="material-symbols-outlined">arrow_forward</span></button>
-      <p class="field-help">출발하면 오늘 남은 알람을 중지합니다.</p>
+      <button class="primary-cta" data-action="departed">출발했어요</button>
+      <p class="field-help">출발하면 오늘 남은 알람을 중지합니다.<br>집에서 정류장·역까지 이동시간은 계산하지 않습니다.</p>
     </section>
   </main>${renderBottomNav(screen)}`;
 }
@@ -5645,7 +5683,7 @@ function render() {
           ? renderSettings(screen, model)
           : screen === "diagnostics" ? renderDiagnostics(screen, model) : renderOnboarding();
 
-  app.innerHTML = `<div class="app-shell">${renderTopBar(screen, model)}${content}</div>`;
+  app.innerHTML = `<div class="app-shell ${screen === "home" ? "has-home" : ""}">${renderTopBar(screen, model)}${content}</div>`;
   if (screen === "home" && homeEditor === "departure" && state.ui.liveSearchResults.length) {
     const placeholder = document.querySelector("#boarding-map");
     if (previousMap?.dataset?.mapKey === boardingMapKey && previousMap.dataset.mapStatus === "ready") {
