@@ -1,5 +1,5 @@
 import { fetchWithTimeout } from "./upstream-fetch.mjs";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 // Bounded process-local metadata cache; live arrival rows never use it.
 const metadataCaches = new WeakMap();
@@ -142,7 +142,7 @@ export async function fetchTagoArrivalRows({ serviceKey, cityCode, nodeId, route
   return fetchTagoPages({ serviceKey, operation, params, fetchImpl });
 }
 
-async function fetchTagoPages({ serviceKey, operation, params, service = "arrivals", fetchImpl }) {
+async function fetchTagoPages({ serviceKey, operation, params, service = "arrivals", fetchImpl, onPage }) {
   const rows = [];
   let expectedTotal = null;
   const deadline = Date.now() + 15000;
@@ -162,6 +162,8 @@ async function fetchTagoPages({ serviceKey, operation, params, service = "arriva
     }
     expectedTotal = total;
     const pageRows = itemsFromBody(body);
+    // Observe only already-validated numeric metadata, preserving validation order.
+    onPage?.({ pageNo, returnedPage, totalCount: total, pageSize, rowCount: pageRows.length });
     rows.push(...pageRows);
     if (pageRows.length > pageSize || rows.length > total) throw new Error("TAGO API 도착정보 개수가 일치하지 않습니다.");
     if (rows.length === total) return rows;
@@ -201,15 +203,42 @@ function normalizeTagoStation(row, cityCode) {
     posX: coordinatesValid ? String(lng) : "", posY: coordinatesValid ? String(lat) : "" };
 }
 
-export async function searchTagoStations({ serviceKey, cityCode, keyword, fetchImpl = fetch }) {
+export async function searchTagoStations({ serviceKey, cityCode, keyword, fetchImpl = fetch, diagnosticLogger = console.info }) {
   const city = requiredText(cityCode, "도시코드");
   const query = requiredText(keyword, "정류장 이름 또는 번호");
   if (query.length > 100) throw new Error("정류장 검색어가 너무 깁니다.");
-  const params = { cityCode: city, [/^\d+$/.test(query) ? "nodeNo" : "nodeNm"]: query };
-  return cachedMetadata({ fetchImpl, serviceKey, scope: ["stations", city, query], ttlMs: 300000, loader: async () => {
-    const rows = await fetchTagoPages({ serviceKey, service: "stops", operation: "getSttnNoList", params, fetchImpl });
-    return rows.map((row) => normalizeTagoStation(row, city));
-  } });
+  const queryKind = /^\d+$/.test(query) ? "nodeNo" : "nodeNm";
+  const params = { cityCode: city, [queryKind]: query };
+  const searchId = randomUUID();
+  const startedAt = Date.now();
+  // Allowlist fields instead of redacting arbitrary text. No keyword, key, user ID,
+  // station data, coordinates, response body, error message or stack is logged.
+  const emit = (event, details = {}) => {
+    try {
+      diagnosticLogger(JSON.stringify({ component: "tago_station_search", version: 1,
+        searchId, event, ...details }));
+    } catch { /* Diagnostics must never change search results or availability. */ }
+  };
+  emit("search_started", { cityCode: /^\d{1,9}$/.test(city) ? city : "redacted", queryKind, queryLength: query.length });
+  let source = "cache_or_inflight";
+  let stage = "cache";
+  try {
+    const stations = await cachedMetadata({ fetchImpl, serviceKey, scope: ["stations", city, query], ttlMs: 300000, loader: async () => {
+      source = "upstream";
+      stage = "upstream";
+      const rows = await fetchTagoPages({ serviceKey, service: "stops", operation: "getSttnNoList", params, fetchImpl,
+        onPage: (page) => emit("upstream_page", page) });
+      stage = "normalize";
+      return rows.map((row) => normalizeTagoStation(row, city));
+    } });
+    emit("search_completed", { source, resultCount: stations.length,
+      mapEligibleCount: stations.filter(station => station.posX !== "" && station.posY !== "").length,
+      durationMs: Date.now() - startedAt });
+    return stations;
+  } catch (error) {
+    emit("search_failed", { source, stage, durationMs: Date.now() - startedAt });
+    throw error;
+  }
 }
 
 export async function searchTagoStationRoutes({ serviceKey, cityCode, nodeId, routeNumber = "", fetchImpl = fetch }) {
