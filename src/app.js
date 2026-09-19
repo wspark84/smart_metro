@@ -1433,6 +1433,7 @@ function getLiveBinding() {
 const tagoCitiesMeta = { cities: [], status: "idle", error: "" };
 let liveStationRequest = 0;
 let liveRouteRequest = 0;
+let liveSearchResultKey = "";
 
 function getLiveSearchBinding() {
   state.live = ensureLiveBindingState(state.live);
@@ -1459,6 +1460,7 @@ function getLiveRouteBinding() {
 function resetLiveSearchState() {
   resetBoardingPreview();
   liveStationRequest += 1;
+  liveSearchResultKey = "";
   state.ui.liveSearchStatus = "idle";
   state.ui.liveSearchError = "";
   state.ui.liveSearchResults = [];
@@ -6083,6 +6085,8 @@ app.addEventListener("click", (event) => {
   }
   if (action === "search-live-stops") {
     resetBoardingPreview();
+    const binding = getLiveSearchBinding();
+    const bindingKey = JSON.stringify(binding);
     if (!state.ui.liveSearchKeyword.trim()) {
       state.ui.liveSearchStatus = "error";
       state.ui.liveSearchError = "먼저 정류장 이름 또는 번호를 입력하세요.";
@@ -6092,12 +6096,11 @@ app.addEventListener("click", (event) => {
 
     state.ui.liveSearchStatus = "loading";
     state.ui.liveSearchError = "";
-    state.ui.liveSearchResults = [];
+    if (liveSearchResultKey !== bindingKey) state.ui.liveSearchResults = [];
     resetLiveRouteSearchState();
     persist();
     render();
     const requestId = ++liveStationRequest;
-    const binding = getLiveSearchBinding();
     const isCurrent = () => requestId === liveStationRequest && JSON.stringify(binding) === JSON.stringify(getLiveSearchBinding());
     searchLiveStations(binding)
       .then((payload) => {
@@ -6105,14 +6108,15 @@ app.addEventListener("click", (event) => {
         state.ui.liveSearchStatus = "ready";
         state.ui.liveSearchError = "";
         state.ui.liveSearchResults = Array.isArray(payload.stations) ? payload.stations : [];
+        liveSearchResultKey = bindingKey;
         pushHistory("공식 정류장 조회 완료", `${payload.provider} 정류장 ${state.ui.liveSearchResults.length}개를 조회했습니다.`);
         render();
       })
       .catch((error) => {
         if (!isCurrent()) return;
         state.ui.liveSearchStatus = "error";
-        state.ui.liveSearchResults = [];
         state.ui.liveSearchError = userErrorMessage(error, "정류장 검색 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.");
+        if (state.ui.liveSearchResults.length) state.ui.liveSearchError += " 이전에 조회한 같은 검색 조건의 정류장 목록을 표시합니다. 실시간 도착정보는 별도로 확인합니다.";
         pushHistory("공식 정류장 조회 실패", state.ui.liveSearchError, "ERROR");
         render();
       });

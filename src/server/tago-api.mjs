@@ -1,4 +1,32 @@
 import { fetchWithTimeout } from "./upstream-fetch.mjs";
+import { createHash } from "node:crypto";
+
+// Bounded process-local metadata cache; live arrival rows never use it.
+const metadataCaches = new WeakMap();
+async function cachedMetadata({ fetchImpl, serviceKey, scope, ttlMs, loader }) {
+  let cache = metadataCaches.get(fetchImpl);
+  if (!cache) { cache = new Map(); metadataCaches.set(fetchImpl, cache); }
+  const key = JSON.stringify([createHash("sha256").update(String(serviceKey ?? "").trim()).digest("hex"), ...scope]);
+  const now = Date.now();
+  for (const [id, entry] of cache) if (!entry.pending && entry.expiresAt <= now) cache.delete(id);
+  const hit = cache.get(key);
+  if (hit) return structuredClone(hit.pending ? await hit.pending : hit.value);
+  if (cache.size >= 128) {
+    const oldest = [...cache].find(([, entry]) => !entry.pending);
+    if (oldest) cache.delete(oldest[0]);
+    else return loader();
+  }
+  const entry = {};
+  const task = Promise.resolve().then(loader).then(value => {
+    entry.value = structuredClone(value);
+    entry.expiresAt = Date.now() + ttlMs;
+    delete entry.pending;
+    return entry.value;
+  }).catch(error => { cache.delete(key); throw error; });
+  entry.pending = task;
+  cache.set(key, entry);
+  return structuredClone(await task);
+}
 
 const BASE_URL = "https://apis.data.go.kr/1613000/ArvlInfoInqireService/";
 const STOP_BASE_URL = "https://apis.data.go.kr/1613000/BusSttnInfoInqireService/";
@@ -16,7 +44,7 @@ const ERROR_MESSAGES = {
 
 function apiError(code) {
   const numericCode = /^\d{1,3}$/.test(String(code).trim()) ? Number(code) : null;
-  return new Error(`TAGO API 오류${numericCode === null ? "" : ` (${numericCode})`}: ${ERROR_MESSAGES[numericCode] || "응답을 확인할 수 없습니다."}`);
+  return Object.assign(new Error(`TAGO API 오류${numericCode === null ? "" : ` (${numericCode})`}: ${ERROR_MESSAGES[numericCode] || "응답을 확인할 수 없습니다."}`), { retryable: [1, 4, 99].includes(numericCode) });
 }
 
 function xmlValue(text, tag) {
@@ -51,7 +79,22 @@ function itemsFromBody(body) {
   return rows;
 }
 
-async function requestTago({ serviceKey, operation, params = {}, service = "arrivals", fetchImpl, timeoutMs = 8000 }) {
+async function requestTago(options) {
+  const timeoutMs = options.timeoutMs ?? 8000;
+  const canRetry = options.service === "stops" && ["getSttnNoList", "getCtyCodeList"].includes(options.operation);
+  if (!canRetry) return requestTagoOnce(options);
+  const deadline = Date.now() + timeoutMs;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      return await requestTagoOnce({ ...options, timeoutMs: Math.max(1, Math.min(4000, deadline - Date.now())) });
+    } catch (error) {
+      if (attempt || (!error.retryable && error.code !== "UPSTREAM_TIMEOUT") || deadline - Date.now() <= 250) throw error;
+      await new Promise(resolve => setTimeout(resolve, 150));
+    }
+  }
+}
+
+async function requestTagoOnce({ serviceKey, operation, params = {}, service = "arrivals", fetchImpl, timeoutMs = 8000 }) {
   if (!String(serviceKey ?? "").trim()) throw new Error("TAGO_SERVICE_KEY is not configured.");
   if (!["arrivals", "stops"].includes(service)) throw new Error("Unsupported TAGO service.");
   const url = new URL(operation, service === "stops" ? STOP_BASE_URL : BASE_URL);
@@ -69,11 +112,11 @@ async function requestTago({ serviceKey, operation, params = {}, service = "arri
         text = await response.text();
       } catch {
         // Transport exceptions can contain the request URL, including serviceKey.
-        throw new Error("TAGO API 통신에 실패했습니다. 잠시 후 다시 시도해 주세요.");
+        throw Object.assign(new Error("TAGO API 통신에 실패했습니다. 잠시 후 다시 시도해 주세요."), { retryable: true });
       }
       if (!response.ok) {
         if (text.includes("<returnReasonCode>")) throw apiError(xmlValue(text, "returnReasonCode"));
-        throw new Error(`TAGO API request failed with ${response.status}.`);
+        throw Object.assign(new Error(`TAGO API request failed with ${response.status}.`), { retryable: [502, 503, 504].includes(response.status) });
       }
       return parseTagoResponse(text);
     },
@@ -128,13 +171,15 @@ async function fetchTagoPages({ serviceKey, operation, params, service = "arriva
 }
 
 export async function fetchTagoCities({ serviceKey, service = "arrivals", fetchImpl = fetch }) {
-  const body = await requestTago({ serviceKey, service, operation: "getCtyCodeList", fetchImpl });
-  return itemsFromBody(body).map((row) => {
-    const cityCode = String(row.citycode ?? "").trim();
-    const cityName = String(row.cityname ?? "").trim();
-    if (!cityCode || !cityName) throw new Error("TAGO API 도시코드 정보가 올바르지 않습니다.");
-    return { cityCode, cityName };
-  });
+  return cachedMetadata({ fetchImpl, serviceKey, scope: ["cities", service], ttlMs: 3600000, loader: async () => {
+    const body = await requestTago({ serviceKey, service, operation: "getCtyCodeList", fetchImpl });
+    return itemsFromBody(body).map((row) => {
+      const cityCode = String(row.citycode ?? "").trim();
+      const cityName = String(row.cityname ?? "").trim();
+      if (!cityCode || !cityName) throw new Error("TAGO API 도시코드 정보가 올바르지 않습니다.");
+      return { cityCode, cityName };
+    });
+  } });
 }
 
 function requiredText(value, label) {
@@ -161,8 +206,10 @@ export async function searchTagoStations({ serviceKey, cityCode, keyword, fetchI
   const query = requiredText(keyword, "정류장 이름 또는 번호");
   if (query.length > 100) throw new Error("정류장 검색어가 너무 깁니다.");
   const params = { cityCode: city, [/^\d+$/.test(query) ? "nodeNo" : "nodeNm"]: query };
-  const rows = await fetchTagoPages({ serviceKey, service: "stops", operation: "getSttnNoList", params, fetchImpl });
-  return rows.map((row) => normalizeTagoStation(row, city));
+  return cachedMetadata({ fetchImpl, serviceKey, scope: ["stations", city, query], ttlMs: 300000, loader: async () => {
+    const rows = await fetchTagoPages({ serviceKey, service: "stops", operation: "getSttnNoList", params, fetchImpl });
+    return rows.map((row) => normalizeTagoStation(row, city));
+  } });
 }
 
 export async function searchTagoStationRoutes({ serviceKey, cityCode, nodeId, routeNumber = "", fetchImpl = fetch }) {
