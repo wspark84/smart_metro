@@ -4,6 +4,8 @@ import {readFile} from 'node:fs/promises';
 import vm from 'node:vm';
 import {handleSocialLoginRoute} from '../src/server/social-login-routes.mjs';
 import {TRANSIT_LOOKUP_PATHS} from '../src/server/transit-lookups.mjs';
+import {projectDomainSnapshot,applyDomainSnapshotToState} from '../src/domain-model.js';
+import {sanitizeDeviceProfile,DEFAULT_DEVICE_PROFILE} from '../src/device-profile.js';
 
 test('login routes respond while another account holds the runtime lock', async () => {
   const source=await readFile(new URL('../server.mjs',import.meta.url),'utf8');
@@ -22,7 +24,7 @@ test('login routes respond while another account holds the runtime lock', async 
     sendUnhandledServerError(){assert.fail('unexpected route error');},
   });
   vm.runInContext(callback,context);
-  listener({method:'GET',url:'/api/app-state',headers:{}},{});
+  listener({method:'GET',url:'/api/alarm-runtime',headers:{}},{});
   for(const path of ['/api/auth/providers','/api/auth/session']){
     let status,body;
     const response={writeHead(s){status=s;},end(b){body=JSON.parse(b);}};
@@ -32,6 +34,72 @@ test('login routes respond while another account holds the runtime lock', async 
     if(path.endsWith('session'))assert.equal(body.authenticated,false);
   }
   assert.equal(queued.length,1,'account data must remain protected by the mutex');
+});
+
+test('workspace loading bypasses the alarm queue with request-local user paths', async () => {
+  const source=await readFile(new URL('../server.mjs',import.meta.url),'utf8');
+  const callback=source.slice(source.indexOf('const server = createServer('),source.indexOf('\nserver.listen('));
+  let listener; const replies=[];
+  const context=vm.createContext({
+    createServer(fn){listener=fn;return {};},parseRequestUrl:r=>new URL(r.url,'http://localhost'),TRANSIT_LOOKUP_PATHS,
+    runWithRuntimeLock(){assert.fail('workspace reads must not wait behind alarms');},
+    createRequestAuth:req=>({resolve:async()=>req.user ? ({user:{id:req.user},accessToken:req.user}) : null}),
+    createSupabaseGateway:()=>({}),
+    runWithDocumentStorage:async(auth,gateway,work)=>work(),
+    readWorkspaceView:async(auth,path)=>({status:200,payload:{user:auth.user.id,path}}),
+    sendAuthJson:(res,status,payload)=>replies.push({status,payload}),
+    sendUnhandledServerError(){assert.fail('unexpected error');},
+  });
+  vm.runInContext(callback,context);
+  listener({method:'GET',url:'/api/app-state',headers:{},user:'a'},{});
+  listener({method:'GET',url:'/api/domain-snapshot',headers:{},user:'b'},{});
+  await new Promise(resolve=>setTimeout(resolve,0));
+  assert.deepEqual(replies.map(x=>x.payload.user),['a','b']);
+  listener({method:'GET',url:'/api/device-profile',headers:{}},{});
+  await new Promise(resolve=>setTimeout(resolve,0));
+  assert.equal(replies.at(-1).status,401,'anonymous requests must never read workspace data');
+});
+
+test('concurrent workspace views never use shared user globals or load alarm documents', async () => {
+  const source=await readFile(new URL('../server.mjs',import.meta.url),'utf8');
+  const fn=source.slice(source.indexOf('async function readWorkspaceView('),source.indexOf('\nlet activeUserContext'));
+  const reads=[];
+  const context=vm.createContext({
+    buildUserFileMap:id=>({appState:id+'/app',domain:id+'/domain',deviceProfile:id+'/device'}),
+    readAppState:async path=>{reads.push(path);return {user:{name:path},device:{}};},
+    readDomainSnapshot:async path=>{reads.push(path);return {owner:path};},
+    readDeviceProfile:async path=>{reads.push(path);return {owner:path};},
+    analyzeDevicePushTarget:()=>({}),sanitizeDeviceProfile,DEFAULT_DEVICE_PROFILE,
+    projectDomainSnapshot,applyDomainSnapshotToState,
+    writeAppState(){assert.fail('existing workspace must not be reseeded');},
+    writeDomainSnapshot(){assert.fail('existing workspace must not be reseeded');},
+  });
+  vm.runInContext(fn,context);
+  const results=await Promise.all([
+    vm.runInContext('readWorkspaceView({user:{id:"a"}},"/api/app-state")',context),
+    vm.runInContext('readWorkspaceView({user:{id:"b"}},"/api/device-profile")',context),
+  ]);
+  assert.equal(results[0].payload.user.name,'a/app');
+  assert.equal(results[1].payload.profile.owner,'b/device');
+  assert.deepEqual(reads,['a/app','a/domain','b/app','b/domain','b/device']);
+});
+
+test('first workspace view seeds the same account-scoped state before returning it', async () => {
+  const source=await readFile(new URL('../server.mjs',import.meta.url),'utf8');
+  const fn=source.slice(source.indexOf('async function readWorkspaceView('),source.indexOf('\nlet activeUserContext'));
+  const writes=[];
+  const context=vm.createContext({
+    buildUserFileMap:id=>({appState:id+'/app',domain:id+'/domain'}),
+    readAppState:async()=>null,readDomainSnapshot:async()=>null,
+    projectDomainSnapshot,applyDomainSnapshotToState,
+    writeAppState:async(value,path)=>writes.push({value,path}),
+    writeDomainSnapshot:async(value,path)=>writes.push({value,path}),
+  });
+  vm.runInContext(fn,context);
+  const result=await vm.runInContext('readWorkspaceView({user:{id:"new",name:"새 사용자",email:"new@example.com"}},"/api/app-state")',context);
+  assert.equal(result.status,200);
+  assert.equal(result.payload.user.name,'새 사용자');
+  assert.deepEqual(writes.map(x=>x.path),['new/app','new/domain']);
 });
 
 test('request-scoped auth mutations keep origin validation outside the runtime lock', async () => {

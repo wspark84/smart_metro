@@ -192,6 +192,32 @@ function buildUserFileMap(userId) {
   };
 }
 
+// Home initialization needs only three documents, not the mutable alarm engine.
+// All paths and data stay local to this authenticated request; RLS and the
+// document transaction still enforce ownership and optimistic concurrency.
+async function readWorkspaceView(auth, path) {
+  const files = buildUserFileMap(auth.user.id);
+  let [appState, domain, device] = await Promise.all([
+    readAppState(files.appState), readDomainSnapshot(files.domain),
+    path === "/api/device-profile" ? readDeviceProfile(files.deviceProfile) : null,
+  ]);
+  if (!appState && !domain) {
+    const seed = projectDomainSnapshot({});
+    seed.user.name = auth.user.name || seed.user.name;
+    seed.user.email = auth.user.email || seed.user.email;
+    appState = applyDomainSnapshotToState(seed);
+    appState.user.name = auth.user.name || appState.user.name;
+    domain = projectDomainSnapshot(appState);
+    await Promise.all([writeAppState(appState, files.appState), writeDomainSnapshot(domain, files.domain)]);
+  }
+  if (path === "/api/device-profile") {
+    const profile = device || sanitizeDeviceProfile((appState || applyDomainSnapshotToState(domain))?.device || DEFAULT_DEVICE_PROFILE);
+    return { status: 200, payload: { profile, tokenHealth: analyzeDevicePushTarget(profile), fetchedAt: new Date().toISOString() } };
+  }
+  const payload = path === "/api/app-state" ? appState : domain || (appState ? projectDomainSnapshot(appState) : null);
+  return { status: payload ? 200 : 404, payload: payload || { error: "저장된 설정이 없습니다." } };
+}
+
 let activeUserContext = null;
 
 function getActiveFiles() {
@@ -3160,6 +3186,16 @@ const server = createServer((request, response) => {
   // These public configuration reads only inspect environment configuration.
   if (request.method === "GET" && ["/api/holidays/config", "/api/commute/config"].includes(requestUrl.pathname)) {
     void handleRequest(request, response).catch((error) => sendUnhandledServerError(response, error));
+    return;
+  }
+
+  if (request.method === "GET" && ["/api/app-state", "/api/domain-snapshot", "/api/device-profile"].includes(requestUrl.pathname)) {
+    void (async () => {
+      const auth = await createRequestAuth(request, response).resolve();
+      if (!auth) { sendAuthJson(response, 401, { error: "소셜 계정으로 로그인해 주세요." }); return; }
+      const result = await runWithDocumentStorage(auth, createSupabaseGateway(), () => readWorkspaceView(auth, requestUrl.pathname));
+      sendAuthJson(response, result.status, result.payload);
+    })().catch((error) => sendAuthJson(response, error?.statusCode || 503, { error: "설정을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요." }));
     return;
   }
 

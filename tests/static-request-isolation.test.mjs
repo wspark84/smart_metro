@@ -19,13 +19,13 @@ test('public screen files are not held behind a busy account runtime lock', asyn
     sendUnhandledServerError() { assert.fail('unexpected static request error'); },
   });
   vm.runInContext(callbackSource, context);
-  listener({method:'GET',url:'/api/app-state'}, {});
+  listener({method:'POST',url:'/api/app-state'}, {});
   listener({method:'GET',url:'/'}, {});
   listener({method:'GET',url:'/src/locale-ko.js'}, {});
   listener({method:'HEAD',url:'/src/styles.css'}, {});
   await Promise.resolve();
   assert.deepEqual(served, ['/', '/src/locale-ko.js', '/src/styles.css']);
-  assert.equal(queued.length, 1, 'account API must still use the protected runtime lock');
+  assert.equal(queued.length, 1, 'account writes must still use the protected runtime lock');
 });
 
 test('station lookups bypass busy runtime writes but still require authentication', async () => {
