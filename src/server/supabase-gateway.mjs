@@ -33,7 +33,7 @@ function providerFailure(error) {
     weak_password: "더 안전한 비밀번호를 입력해 주세요.",
     user_already_exists: "이미 가입된 이메일입니다. 로그인 또는 비밀번호 재설정을 이용해 주세요.",
   };
-  if (error?.code === "40001" || error?.code === "23505") {
+  if (["PT409", "40001", "23505"].includes(error?.code)) {
     return failure("DOCUMENT_CONFLICT", "다른 요청에서 설정이 변경됐습니다. 새로 불러온 뒤 다시 저장해 주세요.", 409);
   }
   const code = Object.hasOwn(messages, error?.code || "") ? error.code : "SUPABASE_REQUEST_FAILED";

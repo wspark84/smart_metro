@@ -88,6 +88,17 @@ test("version conflicts return 409 rather than silently overwriting newer data",
   await assert.rejects(gateway.saveDocument("jwt", "app-state", {}, 2), { code: "DOCUMENT_CONFLICT", statusCode: 409 });
 });
 
+test("non-retryable PT409 conflict is returned once and keeps stale-write protection", async () => {
+  let calls = 0;
+  const gateway = createSupabaseGateway({ env, fetchImpl: async () => {
+    calls++;
+    return response({ code: 'PT409', message: 'private details' }, 409);
+  } });
+  await assert.rejects(gateway.saveDocuments('jwt', [{document_key:'app-state',payload:{},expected_revision:1}]),
+    error => error.code === 'DOCUMENT_CONFLICT' && error.statusCode === 409 && !error.message.includes('private'));
+  assert.equal(calls, 1);
+});
+
 test("unavailable workspace storage returns once instead of multiplying the request timeout", async () => {
   let calls = 0;
   const gateway = createSupabaseGateway({ env, fetchImpl: async () => {

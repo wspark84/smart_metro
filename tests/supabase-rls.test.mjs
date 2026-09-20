@@ -7,6 +7,7 @@ const userA = "11111111-1111-4111-8111-111111111111";
 const userB = "22222222-2222-4222-8222-222222222222";
 const migration = await readFile(new URL("../supabase/migrations/202609160001_smart_metro_documents.sql", import.meta.url), "utf8");
 const batchMigration = await readFile(new URL("../supabase/migrations/202609160002_atomic_document_batch.sql", import.meta.url), "utf8");
+const conflictMigration = await readFile(new URL("../supabase/migrations/202609200001_non_retryable_document_conflict.sql", import.meta.url), "utf8");
 
 test("Supabase migration enforces ownership, anonymous denial, and stale-write protection in PostgreSQL", async () => {
   const db = new PGlite();
@@ -26,12 +27,14 @@ test("Supabase migration enforces ownership, anonymous denial, and stale-write p
     await db.exec(migration); // Rerunning setup must be safe.
     await db.exec(batchMigration);
     await db.exec(batchMigration);
+    await db.exec(conflictMigration);
+    await db.exec(conflictMigration); // Safe to rerun, without replacing any data.
     await db.exec(`set role authenticated; set request.jwt.claim.sub = '${userA}';`);
     const save = (key, payload, version) => db.query(
       "select * from public.save_smart_metro_document($1, $2::jsonb, $3::bigint)", [key, JSON.stringify(payload), version]);
     assert.equal((await save("app-state", { owner: "A" }, 0)).rows[0].revision, 1);
     assert.equal((await save("app-state", { owner: "A", changed: true }, 1)).rows[0].revision, 2);
-    await assert.rejects(save("app-state", { stale: true }, 1), { code: "40001" });
+    await assert.rejects(save("app-state", { stale: true }, 1), { code: "PT409" });
     await assert.rejects(save("app-state", {}, 0), { code: "23505" });
     await assert.rejects(save("unapproved-key", {}, 0), { code: "23514" });
     await assert.rejects(db.query("insert into public.smart_metro_documents(user_id, document_key, payload) values ($1, 'domain-store', '{}')", [userB]), { code: "42501" });
@@ -58,7 +61,7 @@ test("Supabase migration enforces ownership, anonymous denial, and stale-write p
     await assert.rejects(batch([
       { document_key: "app-state", payload: { mustRollback: true }, expected_revision: 3 },
       { document_key: "domain-store", payload: {}, expected_revision: 7 },
-    ]), { code: "40001" });
+    ]), { code: "PT409" });
     assert.deepEqual((await db.query("select payload from public.smart_metro_documents where document_key='app-state'")).rows[0].payload, { batch: true });
     await assert.rejects(batch([
       { document_key: "app-state", payload: {}, expected_revision: 3 },
