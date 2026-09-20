@@ -48,4 +48,12 @@ test('station lookups bypass busy runtime writes but still require authenticatio
   listener({method:'GET',url:'/api/bus/stations?provider=subway&keyword=서울'},{});
   await new Promise(resolve=>setTimeout(resolve,0));
   assert.deepEqual(statuses,[401,200]);assert.deepEqual(lookups,['/api/bus/stations']);
+  authenticated=false;
+  listener({method:'GET',url:'/api/bus/nearby-stations?provider=tago&lat=37.28&lng=127.06'},{});
+  await new Promise(resolve=>setTimeout(resolve,0));
+  assert.equal(statuses.at(-1),401);
+  authenticated=true;
+  listener({method:'GET',url:'/api/bus/nearby-stations?provider=tago&lat=37.28&lng=127.06'},{});
+  await new Promise(resolve=>setTimeout(resolve,0));
+  assert.equal(statuses.at(-1),200);assert.equal(lookups.at(-1),'/api/bus/nearby-stations');
 });

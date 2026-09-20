@@ -19,6 +19,7 @@ export const DEFAULT_STATE = {
     workAddressSearchError: "",
     workAddressSearchResults: [],
     liveSearchKeyword: "",
+    busCityId: "",
     liveSearchStatus: "idle",
     liveSearchError: "",
     liveSearchResults: [],

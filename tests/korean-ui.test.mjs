@@ -74,7 +74,8 @@ test('home keeps trip controls and countdown while diagnostics retain operationa
   assert.match(app.innerHTML, /data-action="search-work-address"/);
   vm.runInContext('homeEditor="departure";state.live.provider="tago";render()', context);
   assert.match(app.innerHTML, /data-action="search-live-stops"/);
-  assert.match(app.innerHTML, /data-field="live.cityCode"/);
+  assert.match(app.innerHTML, /data-field="ui.busCityId"/);
+  assert.doesNotMatch(app.innerHTML, /버스 정보 지역|data-action="load-tago-cities"/);
   vm.runInContext('window.location.hash="#/diagnostics";alarmRuntimeMeta.status="loading";alarmPlanMeta.status="loading";render()', context);
   assert.match(app.innerHTML, /서버 알람 처리 상태/);
   assert.match(app.innerHTML, /오늘의 알람 계획/);

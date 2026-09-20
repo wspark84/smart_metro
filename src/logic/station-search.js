@@ -2,6 +2,10 @@ export function normalizeStationText(value) {
   return String(value || "").normalize("NFKC").toLowerCase().replace(/[\s.·,()\-]/g, "");
 }
 
+export function stationSelectionKey(station) {
+  return String(station?.selectionId || station?.stationId || "");
+}
+
 export function parseSubwayRouteId(value) {
   try {
     const parts = JSON.parse(value);
@@ -14,6 +18,7 @@ export function parseSubwayRouteId(value) {
 export function stationSearchQueries(value) {
   const original = String(value || "").trim().slice(0, 80);
   const compact = original.replace(/\s+/g, "");
+  if (/^\d+$/.test(compact)) return [...new Set([compact,compact.length===4?compact.padStart(5,"0"):compact])];
   const prefix = compact.length >= 5 ? compact.slice(0, Math.max(3, Math.floor(compact.length * 0.65))) : "";
   return [...new Set([original, compact, prefix].filter(Boolean))].slice(0, 3);
 }

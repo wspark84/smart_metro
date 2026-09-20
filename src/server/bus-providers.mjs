@@ -164,6 +164,7 @@ export function parseSeoulArrivalXml(xml) {
 
 export function parseSeoulStationSearchXml(xml) {
   const headerCode = getXmlValue(xml, "headerCd");
+  if (headerCode === "4") return [];
   if (headerCode && headerCode !== "0") {
     throw new Error(`Seoul station API error: ${getXmlValue(xml, "headerMsg") || headerCode}`);
   }
@@ -216,9 +217,6 @@ export function normalizeSeoulArrival(row) {
 }
 
 export function normalizeSeoulStations(rows) {
-  if (!rows.length) {
-    throw new Error("Seoul station search returned no rows.");
-  }
 
   return rows
     .map((row) => ({
@@ -286,10 +284,12 @@ export function normalizeGyeonggiArrival(payload, { routeId = "", routeNumber = 
 }
 
 export function normalizeGyeonggiStations(payload) {
-  const rows = readGyeonggiStationRows(payload);
-  if (!rows.length) {
-    throw new Error("Gyeonggi station search returned no rows.");
+  const header = payload?.response?.msgHeader ?? payload?.msgHeader;
+  if (String(header?.resultCode) === "4") return [];
+  if (header?.resultCode !== undefined && String(header.resultCode) !== "0") {
+    throw new Error("경기 버스 정류장 조회에 실패했습니다. API 사용 권한과 연결 상태를 확인해 주세요.");
   }
+  const rows = readGyeonggiStationRows(payload);
 
   return rows
     .map((row) => ({
@@ -657,6 +657,10 @@ export async function searchLiveStations(binding) {
   if (!queries.length) throw new Error("정류장 이름 또는 번호를 입력해 주세요.");
   for (const keyword of queries) {
     const result = await searchLiveStationsExact({...binding,keyword});
+    if (binding.provider === "gyeonggi" && binding.regionName) {
+      const cityName = value => String(value || "").replace(/^경기도\s*/, "").trim();
+      result.stations = result.stations.filter(station => cityName(station.regionName) === cityName(binding.regionName));
+    }
     if (result.stations.length) return {...result, stations:rankStationCandidates(result.stations,binding.keyword), matchedQuery:keyword};
   }
   return {provider:binding.provider,stations:[]};

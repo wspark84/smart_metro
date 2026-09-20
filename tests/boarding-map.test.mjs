@@ -29,3 +29,24 @@ test('missing map key or invalid coordinates do not produce a fake confirmed loc
   await mountKakaoBoardingMap(element,{appKey:'key',candidates:[{posX:'',posY:''}],onSelect(){assert.fail();}});
   assert.equal(element.dataset.mapStatus,'unavailable');
 });
+
+test('empty search can display a requested area and reports map movements only while connected',async()=>{
+  const originalWindow=globalThis.window;
+  const centers=[];
+  let map, idle;
+  const element={isConnected:true,dataset:{},textContent:''};
+  globalThis.window={kakao:{maps:{
+    LatLng:class{constructor(lat,lng){this.lat=lat;this.lng=lng;}getLat(){return this.lat;}getLng(){return this.lng;}},
+    Map:class{constructor(element,options){this.options=options;map=this;}getCenter(){return this.options.center;}},
+    LatLngBounds:class{},event:{addListener(target,event,handler){assert.equal(event,'idle');idle=handler;}}
+  }}};
+  try {
+    await mountKakaoBoardingMap(element,{appKey:'public',candidates:[],center:{lat:37.28,lng:127.06},onSelect(){assert.fail('no selection without explicit station');},onCenterChanged:value=>centers.push(value)});
+    assert.equal(element.dataset.mapStatus,'ready');
+    assert.equal(map.options.keyboardShortcuts,true);
+    assert.deepEqual(centers,[{lat:37.28,lng:127.06}]);
+    map.options.center=new window.kakao.maps.LatLng(37.29,127.07);idle();
+    assert.deepEqual(centers.at(-1),{lat:37.29,lng:127.07});
+    element.isConnected=false;idle();assert.equal(centers.length,2);
+  } finally { globalThis.window=originalWindow; }
+});

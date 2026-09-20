@@ -22,6 +22,13 @@ export async function fetchTagoCityList() {
   return payload;
 }
 
+export async function fetchBusCityList() {
+  const response = await fetchSearch("/api/bus/cities?provider=auto");
+  const payload = await response.json();
+  if (!response.ok) throw new Error(payload.error || "도시 목록을 불러오지 못했습니다.");
+  return payload;
+}
+
 export async function fetchLiveArrivals(binding) {
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(binding)) {
@@ -70,6 +77,14 @@ export async function searchLiveStationRoutes(binding) {
     throw new Error(payload.error || `경유 노선 검색 실패 (응답 코드 ${response.status}).`);
   }
 
+  return payload;
+}
+
+export async function searchNearbyStations({ lat, lng }) {
+  const params = new URLSearchParams({ provider: "tago", lat: String(lat), lng: String(lng) });
+  const response = await fetchSearch(`/api/bus/nearby-stations?${params}`);
+  const payload = await response.json();
+  if (!response.ok) throw new Error(payload.error || "지도 주변 정류장을 조회하지 못했습니다.");
   return payload;
 }
 

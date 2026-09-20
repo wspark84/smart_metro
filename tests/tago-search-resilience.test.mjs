@@ -107,6 +107,7 @@ async function searchHarness() {
   const end=source.indexOf('  if (action === "load-tago-cities") {',start);
   assert.ok(start>=0 && end>start);
   const context=vm.createContext({action:'search-live-stops',
+    boardingArea:{mode:'name'},
     state:{ui:{liveSearchKeyword:'광교',liveSearchResults:[]}},
     liveStationRequest:0,liveSearchResultKey:'',binding:{provider:'tago',cityCode:'31010',keyword:'광교'},
     resetBoardingPreview(){},resetLiveRouteSearchState(){},persist(){},render(){},pushHistory(){},

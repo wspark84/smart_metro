@@ -1,20 +1,25 @@
-/* Approved mixed concept: a single large number, timetable, and a lateness rule. */
+/* Approved Vermilion light/dark concepts. Light is the explicit default. */
 :root {
-  --surface: #f4f5f4;
-  --surface-low: #f4f5f4;
+  color-scheme: light;
+  --surface: #f6f4f3;
+  --surface-low: #f6f4f3;
   --surface-card: #fff;
-  --surface-high: #dfe3e3;
-  --surface-ink: #14181a;
-  --surface-muted: #5e676b;
-  --outline: #dfe3e3;
-  --primary: #0f766e;
-  --primary-strong: #0c615a;
-  --primary-soft: #e6f0ee;
+  --surface-high: #e5e1df;
+  --surface-ink: #131111;
+  --surface-muted: #6b6663;
+  --outline: #e5e1df;
+  --primary: #c7350f;
+  --primary-strong: #a92b0b;
+  --primary-soft: #fae9e3;
   --on-primary: #fff;
-  --secondary: #0f766e;
-  --orange: #b3300f;
-  --red: #b3300f;
-  --success: #0f766e;
+  --secondary: #c7350f;
+  --orange: #c7350f;
+  --red: #c7350f;
+  --orange-soft: #fae9e3;
+  --red-soft: #fae9e3;
+  --success: #267247;
+  --success-soft: #e8f2eb;
+  --toggle-track: #c8c1bd;
   --shadow-soft: none;
   --shadow-card: none;
   --radius-xl: 0;
@@ -148,22 +153,40 @@ button:not(:disabled):active { filter: brightness(.90); }
   gap: 0; padding: 6px 0 calc(8px + env(safe-area-inset-bottom));
 }
 .nav-item { min-height: 54px; font-size: 11px; font-weight: 600; letter-spacing: 0; border-radius: 0; gap: 4px; }
-.nav-item.active { background: none; box-shadow: none; color: var(--primary); }
+.nav-item.active { background: none; box-shadow: none; color: var(--surface-ink); }
 .nav-item.active .ui-icon { stroke-width: 2.3; }
 
-@media (prefers-color-scheme: dark) {
-  :root {
+:root[data-theme="dark"] {
     color-scheme: dark;
-    --surface: #0f1413; --surface-low: #181e1d; --surface-card: #181e1d;
-    --surface-high: #34413e; --surface-ink: #edf2f1; --surface-muted: #a0ada9;
-    --outline: #2a3532; --primary: #2dd4bf; --primary-strong: #5ce2d1;
-    --primary-soft: #203b35; --on-primary: #06100e; --secondary: #2dd4bf;
-    --orange: #ff8360; --red: #ff8360; --success: #2dd4bf;
-    --orange-soft: #3b2923; --red-soft: #3b2923; --success-soft: #203b35;
-  }
-  .warning-panel, .message-panel { background: var(--surface-card); color: var(--surface-ink); }
-  .status-pill, .tone-chip { color: var(--surface-ink); }
+    --surface: #0f0d0c; --surface-low: #1a1716; --surface-card: #1a1716;
+    --surface-high: #36302d; --surface-ink: #f4f2f0; --surface-muted: #99938f;
+    --outline: #282422; --primary: #ff6a45; --primary-strong: #ff805f;
+    --primary-soft: #352019; --on-primary: #0f0d0c; --secondary: #ff6a45;
+    --orange: #ff6a45; --red: #ff6a45; --success: #8ed7ab;
+    --orange-soft: #352019; --red-soft: #352019; --success-soft: #1c3024;
+    --toggle-track: #69615b;
 }
+
+/* Shared controls use theme tokens too, not legacy blue/white gradients. */
+.appearance-panel h2 { margin: 0 0 16px; }
+.appearance-panel .toggle-row { margin: 0; align-items: center; gap: 18px; }
+.appearance-panel .toggle-row > div { min-width: 0; }
+.appearance-panel .toggle { flex-shrink: 0; }
+.toggle { background: var(--toggle-track); }
+.toggle.on { background: var(--primary); }
+.choice-chip.selected, .weekday-chip.selected { background: var(--primary); color: var(--on-primary); box-shadow: none; }
+.preview-card, .info-card, .warning-panel, .message-panel, .map-label { background: var(--surface-card); color: var(--surface-ink); }
+.preview-label, .pill-button { background: var(--primary-soft); color: var(--primary); box-shadow: none; }
+.delivery-card, .retry-queue-item, .forecast-item.on, .stop-item.selected { background: var(--primary-soft); box-shadow: none; }
+.retry-queue-title { color: var(--surface-ink); }
+.boarding-map-label { background: var(--surface-card); color: var(--primary); }
+.boarding-map-label.selected { background: var(--primary); color: var(--on-primary); }
+.bus-card.orange, .bus-card.yellow { background: var(--orange-soft); }
+.bus-card.green { background: var(--success-soft); }
+.bus-card.red { background: var(--red-soft); color: var(--surface-ink); }
+.bus-card.red .bus-chip { color: var(--red); }
+:root[data-theme="dark"] .status-pill, :root[data-theme="dark"] .tone-chip { background: var(--surface-high); color: var(--surface-ink); }
+:root[data-theme="dark"] .auth-form input::placeholder { color: var(--surface-muted); }
 @media (max-width: 360px) {
   .topbar { padding-inline: 14px; }
   .brandmark { font-size: 15px; }
@@ -174,4 +197,13 @@ button:not(:disabled):active { filter: brightness(.90); }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}
+
+.boarding-map-shell { position: relative; }
+.boarding-map-shell.has-search-center::after {
+  content: "+"; position: absolute; z-index: 2; left: 50%; top: 50%;
+  transform: translate(-50%, -50%); pointer-events: none;
+  color: var(--surface-ink); background: var(--surface-card); border: 1px solid var(--primary);
+  border-radius: 50%; width: 24px; height: 24px; line-height: 21px;
+  text-align: center; font-size: 22px; font-weight: 700;
 }

@@ -1,4 +1,5 @@
 import { isValidLocation } from "../logic/commute.js";
+import { stationSelectionKey } from "../logic/station-search.js";
 let sdkPromise = null;
 
 function loadKakaoMapSdk(appKey) {
@@ -29,10 +30,10 @@ function loadKakaoMapSdk(appKey) {
   return sdkPromise;
 }
 
-export async function mountKakaoBoardingMap(element, {appKey, candidates, selectedId, onSelect}) {
+export async function mountKakaoBoardingMap(element, {appKey, candidates, selectedId, onSelect, center: requestedCenter, onCenterChanged}) {
   if (!element?.isConnected) return;
   const points = candidates.map((item,index) => ({...item,index,lat:item.posY ?? item.lat,lng:item.posX ?? item.lng})).filter(isCoordinate);
-  if (!appKey || !points.length) {
+  if (!appKey || (!points.length && !isCoordinate(requestedCenter))) {
     element.textContent = !appKey ? "지도 연결 키가 없습니다. 카카오 지도 설정을 확인해 주세요." : "공식 좌표가 없어 위치를 확인할 수 없습니다. 다른 검색 결과를 선택해 주세요.";
     element.dataset.mapStatus = "unavailable";
     return;
@@ -42,23 +43,32 @@ export async function mountKakaoBoardingMap(element, {appKey, candidates, select
     const maps = await loadKakaoMapSdk(appKey);
     if (!element.isConnected) return;
     element.textContent = "";
-    const selected = points.find(item => String(item.stationId) === String(selectedId));
-    const center = selected || points[0];
-    const map = new maps.Map(element,{center:new maps.LatLng(Number(center.lat),Number(center.lng)),level:selected ? 3 : 5});
+    const selected = points.find(item => stationSelectionKey(item) === String(selectedId));
+    const center = selected || (isCoordinate(requestedCenter) ? requestedCenter : points[0]);
+    const map = new maps.Map(element,{center:new maps.LatLng(Number(center.lat),Number(center.lng)),level:selected ? 3 : 5,keyboardShortcuts:true});
     const bounds = new maps.LatLngBounds();
     for (const item of points) {
       const position = new maps.LatLng(Number(item.lat),Number(item.lng));
       const marker = new maps.Marker({position,map,title:`${item.index+1}. ${item.displayName || item.stationName} ${item.stationNumber || item.arsId || ""}`});
-      maps.event.addListener(marker,"click",()=>onSelect(String(item.stationId)));
+      maps.event.addListener(marker,"click",()=>onSelect(stationSelectionKey(item)));
       const label = document.createElement("button");
       label.type = "button";
-      label.className = `boarding-map-label ${String(item.stationId) === String(selectedId) ? "selected" : ""}`;
+      label.className = `boarding-map-label ${stationSelectionKey(item) === String(selectedId) ? "selected" : ""}`;
       label.textContent = `${item.index+1}. ${item.stationName}`;
-      label.addEventListener("click",()=>onSelect(String(item.stationId)));
+      label.addEventListener("click",()=>onSelect(stationSelectionKey(item)));
       new maps.CustomOverlay({position,content:label,map,yAnchor:2.2});
       bounds.extend(position);
     }
-    if (!selected && points.length > 1) map.setBounds(bounds);
+    if (!selected && !isCoordinate(requestedCenter) && points.length > 1) map.setBounds(bounds);
+    if (onCenterChanged) {
+      const reportCenter = () => {
+        if (!element.isConnected) return;
+        const position = map.getCenter();
+        onCenterChanged({lat:position.getLat(),lng:position.getLng()});
+      };
+      maps.event.addListener(map,"idle",reportCenter);
+      reportCenter();
+    }
     element.dataset.mapStatus = "ready";
   } catch {
     if (element.isConnected) {

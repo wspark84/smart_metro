@@ -254,3 +254,29 @@ export async function searchTagoStationRoutes({ serviceKey, cityCode, nodeId, ro
   const selectedNumber = String(routeNumber ?? "").trim();
   return selectedNumber ? routes.filter((route) => route.routeNumber === selectedNumber) : routes;
 }
+
+export async function searchTagoNearbyStations({ serviceKey, lat, lng, fetchImpl = fetch }) {
+  const coordinate = (value, limit) => {
+    if (!["string", "number"].includes(typeof value) || String(value).trim() === "") return null;
+    const number = Number(value);
+    return Number.isFinite(number) && Math.abs(number) <= limit ? number : null;
+  };
+  const latitude = coordinate(lat, 90), longitude = coordinate(lng, 180);
+  if (latitude === null || longitude === null || (latitude === 0 && longitude === 0)) {
+    throw new Error("지도의 검색 위치가 올바르지 않습니다. 위치를 다시 선택해 주세요.");
+  }
+  return cachedMetadata({ fetchImpl, serviceKey, scope: ["nearby-stations", latitude, longitude], ttlMs: 300000, loader: async () => {
+    const rows = await fetchTagoPages({ serviceKey, service: "stops", operation: "getCrdntPrxmtSttnList",
+      params: { gpsLati: latitude, gpsLong: longitude }, fetchImpl });
+    // The nearby API can cross city boundaries. Preserve each returned official
+    // citycode instead of copying the city selected for a separate name search.
+    const stations = rows.map(row => normalizeTagoStation(row, row.citycode));
+    const citiesByNode = new Map();
+    for (const station of stations) {
+      const city = citiesByNode.get(station.nodeId);
+      if (city && city !== station.cityCode) throw new Error("정류장 고유번호의 도시 정보가 일치하지 않습니다. 잠시 후 다시 조회해 주세요.");
+      citiesByNode.set(station.nodeId, station.cityCode);
+    }
+    return [...new Map(stations.map(station => [`${station.cityCode}:${station.nodeId}`, station])).values()];
+  } });
+}
