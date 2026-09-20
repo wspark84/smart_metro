@@ -4960,6 +4960,19 @@ function renderHomeTimetable(model, lineLabel, direction) {
   </section>`;
 }
 
+function renderHomeStorageStatus() {
+  if (persistenceMeta.saveStatus === "error" || domainMeta.syncStatus === "error") {
+    return `<p class="field-help" role="alert">계정 설정 연결에 실패했습니다. 출발지의 서버 저장·복원을 확인하지 못했습니다. 현재 화면의 선택이 다음 접속에도 유지된다고 보장할 수 없습니다.</p>`;
+  }
+  if (["pending", "saving"].includes(persistenceMeta.saveStatus) || ["pending", "syncing"].includes(domainMeta.syncStatus)) {
+    return `<p class="field-help" role="status">계정에 설정을 저장하는 중입니다. 아직 저장이 완료되지 않았습니다.</p>`;
+  }
+  if (persistenceMeta.saveStatus === "saved" && domainMeta.syncStatus === "synced") {
+    return `<p class="field-help" role="status">계정에 설정 저장 완료</p>`;
+  }
+  return "";
+}
+
 function renderHome(screen, model) {
   const subwayDirection = state.live.provider === "subway" ? parseSubwayRouteId(state.live.routeId) : null;
   const lineLabel = state.live.routeNumber ? `${state.live.routeNumber}${state.live.provider === "subway" ? "" : "번"}${subwayDirection ? ` · ${subwayDirection.direction} · ${subwayDirection.nextStation} 방면` : ""}` : "";
@@ -4971,7 +4984,7 @@ function renderHome(screen, model) {
   const title = departure ? (departure.remainingMin < 0 ? "집에서 출발해야 할 시간이 지났어요" : "집에서 출발까지 남은 시간") : confirmed ? "놓치면 늦는 마지막 탑승편" : hasPrediction ? (model.risk.urgency === "HURRY" ? "지금 오는 차도 지각 예상" : "확인된 정시 도착 가능 편") : "마지막 탑승편 확인 대기";
   const paused = state.schedule.snoozeDate === dateOnlyKey(model.now);
   const verdict = state.live.provider !== "none" && state.live.stationName && !state.live.routeNumber
-    ? "출발지는 저장됐습니다. 노선 미연결 상태라 실시간 도착시간·출발 알림은 아직 사용할 수 없습니다."
+    ? "출발지가 선택됐습니다. 노선 미연결 상태라 실시간 도착시간·출발 알림은 아직 사용할 수 없습니다."
     : model.dataSource === "DEMO" ? "출발지와 노선을 연결해 주세요."
     : departure ? `${departure.message}${target.deltaMinutes < 0 ? " 이 교통편에 타도 목적지에 늦을 것으로 예상됩니다." : confirmed ? " 이 차를 놓치면 다음 차는 지각 예상입니다." : " 이후 교통편 정보도 확인해 주세요."}`
     : confirmed ? "선택한 노선 기준, 이 차를 놓치면 다음 차는 지각 예상"
@@ -4992,9 +5005,10 @@ function renderHome(screen, model) {
     ${homeEditor === "route" ? renderCommuteEstimatePanel() : ""}
     <section class="home-trip" aria-labelledby="home-trip-title">
       <h2 id="home-trip-title">어디에, 몇 시까지 가세요?</h2>
+      ${renderHomeStorageStatus()}
       <button class="home-trip-field" data-action="edit-home-trip" data-editor="departure" aria-expanded="${homeEditor === "departure"}" aria-controls="home-departure-editor"><span>출발지 · 탑승 정류장 / 역</span><strong>${escapeHtml(model.stop.name || "출발지를 선택하세요")}</strong><small>${homeEditor === "departure" ? "닫기 −" : "변경 +"}</small></button>
       ${homeEditor === "departure" ? renderHomeDepartureEditor() : ""}
-      ${state.live.provider !== "none" && state.live.provider !== "subway" && state.live.stationName && !state.live.routeNumber ? `<p class="field-help" role="status">정류장 저장 완료 · 버스 노선 미연결</p><button class="soft-button wide" data-action="retry-saved-boarding">저장한 정류장 노선 다시 조회</button>` : ""}
+      ${state.live.provider !== "none" && state.live.provider !== "subway" && state.live.stationName && !state.live.routeNumber ? `<p class="field-help" role="status">정류장 선택 완료 · 버스 노선 미연결</p><button class="soft-button wide" data-action="retry-saved-boarding">선택한 정류장 노선 다시 조회</button>` : ""}
       <label class="field-block home-access-time"><span>집 → 첫 정류장·역 이동시간 (분)</span><input class="text-field-input" aria-label="첫 정류장·역까지 이동시간" aria-describedby="boarding-access-help" type="number" inputmode="numeric" min="0" max="180" step="1" placeholder="예: 5" value="${escapeHtml(state.commute.boardingAccessMin ?? "")}" data-field="commute.boardingAccessMin" /></label>
       <p class="field-help" id="boarding-access-help">직접 걸리는 시간을 0~180분으로 입력하세요. 첫 교통편이 마을버스라면 약 3분 여유를 더해 입력하는 것을 권장합니다. 예: 이동 5분 + 여유 3분 = 8분. 자동 추가되지는 않습니다.</p>
       <button class="home-trip-field" data-action="edit-home-trip" data-editor="destination" aria-expanded="${homeEditor === "destination"}" aria-controls="home-destination-editor"><span>도착지</span><strong>${escapeHtml(state.user.workAddress || "도착지를 선택하세요")}</strong><small>${homeEditor === "destination" ? "닫기 −" : "변경 +"}</small></button>

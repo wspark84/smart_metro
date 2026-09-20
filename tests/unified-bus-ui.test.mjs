@@ -8,6 +8,17 @@ import {switchLiveProvider,syncActiveLiveBinding} from '../src/logic/live-bindin
 import {cityDisplayName,searchCityCandidates} from '../src/logic/city-search.js';
 const source=await readFile(new URL('../src/app.js',import.meta.url),'utf8');
 
+test('home does not claim server save succeeded while pending or failed',()=>{
+  const c=vm.createContext({persistenceMeta:{saveStatus:'saving'},domainMeta:{syncStatus:'syncing'}});
+  vm.runInContext(source.slice(source.indexOf('function renderHomeStorageStatus()'),source.indexOf('function renderHome(screen')),c);
+  assert.match(vm.runInContext('renderHomeStorageStatus()',c),/아직 저장이 완료되지/);
+  c.persistenceMeta.saveStatus='error';
+  assert.match(vm.runInContext('renderHomeStorageStatus()',c),/role="alert"/);
+  assert.doesNotMatch(vm.runInContext('renderHomeStorageStatus()',c),/설정 저장 완료/);
+  c.persistenceMeta.saveStatus='saved';c.domainMeta.syncStatus='synced';
+  assert.match(vm.runInContext('renderHomeStorageStatus()',c),/계정에 설정 저장 완료/);
+});
+
 test('saving a stop without routes clears previous route and ETA without starting live calculations',()=>{
   let saved=0;
   const c=vm.createContext({state:{live:{provider:'tago',routeId:'old',routeNumber:'99',snapshot:{arrivalsMin:[5]}},ui:{},commute:{transitJourney:{old:true}}},
