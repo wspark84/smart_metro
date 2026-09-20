@@ -9,11 +9,13 @@
   mergeHolidayDates,
   rankLocationsByDistance,
   isValidLocation,
+  normalizeBoardingAccessMin,
 } from "./logic/commute.js";
 import { buildConservativeReliabilityReport, buildConservativeWatchlistHighlight } from "./logic/conservative-report.js";
 import { buildDeliveryIntensityReport } from "./logic/delivery-intensity-report.js";
 import { buildLiveEtaGuard } from "./logic/live-eta-guard.js";
 import { resolveJourneyDuration, transitQueryForState, transitQueryKey } from "./logic/transit-journey.js";
+import { cityDisplayName, searchCityCandidates } from "./logic/city-search.js";
 import { isLiveConfigured, projectLiveArrivals, resolveCommuteLine, resolveCommuteStop } from "./logic/live-arrivals.js";
 import { buildEscalationTimeline, getNotificationSpec } from "./logic/notification-engine.js";
 import {
@@ -1464,7 +1466,7 @@ async function loadBusCities() {
     busCitiesMeta.cities = Array.isArray(payload.cities) ? payload.cities : [];
     busCitiesMeta.status = "ready";
     busCitiesMeta.error = (payload.warnings || []).join(" ");
-    if (!state.ui.busCityId) {
+    if (!state.ui.busCityId && !String(state.ui.busCityQuery || "").trim()) {
       const savedCity = busCitiesMeta.cities.find(city => city.cityCode && city.cityCode === state.live.cityCode);
       state.ui.busCityId = savedCity?.id || (state.live.provider === "seoul" ? "seoul" : "");
     }
@@ -2079,7 +2081,7 @@ function applyAddressResult(targetKey, result) {
   syncHomeToStopWalkEstimate();
   pushHistory(
     safeTarget === "home" ? "집 주소 선택" : "회사 주소 선택",
-    `${addressText} 좌표를 저장했습니다. 집에서 탑승 지점까지의 이동시간은 지각 판단에 사용하지 않습니다.`,
+    `${addressText} 좌표를 저장했습니다. 첫 정류장·역까지 이동시간은 홈에서 직접 입력하면 출발 안내에 반영됩니다.`,
   );
 }
 
@@ -2759,7 +2761,7 @@ function renderGauge(model) {
         <div class="gauge-label">분 후 도착</div></div>
       </div></div>
       <div class="gauge-caption"><strong>${escapeHtml(label)}</strong><br>
-        ${escapeHtml(model.risk.message)}<br>집에서 정류장·역까지 이동시간은 계산하지 않습니다.
+        ${escapeHtml(model.risk.message)}<br>첫 정류장·역까지 이동시간은 직접 입력한 값으로 출발 안내에 반영합니다.
       </div>
     </section>
   `;
@@ -2821,7 +2823,7 @@ function renderCommuteEstimatePanel() {
   const busy = commuteEstimateMeta.status === "loading";
   return `<section class="stack-panel">
     <div class="stack-title"><span class="material-symbols-outlined">route</span>정류장·역 → 목적지 경로</div>
-    <p class="field-help">집에서 탑승 지점까지의 시간은 제외합니다. 먼저 실시간 정류장·노선을 선택한 뒤 경로를 조회해 주세요.</p>
+    <p class="field-help">이 경로는 탑승 지점부터 목적지까지입니다. 집에서 탑승 지점까지 이동시간은 홈에서 직접 입력하면 출발 안내에 별도로 반영됩니다. 먼저 실시간 정류장·노선을 선택한 뒤 경로를 조회해 주세요.</p>
     <p class="field-help">카카오 경로는 예상시간이며, 버스 도착정보는 선택한 공식 제공처에서 따로 조회합니다. 다른 노선 전체와 비교한 결과가 아닙니다.</p>
     ${commuteEstimateMeta.lastError ? `<p role="alert">${escapeHtml(commuteEstimateMeta.lastError)}</p>` : ""}
     ${selected?.queryKey === queryKey ? `<p>선택한 경로: ${escapeHtml(selected.guidance)} · 탑승 후 약 ${Math.ceil(selected.onboardDurationSec / 60)}분</p>` : ""}
@@ -4892,6 +4894,18 @@ function renderBoardingPreview() {
     </section>` : ""}`;
 }
 
+function renderCitySearchResults() {
+  const selected = busCitiesMeta.cities.find(city => city.id === state.ui.busCityId);
+  const query = state.ui.busCityQuery || "";
+  if (selected && (!query || query === cityDisplayName(selected))) return `<p class="field-help">선택한 도시: ${escapeHtml(cityDisplayName(selected))}</p>`;
+  if (!query.trim()) return `<p class="field-help">도시 이름을 입력하세요. 예: 수원, 성남, 서울</p>`;
+  if (busCitiesMeta.status === "loading") return `<p class="field-help">도시 정보를 불러오는 중입니다…</p>`;
+  if (busCitiesMeta.status === "error") return "";
+  const matches = searchCityCandidates(busCitiesMeta.cities, query);
+  if (!matches.length) return `<p class="field-help">일치하는 도시가 없습니다. 도시 이름을 다시 확인해 주세요.</p>`;
+  return `<ul class="city-search-results" aria-label="도시 검색 결과">${matches.slice(0,8).map(city => `<li><button type="button" class="home-search-result" data-action="select-bus-city" data-city-id="${escapeHtml(city.id)}" ${city.available ? "" : "disabled"}><strong>${escapeHtml(cityDisplayName(city))}</strong><span>${city.available ? "이 도시 선택" : "연결 준비 중"}</span></button></li>`).join("")}</ul>${matches.length > 8 ? `<p class="field-help">검색 결과 ${matches.length}개 중 8개입니다. 이름을 더 입력해 주세요.</p>` : ""}`;
+}
+
 function renderHomeDepartureEditor() {
   const provider = state.live.provider;
   const subway = provider === "subway";
@@ -4899,15 +4913,15 @@ function renderHomeDepartureEditor() {
   const city = busCitiesMeta.cities.find(item=>item.id===state.ui.busCityId);
   return `<div class="home-editor field-stack" id="home-departure-editor">
     <div class="boarding-modes" role="group" aria-label="교통수단 선택"><button data-action="set-boarding-mode" data-mode="bus" aria-pressed="${!subway}">버스</button><button data-action="set-boarding-mode" data-mode="subway" aria-pressed="${subway}">지하철</button></div>
-    ${!subway ? `<label class="field-block"><span>도시</span><select data-field="ui.busCityId" ${busCitiesMeta.status === "loading" && !busCitiesMeta.cities.length ? "disabled" : ""}><option value="">${busCitiesMeta.status === "loading" ? "도시 목록을 불러오는 중…" : "도시를 선택하세요"}</option>
-      ${busCitiesMeta.cities.map(item=>`<option value="${escapeHtml(item.id)}" ${item.id===state.ui.busCityId?"selected":""} ${!item.available?"disabled":""}>${escapeHtml(item.cityName)}${!item.available?" · 연결 준비 중":""}</option>`).join("")}</select></label>
+    ${!subway ? `<label class="field-block"><span>도시 검색</span><input class="text-field-input" type="search" maxlength="60" autocomplete="off" aria-label="도시를 검색하세요" aria-controls="bus-city-results" placeholder="도시를 검색하세요" data-field="ui.busCityQuery" value="${escapeHtml(state.ui.busCityQuery || (city ? cityDisplayName(city) : ""))}" /></label>
+      <div id="bus-city-results" aria-live="polite">${renderCitySearchResults()}</div>
       ${busCitiesMeta.error ? `<p role="alert">${escapeHtml(busCitiesMeta.error)}</p><button class="mini-button" data-action="reload-bus-cities">도시 목록 다시 시도</button>` : ""}
       <p class="field-help">도시를 선택하면 연결된 버스 정보를 통합 검색합니다.</p>` : `<p class="field-help">역명 일부로 검색할 수 있습니다. 실시간 도착정보와 방면은 서울시 API 제공 역에 한해 확인됩니다.</p>`}
     <div class="holiday-form"><input class="text-field-input" aria-label="${subway ? "지하철역 검색" : "출발 정류장 검색"}" placeholder="${subway ? "역 이름 일부 (예: 광교)" : "정류장 이름 일부 또는 번호"}" data-field="ui.liveSearchKeyword" value="${escapeHtml(state.ui.liveSearchKeyword)}" />
       <button class="mini-button" data-action="search-live-stops" ${searching || (!subway && !city?.available) ? "disabled" : ""}>${searching ? "검색 중…" : "검색"}</button></div>
       ${state.ui.liveSearchError ? `<p role="alert">${escapeHtml(state.ui.liveSearchError)}</p>` : ""}
       ${state.ui.liveSearchStatus === "ready" && !state.ui.liveSearchResults.length ? `<p class="field-help">${boardingArea.mode === "nearby" ? "이 위치 주변에서 TAGO가 제공하는 정류장을 찾지 못했습니다. 지도를 옮겨 다시 조회하세요. 지도에 표시된 모든 정류장이 TAGO에서 제공되는 것은 아닙니다." : "이름·번호 검색 결과가 없습니다. 도시를 확인하거나 아래 지도 위치 검색을 이용하세요."}</p>` : ""}
-      ${renderBoardingPreview()}
+      <div data-boarding-search-content>${renderBoardingPreview()}</div>
     <button class="ghost-link" data-action="goto" data-screen="onboarding">경로 상세 설정</button>
   </div>`;
 }
@@ -4932,11 +4946,11 @@ function renderHomeTimetable(model, lineLabel, direction) {
         const known = item.level !== "UNKNOWN" && Number.isFinite(item.deltaMinutes) && item.arriveWorkAt;
         const late = known && item.deltaMinutes < 0;
         const cut = known && model.risk.lastChanceConfirmed && item.index === model.risk.targetResult.index;
-        return `<tr class="${known ? late ? "is-late" : "is-ontime" : "is-unknown"} ${cut ? "is-cut" : ""}">
+        return `<tr class="${known ? late || !item.catchable ? "is-late" : "is-ontime" : "is-unknown"} ${cut ? "is-cut" : ""}">
           <td class="timetable-time">${escapeHtml(formatClock(addMinutes(model.now, item.arrivalMinutes)))}</td>
           <td class="timetable-line"><strong>${escapeHtml(lineLabel || "선택한 노선")}</strong><span>${escapeHtml(direction || model.stop.name)}</span></td>
           <td class="timetable-arrival">${known ? escapeHtml(formatClock(item.arriveWorkAt)) : "—"}</td>
-          <td class="timetable-verdict">${known ? late ? `지각<br><small>+${Math.abs(item.deltaMinutes)}분</small>` : "정시" : "미확인"}</td>
+          <td class="timetable-verdict">${known && !item.catchable ? "탑승 어려움" : known ? late ? `지각<br><small>+${Math.abs(item.deltaMinutes)}분</small>` : "정시" : "미확인"}</td>
         </tr>${cut ? `<tr class="timetable-cut-label"><td colspan="4">지각선 · 이 차를 놓치면 다음 차는 지각 예상</td></tr>` : ""}`;
       }).join("") : `<tr><td colspan="4" class="timetable-empty">실시간 정보가 연결되면 탑승 가능한 차를 여기에 표시합니다.</td></tr>`}</tbody>
     </table>
@@ -4949,10 +4963,12 @@ function renderHome(screen, model) {
   const target = model.risk.targetResult;
   const hasPrediction = model.dataSource === "LIVE" && target.level !== "UNKNOWN" && Number.isFinite(target.arrivalMinutes);
   const confirmed = hasPrediction && model.risk.lastChanceConfirmed;
-  const urgent = hasPrediction && (model.risk.urgency === "HURRY" || (confirmed && target.arrivalMinutes <= 5));
-  const title = confirmed ? "놓치면 늦는 마지막 탑승편" : hasPrediction ? (model.risk.urgency === "HURRY" ? "지금 오는 차도 지각 예상" : "확인된 정시 도착 가능 편") : "마지막 탑승편 확인 대기";
+  const departure = hasPrediction ? model.risk.departure : null;
+  const urgent = hasPrediction && (model.risk.urgency === "HURRY" || (departure ? departure.remainingMin <= 5 : confirmed && target.arrivalMinutes <= 5));
+  const title = departure ? (departure.remainingMin < 0 ? "집에서 출발해야 할 시간이 지났어요" : "집에서 출발까지 남은 시간") : confirmed ? "놓치면 늦는 마지막 탑승편" : hasPrediction ? (model.risk.urgency === "HURRY" ? "지금 오는 차도 지각 예상" : "확인된 정시 도착 가능 편") : "마지막 탑승편 확인 대기";
   const paused = state.schedule.snoozeDate === dateOnlyKey(model.now);
   const verdict = model.dataSource === "DEMO" ? "출발지와 노선을 연결해 주세요."
+    : departure ? `${departure.message}${target.deltaMinutes < 0 ? " 이 교통편에 타도 목적지에 늦을 것으로 예상됩니다." : confirmed ? " 이 차를 놓치면 다음 차는 지각 예상입니다." : " 이후 교통편 정보도 확인해 주세요."}`
     : confirmed ? "선택한 노선 기준, 이 차를 놓치면 다음 차는 지각 예상"
     : hasPrediction && model.risk.urgency === "HURRY" ? "지금 오는 차도 목적지에 늦을 것으로 예상됩니다."
     : hasPrediction ? "이 교통편에 탑승하면 정시 도착이 예상됩니다."
@@ -4960,8 +4976,9 @@ function renderHome(screen, model) {
   return `<main class="screen screen-home">
     <section class="home-countdown ${urgent ? "is-urgent" : ""}" aria-labelledby="home-countdown-title">
       <h1 id="home-countdown-title">${title}</h1>
-      <div class="home-countdown-value">${hasPrediction ? Math.ceil(target.arrivalMinutes) : "—"}<span>${hasPrediction ? "분 남음" : "정보 확인 필요"}</span></div>
+      <div class="home-countdown-value">${departure ? departure.minutes : hasPrediction ? Math.ceil(target.arrivalMinutes) : "—"}<span>${departure ? departure.remainingMin < 0 ? "출발 기한 지남" : departure.remainingMin < 1 ? "지금 출발" : "분 안에 출발" : hasPrediction ? "분 후 교통편 도착" : "정보 확인 필요"}</span></div>
       <p class="home-countdown-route">${hasPrediction ? `${escapeHtml(formatClock(addMinutes(model.now, target.arrivalMinutes)))} 탑승 예상 · ` : ""}${escapeHtml(lineLabel || model.stop.name)}</p>
+      ${departure ? `<p class="home-evidence-note">교통편 도착까지 ${Math.ceil(target.arrivalMinutes)}분 · 이동시간 ${departure.accessMin}분 · ${escapeHtml(formatClock(departure.leaveAt))}까지 집에서 출발</p>` : `<p class="home-evidence-note">첫 정류장·역까지 이동시간을 입력하면 집에서 출발할 시간을 안내합니다.</p>`}
       <p class="home-verdict"><i aria-hidden="true"></i><span>${escapeHtml(verdict)}</span></p>
       ${hasPrediction && !confirmed ? `<p class="home-evidence-note">조회된 교통편 기준이며, 마지막 탑승편으로 확정되지 않았습니다.</p>` : ""}
     </section>
@@ -4972,6 +4989,8 @@ function renderHome(screen, model) {
       <h2 id="home-trip-title">어디에, 몇 시까지 가세요?</h2>
       <button class="home-trip-field" data-action="edit-home-trip" data-editor="departure" aria-expanded="${homeEditor === "departure"}" aria-controls="home-departure-editor"><span>출발지 · 탑승 정류장 / 역</span><strong>${escapeHtml(model.stop.name || "출발지를 선택하세요")}</strong><small>${homeEditor === "departure" ? "닫기 −" : "변경 +"}</small></button>
       ${homeEditor === "departure" ? renderHomeDepartureEditor() : ""}
+      <label class="field-block home-access-time"><span>집 → 첫 정류장·역 이동시간 (분)</span><input class="text-field-input" aria-label="첫 정류장·역까지 이동시간" aria-describedby="boarding-access-help" type="number" inputmode="numeric" min="0" max="180" step="1" placeholder="예: 5" value="${escapeHtml(state.commute.boardingAccessMin ?? "")}" data-field="commute.boardingAccessMin" /></label>
+      <p class="field-help" id="boarding-access-help">직접 걸리는 시간을 0~180분으로 입력하세요. 첫 교통편이 마을버스라면 약 3분 여유를 더해 입력하는 것을 권장합니다. 예: 이동 5분 + 여유 3분 = 8분. 자동 추가되지는 않습니다.</p>
       <button class="home-trip-field" data-action="edit-home-trip" data-editor="destination" aria-expanded="${homeEditor === "destination"}" aria-controls="home-destination-editor"><span>도착지</span><strong>${escapeHtml(state.user.workAddress || "도착지를 선택하세요")}</strong><small>${homeEditor === "destination" ? "닫기 −" : "변경 +"}</small></button>
       ${homeEditor === "destination" ? renderHomeDestinationEditor() : ""}
       <label class="home-target field-block"><span>도착 목표</span><input aria-label="목적지 도착 목표 시간" type="time" value="${escapeHtml(state.user.requiredArrivalTime)}" data-field="user.requiredArrivalTime" required /></label>
@@ -4979,7 +4998,7 @@ function renderHome(screen, model) {
     <section class="home-alarm-actions" aria-label="오늘 알림">
       <div><strong>${model.scheduleState.firing ? "알람 켜짐" : "알람 꺼짐"}</strong><button class="ghost-link" data-action="toggle-today-snooze">${paused ? "오늘 알람 다시 켜기" : "오늘 알람 끄기"}</button></div>
       <button class="primary-cta" data-action="departed">출발했어요</button>
-      <p class="field-help">출발하면 오늘 남은 알람을 중지합니다.<br>집에서 정류장·역까지 이동시간은 계산하지 않습니다.</p>
+      <p class="field-help">출발하면 오늘 남은 알람을 중지합니다.<br>입력한 이동시간을 교통편 도착까지 남은 시간에서 빼서 출발 시각을 안내합니다.</p>
     </section>
   </main>${renderBottomNav(screen)}`;
 }
@@ -5030,7 +5049,7 @@ function renderOnboarding() {
       </section>
       <section class="panel">
         <div class="panel-title">이동 정보</div>
-        <div class="field-help">주소 검색은 현재 ${escapeHtml(placeProviderLabel)} 기준으로 동작합니다. 선택한 좌표는 지도와 목적지 경로 조회에 사용합니다. 집에서 정류장까지의 시간은 지각 계산에서 제외합니다.</div>
+        <div class="field-help">주소 검색은 현재 ${escapeHtml(placeProviderLabel)} 기준으로 동작합니다. 선택한 좌표는 지도와 목적지 경로 조회에 사용합니다. 첫 정류장·역까지 이동시간은 홈에서 직접 입력하고 출발 안내에 반영합니다.</div>
         <div class="field-stack">
           <div class="holiday-form">
             <input class="text-field-input" type="text" placeholder="집 주소나 건물명 검색" value="${escapeHtml(state.ui.homeAddressKeyword)}" data-field="ui.homeAddressKeyword" />
@@ -5364,7 +5383,7 @@ function renderOnboarding() {
           ${
             state.live.provider === "tago"
               ? `
-                <div class="field-help">도시 → 정류장 → 이용할 버스 순서로 선택하세요. 집에서 정류장까지 걸리는 시간은 계산하지 않습니다.</div>
+                <div class="field-help">도시 → 정류장 → 이용할 버스 순서로 선택하세요. 집에서 첫 정류장까지 이동시간은 홈에서 직접 입력해 주세요.</div>
                 <button class="mini-button" data-action="load-tago-cities" ${tagoCitiesMeta.status === "loading" ? "disabled" : ""}>${tagoCitiesMeta.status === "loading" ? "도시목록 조회 중…" : "TAGO 도시목록 불러오기"}</button>
                 ${tagoCitiesMeta.error ? `<div class="empty-copy">${escapeHtml(tagoCitiesMeta.error)}</div>` : ""}
                 ${tagoCitiesMeta.cities.length ? `<label class="field-block compact"><span>도시 선택</span><select class="text-field-input" data-field="live.cityCode"><option value="">도시를 선택하세요</option>${tagoCitiesMeta.cities.map((city) => `<option value="${escapeHtml(city.cityCode)}" ${String(state.live.cityCode) === String(city.cityCode) ? "selected" : ""}>${escapeHtml(city.cityName)} (${escapeHtml(city.cityCode)})</option>`).join("")}</select></label>` : ""}
@@ -5786,16 +5805,20 @@ function renderSettings(screen, model) {
   `;
 }
 
+let citySearchComposing = false;
 function render() {
   if (!isAuthenticated()) {
     app.innerHTML = renderAuthScreen();
     return;
   }
 
+  if (citySearchComposing) return;
+
   const screen = routeToScreen(window.location.hash);
   const previousMap = screen === "home" ? document.querySelector("#boarding-map") : null;
   const boardingMapKey = JSON.stringify([state.live.provider,boardingArea.revision,stationSelectionKey(boardingPreview.candidate),state.ui.liveSearchResults,placeApiConfig.maps?.kakao?.javascriptKey]);
   const activeField = screen === "home" ? document.activeElement?.dataset?.field : null;
+  const accessDraft = activeField === "commute.boardingAccessMin" ? document.activeElement.value : null;
   const activeAreaField = screen === "home" && document.activeElement?.hasAttribute("data-boarding-area-keyword");
   const selection = activeField || activeAreaField ? [document.activeElement.selectionStart, document.activeElement.selectionEnd] : null;
   const model = getDashboardModel();
@@ -5825,6 +5848,7 @@ function render() {
   }
   if (activeField || activeAreaField) {
     const input = activeAreaField ? app.querySelector("[data-boarding-area-keyword]") : [...app.querySelectorAll("[data-field]")].find(element => element.dataset.field === activeField);
+    if (input && accessDraft !== null) input.value = accessDraft;
     input?.focus({ preventScroll: true });
     if (input && selection?.[0] !== null && typeof input.setSelectionRange === "function") input.setSelectionRange(...selection);
   }
@@ -5982,6 +6006,16 @@ app.addEventListener("click", (event) => {
   if (action === "preview-boarding-stop") { void previewBoardingStop(target.dataset.stationId); return; }
   if (action === "search-boarding-area") { void findBoardingArea(); return; }
   if (action === "reload-bus-cities") { void loadBusCities(); return; }
+  if (action === "select-bus-city") {
+    const city = busCitiesMeta.cities.find(item => item.id === target.dataset.cityId);
+    if (!city?.available) return;
+    state.ui.busCityId = city.id;
+    state.ui.busCityQuery = cityDisplayName(city);
+    resetLiveSearchState(); resetLiveRouteSearchState();
+    persist(); render();
+    app.querySelector('[data-field="ui.liveSearchKeyword"]')?.focus({preventScroll:true});
+    return;
+  }
   if (action === "search-nearby-stops") { void findNearbyBoardingStops(); return; }
   if (action === "select-boarding-area") {
     if (state.live.provider === "subway") return;
@@ -6018,6 +6052,8 @@ app.addEventListener("click", (event) => {
       stationName:route.stationName || candidate.stationName,arsId:candidate.arsId || "",routeId:route.routeId,
       routeNumber:route.routeNumber,order:route.order || "",cityCode:candidate.cityCode || "",nodeId:candidate.nodeId || "",snapshot:null,lastError:""});
     if (candidate.cityId) state.ui.busCityId = candidate.cityId;
+    const selectedCity = busCitiesMeta.cities.find(city => city.id === state.ui.busCityId);
+    if (selectedCity) state.ui.busCityQuery = cityDisplayName(selectedCity);
     if (state.live.provider === "tago") {
       state.live.nodeId = candidate.nodeId || candidate.stationId;
       state.live.cityCode = candidate.cityCode || state.live.cityCode;
@@ -6551,6 +6587,22 @@ app.addEventListener("input", (event) => {
   const path = target.dataset.field;
   if (!path) return;
 
+  // Commit manual travel time on change, not halfway through typing a number.
+  if (path === "commute.boardingAccessMin") return;
+  if (path === "ui.busCityQuery") {
+    state.ui.busCityQuery = target.value.slice(0,60);
+    state.ui.busCityId = "";
+    resetLiveSearchState(); resetLiveRouteSearchState();
+    // Only update suggestions: replacing the input breaks Korean IME composition.
+    const results = app.querySelector("#bus-city-results");
+    if (results) results.innerHTML = renderCitySearchResults();
+    const search = app.querySelector('[data-action="search-live-stops"]');
+    if (search) search.disabled = true;
+    const preview = app.querySelector('[data-boarding-search-content]');
+    if (preview) preview.hidden = true;
+    return;
+  }
+
   const value = target.type === "range" ? Number(target.value) : target.value;
   if (path === "user.requiredArrivalTime" && !/^([01]\d|2[0-3]):[0-5]\d$/.test(value)) return;
   if (path === "live.provider") {
@@ -6623,6 +6675,21 @@ app.addEventListener("input", (event) => {
   }
 });
 
+app.addEventListener("compositionstart", event => {
+  if (event.target.dataset.field === "ui.busCityQuery") citySearchComposing = true;
+});
+app.addEventListener("compositionend", event => {
+  if (event.target.dataset.field === "ui.busCityQuery") citySearchComposing = false;
+});
+app.addEventListener("keydown", event => {
+  if (!isAuthenticated() || event.target.dataset.field !== "ui.busCityQuery" || event.isComposing || citySearchComposing) return;
+  if (event.key === "Enter") {
+    event.preventDefault();
+    const matches = searchCityCandidates(busCitiesMeta.cities, state.ui.busCityQuery);
+    if (matches.length === 1 && matches[0].available) app.querySelector('[data-action="select-bus-city"]')?.click();
+  }
+});
+
 app.addEventListener("change", (event) => {
   const target = event.target;
   if (!isAuthenticated()) return;
@@ -6633,6 +6700,17 @@ app.addEventListener("change", (event) => {
 
   const path = target.dataset.field;
   if (!path) return;
+  if (path === "ui.busCityQuery") return;
+
+  if (path === "commute.boardingAccessMin") {
+    if (!target.reportValidity()) return;
+    const minutes = normalizeBoardingAccessMin(target.value);
+    if (target.value.trim() !== "" && minutes === null) return;
+    state.commute.boardingAccessMin = minutes;
+    persist();
+    render();
+    return;
+  }
 
   const value = target.type === "range" ? Number(target.value) : target.value;
   if (path === "user.requiredArrivalTime" && !/^([01]\d|2[0-3]):[0-5]\d$/.test(value)) return render();

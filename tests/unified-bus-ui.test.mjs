@@ -5,6 +5,7 @@ import {readFile} from 'node:fs/promises';
 import {stationSelectionKey} from '../src/logic/station-search.js';
 import {isValidLocation} from '../src/logic/commute.js';
 import {switchLiveProvider,syncActiveLiveBinding} from '../src/logic/live-bindings.js';
+import {cityDisplayName,searchCityCandidates} from '../src/logic/city-search.js';
 const source=await readFile(new URL('../src/app.js',import.meta.url),'utf8');
 
 test('city loading is automatic, single flight, restores stored official city, and ignores signed-out responses',async()=>{
@@ -19,20 +20,25 @@ test('city loading is automatic, single flight, restores stored official city, a
   const next=vm.runInContext('loadBusCities()',c);
   c.authMeta.user=null;resolve({cities:[{id:'stale'}]});await next;
   assert.equal(vm.runInContext('busCitiesMeta.cities[0].id',c),'gg:수원시');
+  c.authMeta.user={id:'user'};c.state.ui.busCityId='';c.state.ui.busCityQuery='성남';
+  const typing=vm.runInContext('loadBusCities()',c);
+  resolve({cities:[{id:'gg:수원시',cityCode:'31010'}]});await typing;
+  assert.equal(c.state.ui.busCityId,'','loading completion must not restore old city over a newly typed query');
   const workspace=source.slice(source.indexOf('async function hydrateAuthenticatedWorkspace()'),source.indexOf('async function hydrateAccountSummary()'));
   assert.match(workspace,/void loadBusCities\(\)/);
   assert.doesNotMatch(workspace,/await loadBusCities\(\)/,'city lookup must not block login');
 });
 
-test('home editor exposes one automatic city selector with no provider selector or manual initial-load button',()=>{
+test('home editor exposes city search with no long dropdown or provider selector',()=>{
   const c=vm.createContext({state:{live:{provider:'tago'},ui:{busCityId:'gg:수원시',liveSearchResults:[],liveSearchKeyword:'',liveSearchStatus:'idle'}},
     busCitiesMeta:{status:'ready',error:'',cities:[{id:'gg:수원시',cityName:'경기 수원시',available:true},{id:'seoul',cityName:'서울특별시',available:false}]},
-    escapeHtml:String,renderBoardingPreview:()=>'',boardingArea:{mode:'name'}});
-  vm.runInContext(source.slice(source.indexOf('function renderHomeDepartureEditor()'),source.indexOf('function renderHomeDestinationEditor()')),c);
+    cityDisplayName,searchCityCandidates,escapeHtml:String,renderBoardingPreview:()=>'',boardingArea:{mode:'name'}});
+  vm.runInContext(source.slice(source.indexOf('function renderCitySearchResults()'),source.indexOf('function renderHomeDestinationEditor()')),c);
   const html=vm.runInContext('renderHomeDepartureEditor()',c);
-  assert.match(html,/data-field="ui.busCityId"/);
+  assert.match(html,/placeholder="도시를 검색하세요"/);
+  assert.match(html,/value="경기도 수원시"/);
+  assert.doesNotMatch(html,/<select|서울특별시/);
   assert.doesNotMatch(html,/data-field="live.provider"|버스 정보 지역|load-tago-cities/);
-  assert.match(html,/서울특별시 · 연결 준비 중/);
 });
 
 test('preview selects provider-specific identity while saved provider stays unchanged',async()=>{
@@ -54,7 +60,7 @@ test('confirmation switches provider once and persists exact regional station an
   const c=vm.createContext({state:{live:{provider:'tago',nodeId:'old',cityCode:'25',routeId:'old-route'},ui:{},commute:{}},
     boardingPreview:{candidate:{provider:'gyeonggi',selectionId:'gyeonggi:123',stationId:'123',cityId:'gg:수원시',cityCode:'31010',stationName:'광교',posX:'127.06',posY:'37.28'},route:{routeId:'regional-route',routeNumber:'1'}},
     document:{querySelector:()=>({dataset:{mapStatus:'ready'}})},isValidLocation,switchLiveProvider,
-    commuteEstimateMeta:{},render(){},persist(){saved++;},resetBoardingPreview(){},refreshCommuteEstimate(){},refreshVisibleTransit(){}});
+    busCitiesMeta:{cities:[]},cityDisplayName,commuteEstimateMeta:{},render(){},persist(){saved++;},resetBoardingPreview(){},refreshCommuteEstimate(){},refreshVisibleTransit(){}});
   c.syncLiveBindingState=()=>syncActiveLiveBinding(c.state.live);
   const start=source.indexOf('  if (action === "confirm-boarding")');
   const end=source.indexOf('  if (action === "goto")',start);

@@ -129,6 +129,8 @@ button:not(:disabled):active { filter: brightness(.90); }
 /* Always keep the three core trip controls on home, with inline editors. */
 .home-trip { padding: 18px; border-radius: 0; background: var(--surface); border-bottom: 1px solid var(--outline); }
 .home-trip h2 { font-size: 15px; font-weight: 700; margin: 0 0 8px; letter-spacing: -.02em; }
+.home-access-time { margin-top: 14px; }
+.home-access-time input { font-size: 16px; font-weight: 500; width: 100%; }
 .home-trip-field { position: relative; gap: 2px; padding: 12px 46px 12px 0; }
 .home-trip-field > span { font-size: 12px; font-weight: 500; }
 .home-trip-field strong { font-size: 15px; font-weight: 600; line-height: 1.5; }
@@ -138,6 +140,8 @@ button:not(:disabled):active { filter: brightness(.90); }
 .home-target input { width: 154px; min-height: 44px; padding: 8px 10px; }
 .home-editor { padding: 16px 0; }
 .home-editor .field-help { font-size: 13px; }
+.city-search-results { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; max-height: 300px; overflow-y: auto; }
+.city-search-results .home-search-result { width: 100%; min-height: 48px; text-align: left; }
 .home-alarm-actions { border: 0; padding: 0 18px; }
 .home-alarm-actions > div { font-size: 12px; min-height: 52px; }
 .home-alarm-actions > div strong { font-weight: 600; }

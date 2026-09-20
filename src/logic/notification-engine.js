@@ -188,7 +188,7 @@ export function composeAlertCopy({
   }
 
   const body = criticalCondition
-    ? `${repeatedCriticalPhrase} ${repeatedCriticalPhrase} ${nextArrivalCopy}`
+    ? `${riskMessage ? `${riskMessage} ` : ""}${repeatedCriticalPhrase} ${repeatedCriticalPhrase} ${nextArrivalCopy}`
     : `${riskMessage || guidance} ${nextArrivalCopy}`;
   const spokenLead = `${lineLabel} ${currentArrival == null ? "-" : Math.ceil(currentArrival)}분 후 도착입니다.`;
   const spokenDetail = riskMessage || guidance;
@@ -201,7 +201,7 @@ export function composeAlertCopy({
     title: stabilityPrecheck ? `도착정보 사전 점검 · ${title}` : title,
     body: cautionaryNotes ? `${body} ${cautionaryNotes}` : body,
     spokenText: cautionaryNotes ? `${spokenText} ${cautionaryNotes}` : spokenText,
-    alertPhraseKo: criticalCondition ? repeatedCriticalPhrase : guidance,
+    alertPhraseKo: riskMessage || (criticalCondition ? repeatedCriticalPhrase : guidance),
     stabilityPrecheckText,
     accuracyWarningText,
     historicalBiasText,

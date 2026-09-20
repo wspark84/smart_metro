@@ -1,7 +1,7 @@
 import { DEFAULT_DEVICE_PROFILE, sanitizeDeviceProfile } from "./device-profile.js";
 import { createDefaultLiveBindings, ensureLiveBindingState } from "./logic/live-bindings.js";
 import { STOP_LIBRARY } from "./mock-data.js";
-import { isValidLocation } from "./logic/commute.js";
+import { isValidLocation, normalizeBoardingAccessMin } from "./logic/commute.js";
 
 const STORAGE_KEY = "buswakeup-demo-state";
 
@@ -20,6 +20,7 @@ export const DEFAULT_STATE = {
     workAddressSearchResults: [],
     liveSearchKeyword: "",
     busCityId: "",
+    busCityQuery: "",
     liveSearchStatus: "idle",
     liveSearchError: "",
     liveSearchResults: [],
@@ -56,6 +57,7 @@ export const DEFAULT_STATE = {
     primaryLineId: "1002",
     busRideMin: 43,
     homeToStopWalkMin: 5,
+    boardingAccessMin: null,
     transitJourney: null,
     alightToWorkWalkMin: 7,
   },
@@ -169,6 +171,7 @@ function sanitizeAddressResults(results) {
 
 export function sanitizeState(state) {
   const safe = merge(clone(DEFAULT_STATE), state);
+  safe.ui.busCityQuery = String(safe.ui.busCityQuery || "").slice(0,60);
   const stop = STOP_LIBRARY.find((item) => item.id === safe.commute.selectedStopId) || STOP_LIBRARY[0];
   const liveRoute = safe.live.provider !== "none" && safe.live.routeNumber;
   const validLineIds = liveRoute ? [...new Set([String(safe.live.routeNumber), ...safe.commute.selectedLineIds.map(String)])] : stop.lines.map((line) => line.id);
@@ -186,6 +189,7 @@ export function sanitizeState(state) {
 
   safe.commute.busRideMin = Math.max(0, Number(safe.commute.busRideMin) || 0);
   safe.commute.homeToStopWalkMin = Math.max(0, Number(safe.commute.homeToStopWalkMin) || 0);
+  safe.commute.boardingAccessMin = normalizeBoardingAccessMin(safe.commute.boardingAccessMin);
   safe.commute.alightToWorkWalkMin = Math.max(0, Number(safe.commute.alightToWorkWalkMin) || 0);
 
   if (!Array.isArray(safe.schedule.daysOfWeek)) {

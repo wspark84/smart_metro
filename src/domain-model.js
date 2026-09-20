@@ -33,6 +33,7 @@ export function projectDomainSnapshot(state) {
       primaryLineId: safe.commute.primaryLineId,
       busRideMin: safe.commute.busRideMin,
       homeToStopWalkMin: safe.commute.homeToStopWalkMin,
+      boardingAccessMin: safe.commute.boardingAccessMin,
       alightToWorkWalkMin: safe.commute.alightToWorkWalkMin,
       liveBinding: {
         provider: safe.live.provider,
@@ -94,6 +95,7 @@ export function applyDomainSnapshotToState(snapshot, baseState = clone(DEFAULT_S
     primaryLineId: domain.route?.primaryLineId,
     busRideMin: domain.route?.busRideMin,
     homeToStopWalkMin: domain.route?.homeToStopWalkMin,
+    boardingAccessMin: domain.route?.boardingAccessMin ?? null,
     alightToWorkWalkMin: domain.route?.alightToWorkWalkMin,
   });
   next.schedule = mergeEntity(next.schedule, {

@@ -74,7 +74,7 @@ test('home keeps trip controls and countdown while diagnostics retain operationa
   assert.match(app.innerHTML, /data-action="search-work-address"/);
   vm.runInContext('homeEditor="departure";state.live.provider="tago";render()', context);
   assert.match(app.innerHTML, /data-action="search-live-stops"/);
-  assert.match(app.innerHTML, /data-field="ui.busCityId"/);
+  assert.match(app.innerHTML, /placeholder="도시를 검색하세요"/);
   assert.doesNotMatch(app.innerHTML, /버스 정보 지역|data-action="load-tago-cities"/);
   vm.runInContext('window.location.hash="#/diagnostics";alarmRuntimeMeta.status="loading";alarmPlanMeta.status="loading";render()', context);
   assert.match(app.innerHTML, /서버 알람 처리 상태/);
@@ -86,10 +86,20 @@ test('last-chance countdown requires live evidence, not demo values or unknown d
   const html = code => vm.runInContext(`(() => {const model=getDashboardModel();${code};return renderHome('home',model);})()`,context);
   const live = "model.dataSource='LIVE';model.risk.lastChanceConfirmed=true;model.risk.targetResult={level:'GREEN',arrivalMinutes:5,arriveWorkAt:new Date()};";
   assert.match(html(live), /놓치면 늦는 마지막 탑승편/);
-  assert.match(html(live), /5<span>분 남음/);
+  assert.match(html(live), /5<span>분 후 교통편 도착/);
   assert.doesNotMatch(html(live+"model.dataSource='DEMO';"), /놓치면 늦는 마지막 탑승편/);
   assert.match(html(live+"model.risk.lastChanceConfirmed=false;"), /마지막 탑승편으로 확정되지/);
   assert.match(html("model.risk.targetResult.level='UNKNOWN';model.risk.lastChanceConfirmed=false;"), /정보 확인 필요/);
+});
+
+test('home uses manual access time for leave-home countdown without replacing vehicle ETA', async () => {
+  const {context}=await makeView();
+  const html=vm.runInContext(`(() => {state.commute.boardingAccessMin=5;const model=getDashboardModel();model.dataSource='LIVE';model.risk=evaluateLateRisk({now:model.now,requiredArrivalTime:'23:59',route:{boardingAccessMin:5,onboardToDestinationMin:20},busArrivalsMin:[10]});return renderHome('home',model);})()`,context);
+  assert.match(html,/5<span>분 안에 출발/);
+  assert.match(html,/교통편 도착까지 10분 · 이동시간 5분/);
+  assert.match(html,/마을버스라면 약 3분 여유/);
+  assert.match(html,/data-field="commute.boardingAccessMin"/);
+  assert.doesNotMatch(html,/이동시간은 계산하지 않습니다/);
 });
 
 test('boarding UI offers subway, map preview, and confirmation without committing a candidate', async () => {

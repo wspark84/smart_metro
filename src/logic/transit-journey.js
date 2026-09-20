@@ -1,4 +1,4 @@
-import { isValidLocation } from "./commute.js";
+import { isValidLocation, normalizeBoardingAccessMin } from "./commute.js";
 
 export const TRANSIT_ROUTE_MAX_AGE_MS = 15 * 60_000;
 
@@ -27,8 +27,9 @@ export function transitQueryKey(query) {
 }
 
 export function resolveJourneyDuration(state, now = new Date()) {
+  const boardingAccessMin = normalizeBoardingAccessMin(state?.commute?.boardingAccessMin);
   if (!state?.live?.provider || state.live.provider === "none") {
-    return { durationAvailable: true, vehicleType: "BUS",
+    return { durationAvailable: true, vehicleType: "BUS", boardingAccessMin,
       onboardToDestinationMin: Number(state?.commute?.busRideMin || 0) + Number(state?.commute?.alightToWorkWalkMin || 0),
       source: "demo" };
   }
@@ -39,6 +40,7 @@ export function resolveJourneyDuration(state, now = new Date()) {
     journey?.boardingConfirmed === true && journey?.compatible === true &&
     age >= 0 && age <= TRANSIT_ROUTE_MAX_AGE_MS && typeof duration === "number" && duration > 0;
   return {
+    boardingAccessMin,
     durationAvailable: Boolean(valid),
     onboardToDestinationMin: valid ? duration / 60 : null,
     vehicleType: state?.live?.provider === "subway" ? "SUBWAY" : journey?.vehicleType || "BUS",

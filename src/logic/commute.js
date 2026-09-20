@@ -72,6 +72,25 @@ export function getRiskMeta(level) {
   }[level];
 }
 
+export function normalizeBoardingAccessMin(value) {
+  if (value === null || value === undefined || String(value).trim() === "" || !["number", "string"].includes(typeof value)) return null;
+  const minutes = Number(value);
+  return Number.isInteger(minutes) && minutes >= 0 && minutes <= 180 ? minutes : null;
+}
+
+export function buildDepartureGuidance(arrivalMinutes, accessMinutes, now) {
+  const accessMin = normalizeBoardingAccessMin(accessMinutes);
+  if (accessMin === null || !Number.isFinite(arrivalMinutes)) return null;
+  const remainingMin = arrivalMinutes - accessMin;
+  const minutes = Math.max(0, Math.floor(remainingMin));
+  const message = remainingMin < 0
+    ? `입력한 이동시간 ${accessMin}분을 고려하면 출발 기한이 지났습니다. 지금 집에서 출발하면 이 교통편 탑승이 어려울 수 있습니다.`
+    : remainingMin === 0 ? `첫 정류장·역까지 ${accessMin}분 걸립니다. 지금 출발해야 합니다.`
+    : remainingMin < 1 ? `첫 정류장·역까지 ${accessMin}분 걸립니다. 1분 안에 바로 출발해야 합니다.`
+    : `첫 정류장·역까지 ${accessMin}분 걸립니다. ${minutes}분 안에 출발해야 합니다.`;
+  return {accessMin, remainingMin, minutes, leaveAt:addMinutes(now, remainingMin), message};
+}
+
 export function evaluateLateRisk({ requiredArrivalTime, route, busArrivalsMin, now }) {
   const requiredAt = combineDateAndTime(now, requiredArrivalTime);
   const etaRiskBufferMin = Math.max(0, Number(route?.etaRiskBufferMin) || 0);
@@ -80,6 +99,7 @@ export function evaluateLateRisk({ requiredArrivalTime, route, busArrivalsMin, n
   const durationKnown = route?.durationAvailable !== false && rawDuration !== null &&
     rawDuration !== "" && Number.isFinite(Number(rawDuration)) && Number(rawDuration) > 0;
   const vehicle = route?.vehicleType === "SUBWAY" ? "지하철" : "버스";
+  const accessMin = normalizeBoardingAccessMin(route?.boardingAccessMin);
 
   const arrivals = (Array.isArray(busArrivalsMin) ? busArrivalsMin : [])
     .filter((value) => value !== null && value !== "" && Number.isFinite(Number(value)) && Number(value) >= 0)
@@ -91,9 +111,9 @@ export function evaluateLateRisk({ requiredArrivalTime, route, busArrivalsMin, n
       arriveWorkAt: null, deltaMinutes: null, etaRiskBufferMin,
       level: "UNKNOWN", risk: getRiskMeta("UNKNOWN"),
     };
-    // The rider decides how to reach the boarding point. Never subtract access walking.
-    const catchWindowMin = arrivalMinutes;
-    const catchable = true;
+    // Manual access time changes the leave-home deadline, never onboard duration.
+    const catchWindowMin = arrivalMinutes - (accessMin ?? 0);
+    const catchable = catchWindowMin >= 0;
     const arriveWorkAt = addMinutes(
       now,
       arrivalMinutes + Number(rawDuration) + etaRiskBufferMin,
@@ -137,6 +157,13 @@ export function evaluateLateRisk({ requiredArrivalTime, route, busArrivalsMin, n
     message = `조회된 교통편 중 ${Math.ceil(targetResult.arrivalMinutes)}분 후 오는 ${vehicle}까지 정시 도착이 예상됩니다. 그 이후 차 정보가 없어 마지막 기회인지는 아직 확인할 수 없습니다.`;
   }
 
+  const departure = primaryResult.level !== "UNKNOWN"
+    ? buildDepartureGuidance(targetResult.arrivalMinutes, accessMin, now) : null;
+  if (departure) {
+    message = `${departure.message} ${message}`;
+    if (departure.remainingMin <= 0) urgency = "HURRY";
+  }
+
   return {
     requiredAt,
     results,
@@ -149,6 +176,7 @@ export function evaluateLateRisk({ requiredArrivalTime, route, busArrivalsMin, n
     notificationArrivalsMin: arrivals.slice(targetResult.index),
     onboardToDestinationMin: durationKnown ? Number(rawDuration) : null,
     scope: "selected-route",
+    departure,
   };
 }
 

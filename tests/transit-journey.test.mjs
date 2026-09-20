@@ -30,7 +30,7 @@ const stateWithJourney = () => {
   return state;
 };
 
-test("access walking time has no effect on lateness or target selection", () => {
+test("legacy automatic walking estimate is not used as manually entered access time", () => {
   const evaluate = (walk) => evaluateLateRisk({ requiredArrivalTime: "09:00", now,
     route: { homeToStopWalkMin: walk, onboardToDestinationMin: 45 }, busArrivalsMin: [2, 20] });
   assert.deepEqual(evaluate(0), evaluate(90));
@@ -152,6 +152,17 @@ test("journey selection survives domain storage and drives server alarm target",
   assert.equal(trigger.lastChanceConfirmed, true);
   assert.match(trigger.notificationSpec.title, /12분 후/);
   assert.equal(trigger.arrivalAtWork, "2026-09-09T23:57:00.000Z");
+});
+
+test("manual access time survives account storage and reaches server alarm and TTS", () => {
+  const state=stateWithJourney();state.commute.boardingAccessMin=7;
+  const restored=applyDomainSnapshotToState(projectDomainSnapshot(state),state);
+  assert.equal(restored.commute.boardingAccessMin,7);
+  const trigger=buildAlarmPlan(restored,now).allTriggers[0];
+  assert.match(trigger.message,/5분 안에 출발해야/);
+  assert.match(trigger.notificationSpec.body,/5분 안에 출발해야/);
+  assert.match(trigger.notificationSpec.spokenText,/5분 안에 출발해야/);
+  assert.equal(trigger.arrivalAtWork,"2026-09-09T23:57:00.000Z");
 });
 
 test("server refresh preserves selection only for identical route identity and fails closed after expiry", async () => {
