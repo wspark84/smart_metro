@@ -87,3 +87,13 @@ test("version conflicts return 409 rather than silently overwriting newer data",
   const gateway = createSupabaseGateway({ env, fetchImpl: async () => response({ code: "40001", message: "internal detail" }, 400) });
   await assert.rejects(gateway.saveDocument("jwt", "app-state", {}, 2), { code: "DOCUMENT_CONFLICT", statusCode: 409 });
 });
+
+test("unavailable workspace storage returns once instead of multiplying the request timeout", async () => {
+  let calls = 0;
+  const gateway = createSupabaseGateway({ env, fetchImpl: async () => {
+    calls++;
+    return response({ code: 'PGRST002', message: 'private database details' }, 503);
+  } });
+  await assert.rejects(gateway.readDocument('jwt', 'app-state'), { code: 'SUPABASE_REQUEST_FAILED' });
+  assert.equal(calls, 1);
+});

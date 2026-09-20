@@ -41,7 +41,12 @@ function providerFailure(error) {
 }
 
 function unwrap(result) {
-  if (result.error) throw providerFailure(result.error);
+  if (result.error) {
+    // Codes/status only: never log database messages, tokens or document bodies.
+    const code = /^[A-Za-z0-9_]{1,40}$/.test(result.error.code || "") ? result.error.code : "UNKNOWN";
+    console.error("[workspace-storage]", JSON.stringify({ code, status: Number(result.status) || 0 }));
+    throw providerFailure(result.error);
+  }
   return result.data;
 }
 
@@ -101,7 +106,7 @@ export function createSupabaseGateway({ env = process.env, fetchImpl = globalThi
       validateDocumentKey(key);
       // RLS derives the owner from the verified JWT, never a caller-supplied ID.
       return safely(() => authenticatedClient(accessToken).from("smart_metro_documents")
-        .select("document_key,payload,revision").eq("document_key", key).maybeSingle());
+        .select("document_key,payload,revision").eq("document_key", key).maybeSingle().retry(false));
     },
     async saveDocument(accessToken, key, payload, expectedRevision) {
       validateDocumentKey(key);
