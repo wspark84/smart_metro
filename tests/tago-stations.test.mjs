@@ -11,6 +11,33 @@ function reply(item, extra = {}) {
 }
 const binding = { serviceKey: "fixture-key", cityCode: "25" };
 
+test("empty static route list falls back to official arrivals for the same station, deduplicating routes", async () => {
+  const calls = [];
+  const routes = await searchTagoStationRoutes({ ...binding, nodeId: station.nodeid, fetchImpl: async url => {
+    calls.push(url.pathname);
+    if (url.pathname.endsWith('/getSttnThrghRouteList')) return reply([], {totalCount:0});
+    assert.equal(url.searchParams.get('nodeId'), station.nodeid);
+    assert.equal(url.searchParams.get('cityCode'), '25');
+    return reply([{...route,nodeid:station.nodeid}, {...route,nodeid:station.nodeid}]);
+  }});
+  assert.equal(calls.length, 2);
+  assert.equal(routes.length, 1);
+  assert.equal(routes[0].routeId, route.routeid);
+  assert.equal(routes[0].source, 'live-arrivals');
+  assert.match(routes[0].label, /전체 노선 목록이 아닙니다/);
+});
+
+test("arrival fallback never borrows routes from another stop", async () => {
+  await assert.rejects(searchTagoStationRoutes({ ...binding, nodeId: station.nodeid, fetchImpl: async url =>
+    url.pathname.endsWith('/getSttnThrghRouteList') ? reply([], {totalCount:0}) : reply({...route,nodeid:'OTHER'})
+  }), /정류장/);
+});
+
+test("both official sources empty leave route selection empty without inventing a route", async () => {
+  assert.deepEqual(await searchTagoStationRoutes({ ...binding, nodeId: station.nodeid,
+    fetchImpl: async () => reply([], {totalCount:0}) }), []);
+});
+
 test("TAGO name search uses nodeNm and returns official IDs and correctly oriented coordinates", async () => {
   const result = await searchTagoStations({ ...binding, keyword: " 전통시장 ", fetchImpl: async (url) => {
     assert.equal(url.origin, "https://apis.data.go.kr");

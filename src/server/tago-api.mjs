@@ -245,12 +245,21 @@ export async function searchTagoStationRoutes({ serviceKey, cityCode, nodeId, ro
   const city = requiredText(cityCode, "도시코드");
   const station = requiredText(nodeId, "정류장 고유번호");
   // This service uses lowercase nodeid, unlike arrival service's nodeId.
-  const rows = await fetchTagoPages({ serviceKey, service: "stops", operation: "getSttnThrghRouteList",
+  let rows = await fetchTagoPages({ serviceKey, service: "stops", operation: "getSttnThrghRouteList",
     params: { cityCode: city, nodeid: station }, fetchImpl });
-  const routes = rows.map((row) => ({ routeId: requiredText(row.routeid, "노선 고유번호"),
+  const fromArrivals = rows.length === 0;
+  if (fromArrivals) {
+    rows = await fetchTagoArrivalRows({serviceKey, cityCode:city, nodeId:station, fetchImpl});
+    if (rows.some(row => String(row.nodeid ?? "").trim() !== station)) {
+      throw new Error("도착정보의 정류장과 선택한 정류장이 일치하지 않습니다. 다시 조회해 주세요.");
+    }
+  }
+  const routes = [...new Map(rows.map((row) => ({ routeId: requiredText(row.routeid, "노선 고유번호"),
     routeNumber: requiredText(row.routeno, "노선 번호"), routeName: String(row.routeno),
     routeTypeName: String(row.routetp ?? ""), destinationName: String(row.endnodenm ?? ""),
-    startStationName: String(row.startnodenm ?? ""), stationId: station, nodeId: station, cityCode: city, order: "" }));
+    startStationName: String(row.startnodenm ?? ""), stationId: station, nodeId: station, cityCode: city, order: "",
+    ...(fromArrivals ? {source:"live-arrivals",label:"현재 도착정보에서 확인한 노선입니다. 전체 노선 목록이 아닙니다. 방면은 목적지 경로에서 확인해 주세요."} : {})
+  })).map(route => [route.routeId,route])).values()];
   const selectedNumber = String(routeNumber ?? "").trim();
   return selectedNumber ? routes.filter((route) => route.routeNumber === selectedNumber) : routes;
 }

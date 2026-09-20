@@ -8,6 +8,39 @@ import {switchLiveProvider,syncActiveLiveBinding} from '../src/logic/live-bindin
 import {cityDisplayName,searchCityCandidates} from '../src/logic/city-search.js';
 const source=await readFile(new URL('../src/app.js',import.meta.url),'utf8');
 
+test('saving a stop without routes clears previous route and ETA without starting live calculations',()=>{
+  let saved=0;
+  const c=vm.createContext({state:{live:{provider:'tago',routeId:'old',routeNumber:'99',snapshot:{arrivalsMin:[5]}},ui:{},commute:{transitJourney:{old:true}}},
+    boardingPreview:{status:'ready',routes:[],route:null,candidate:{provider:'tago',stationId:'GGB203000426',nodeId:'GGB203000426',cityCode:'31010',stationName:'더샵광교레이크시티.광교호반베르디움',posX:'127.06',posY:'37.28'}},
+    document:{querySelector:()=>({dataset:{mapStatus:'ready'}})},isValidLocation,switchLiveProvider,
+    busCitiesMeta:{cities:[]},cityDisplayName,commuteEstimateMeta:{snapshot:{old:true}},render(){},persist(){saved++;},resetBoardingPreview(){},
+    refreshCommuteEstimate(){throw Error('must not request a route without a bus');},refreshVisibleTransit(){throw Error('must not use old arrivals');}});
+  c.syncLiveBindingState=()=>syncActiveLiveBinding(c.state.live);
+  const start=source.indexOf('  if (action === "confirm-boarding")');
+  const end=source.indexOf('  if (action === "goto")',start);
+  vm.runInContext(`(function(action){${source.slice(start,end)}})("confirm-boarding")`,c);
+  assert.equal(saved,1);
+  assert.equal(c.state.live.stationId,'GGB203000426');
+  assert.equal(c.state.live.routeId,'');assert.equal(c.state.live.routeNumber,'');
+  assert.equal(c.state.live.snapshot,null);assert.equal(c.state.commute.transitJourney,null);
+  assert.equal(c.state.live.bindings.tago.routeId,'');
+});
+
+test('empty route preview offers stop-only save above the result list, but loading and subway do not',()=>{
+  const c=vm.createContext({boardingPreview:{candidate:{stationId:'S',stationName:'정류장',posX:127,posY:37},route:null,routes:[],status:'ready',error:''},
+    state:{live:{provider:'tago'},ui:{liveSearchResults:[]}},busApiConfig:{providers:{}},boardingArea:{mode:'name'},
+    renderBoardingAreaSearch:()=>'',stationSelectionKey,isValidLocation,escapeHtml:String});
+  vm.runInContext(source.slice(source.indexOf('function renderBoardingPreview()'),source.indexOf('function renderCitySearchResults()')),c);
+  let html=vm.runInContext('renderBoardingPreview()',c);
+  assert.match(html,/이 정류장을 출발지로 저장 \(노선 미연결\)/);
+  assert.doesNotMatch(html,/data-action="confirm-boarding" disabled/);
+  assert.match(html,/실시간 도착시간·출발 알림을 제공하지 않습니다/);
+  c.boardingPreview.status='loading';
+  assert.match(vm.runInContext('renderBoardingPreview()',c),/data-action="confirm-boarding" disabled/);
+  c.boardingPreview.status='ready';c.state.live.provider='subway';
+  assert.match(vm.runInContext('renderBoardingPreview()',c),/data-action="confirm-boarding" disabled/);
+});
+
 test('city loading is automatic, single flight, restores stored official city, and ignores signed-out responses',async()=>{
   let resolve,calls=0;
   const c=vm.createContext({isAuthenticated:()=>true,authMeta:{user:{id:'user'}},render(){},state:{ui:{busCityId:''},live:{provider:'tago',cityCode:'31010'}},

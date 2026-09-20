@@ -4878,20 +4878,23 @@ async function previewBoardingStop(stationId) {
 function renderBoardingPreview() {
   const {candidate,route,routes,status,error} = boardingPreview;
   const subway = state.live.provider === "subway";
+  const stopOnly = !subway && !route && (status === "error" || (status === "ready" && !routes.length));
   const nearbySupported = !subway && busApiConfig.providers?.tago?.configured;
   return `${renderBoardingAreaSearch()}${state.ui.liveSearchResults.length || nearbySupported ? `<div class="boarding-map-shell ${nearbySupported ? "has-search-center" : ""}"><div id="boarding-map" class="boarding-map" aria-label="검색된 정류장·역 위치 지도">지도를 불러오는 중…</div></div>
     ${nearbySupported ? `<button class="soft-button wide" data-action="search-nearby-stops" ${state.ui.liveSearchStatus === "loading" ? "disabled" : ""}>${state.ui.liveSearchStatus === "loading" && boardingArea.mode === "nearby" ? "주변 정류장 조회 중…" : "이 위치 주변 정류장 찾기 · 500m"}</button><p class="field-help">지도 중앙의 +를 원하는 위치에 맞추고 조회하세요. 도시 선택과 관계없이 해당 위치 주변을 찾습니다. 처음 지도는 저장된 위치 또는 서울시청 부근입니다.</p>` : ""}
     <p class="field-help">선택할 수 있는 정류장은 번호가 붙은 핀과 아래 목록입니다. 지도 배경의 작은 버스 아이콘은 직접 선택되지 않습니다.${nearbySupported && boardingArea.mode === "nearby" ? " 결과는 마지막으로 조회한 위치 기준입니다. 지도를 옮겼다면 다시 조회하세요." : ""}</p>` : ""}
-    <div class="home-search-results">${state.ui.liveSearchResults.map((item,index) => `<button class="home-search-result ${stationSelectionKey(candidate) === stationSelectionKey(item) ? "selected" : ""}" data-action="preview-boarding-stop" data-station-id="${escapeHtml(stationSelectionKey(item))}" aria-pressed="${stationSelectionKey(candidate) === stationSelectionKey(item)}"><strong>${index+1}. ${escapeHtml(item.displayName || item.stationName)}</strong><span>${escapeHtml([item.address,item.stationNumber || item.arsId || item.stationId,item.providerLabel].filter(Boolean).join(" · "))}</span><span>지도에서 위치 확인</span></button>`).join("")}</div>
     ${candidate ? `<section class="boarding-confirm"><h3>${escapeHtml(candidate.displayName || candidate.stationName)}</h3>
+      <p class="field-help" role="status">아직 출발지로 저장되지 않았습니다. 아래에서 확인 후 저장해 주세요.</p>
       <p class="field-help">${subway ? "역 위치만으로 승강장 방향을 알 수 없습니다. 노선·상하행·다음 역·종착역을 확인하세요." : "같은 이름의 반대편 정류장과 혼동하지 않도록 지도에서 도로의 어느 쪽인지 확인하세요."}</p>
       ${status === "loading" ? `<p role="status">노선과 방면을 확인하고 있습니다…</p>` : ""}
       ${error ? `<p role="alert">${escapeHtml(error)}</p><button class="mini-button" data-action="preview-boarding-stop" data-station-id="${escapeHtml(stationSelectionKey(candidate))}">다시 조회</button>` : ""}
-      ${status === "ready" && !routes.length ? `<p class="field-help">현재 선택 가능한 노선·방향 정보가 없습니다. 운행 시간과 지원 지역을 확인해 주세요.</p>` : ""}
+      ${status === "ready" && !routes.length ? `<p class="field-help">공식 정보에서 선택 가능한 노선을 찾지 못했습니다. 운행하지 않는 정류장이라는 뜻은 아닙니다.</p><button class="mini-button" data-action="preview-boarding-stop" data-station-id="${escapeHtml(stationSelectionKey(candidate))}">노선 다시 조회</button>` : ""}
+      ${stopOnly ? `<p class="field-help">정류장만 먼저 저장할 수 있습니다. 버스 노선을 연결하기 전에는 실시간 도착시간·출발 알림을 제공하지 않습니다.</p>` : ""}
       <div class="home-search-results">${routes.map((item,index) => `<button class="home-search-result ${route?.routeId === item.routeId ? "selected" : ""}" data-action="preview-boarding-route" data-index="${index}" aria-pressed="${route?.routeId === item.routeId}"><strong>${escapeHtml(item.routeNumber)}${subway ? "" : "번"}</strong><span>${escapeHtml(item.label || item.direction || [item.startStationName,item.destinationName].filter(Boolean).join(" → ") || "방향 정보 없음")}</span></button>`).join("")}</div>
       ${!subway ? `<p class="field-help">기점·종점만으로 현재 운행 방향은 확정되지 않습니다. 선택 후 목적지 경로의 다음 정류장도 확인해 주세요.</p>` : ""}
-      <button class="soft-button wide" data-action="confirm-boarding" ${!route || !isValidLocation({lat:candidate.posY ?? candidate.lat,lng:candidate.posX ?? candidate.lng}) ? "disabled" : ""}>${subway ? "지도·노선·방향 확인 후 선택" : "지도·정류장·노선 확인 후 선택"}</button>
-    </section>` : ""}`;
+      <button class="soft-button wide" data-action="confirm-boarding" ${(!route && !stopOnly) || !isValidLocation({lat:candidate.posY ?? candidate.lat,lng:candidate.posX ?? candidate.lng}) ? "disabled" : ""}>${stopOnly ? "이 정류장을 출발지로 저장 (노선 미연결)" : subway ? "지도·노선·방향 확인 후 선택" : "이 정류장·노선으로 출발지 저장"}</button>
+    </section>` : ""}
+    <div class="home-search-results">${state.ui.liveSearchResults.map((item,index) => `<button class="home-search-result ${stationSelectionKey(candidate) === stationSelectionKey(item) ? "selected" : ""}" data-action="preview-boarding-stop" data-station-id="${escapeHtml(stationSelectionKey(item))}" aria-pressed="${stationSelectionKey(candidate) === stationSelectionKey(item)}"><strong>${index+1}. ${escapeHtml(item.displayName || item.stationName)}</strong><span>${escapeHtml([item.address,item.stationNumber || item.arsId || item.stationId,item.providerLabel].filter(Boolean).join(" · "))}</span><span>지도에서 위치 확인 · 아직 저장 안 됨</span></button>`).join("")}</div>`;
 }
 
 function renderCitySearchResults() {
@@ -4967,7 +4970,9 @@ function renderHome(screen, model) {
   const urgent = hasPrediction && (model.risk.urgency === "HURRY" || (departure ? departure.remainingMin <= 5 : confirmed && target.arrivalMinutes <= 5));
   const title = departure ? (departure.remainingMin < 0 ? "집에서 출발해야 할 시간이 지났어요" : "집에서 출발까지 남은 시간") : confirmed ? "놓치면 늦는 마지막 탑승편" : hasPrediction ? (model.risk.urgency === "HURRY" ? "지금 오는 차도 지각 예상" : "확인된 정시 도착 가능 편") : "마지막 탑승편 확인 대기";
   const paused = state.schedule.snoozeDate === dateOnlyKey(model.now);
-  const verdict = model.dataSource === "DEMO" ? "출발지와 노선을 연결해 주세요."
+  const verdict = state.live.provider !== "none" && state.live.stationName && !state.live.routeNumber
+    ? "출발지는 저장됐습니다. 노선 미연결 상태라 실시간 도착시간·출발 알림은 아직 사용할 수 없습니다."
+    : model.dataSource === "DEMO" ? "출발지와 노선을 연결해 주세요."
     : departure ? `${departure.message}${target.deltaMinutes < 0 ? " 이 교통편에 타도 목적지에 늦을 것으로 예상됩니다." : confirmed ? " 이 차를 놓치면 다음 차는 지각 예상입니다." : " 이후 교통편 정보도 확인해 주세요."}`
     : confirmed ? "선택한 노선 기준, 이 차를 놓치면 다음 차는 지각 예상"
     : hasPrediction && model.risk.urgency === "HURRY" ? "지금 오는 차도 목적지에 늦을 것으로 예상됩니다."
@@ -4989,6 +4994,7 @@ function renderHome(screen, model) {
       <h2 id="home-trip-title">어디에, 몇 시까지 가세요?</h2>
       <button class="home-trip-field" data-action="edit-home-trip" data-editor="departure" aria-expanded="${homeEditor === "departure"}" aria-controls="home-departure-editor"><span>출발지 · 탑승 정류장 / 역</span><strong>${escapeHtml(model.stop.name || "출발지를 선택하세요")}</strong><small>${homeEditor === "departure" ? "닫기 −" : "변경 +"}</small></button>
       ${homeEditor === "departure" ? renderHomeDepartureEditor() : ""}
+      ${state.live.provider !== "none" && state.live.provider !== "subway" && state.live.stationName && !state.live.routeNumber ? `<p class="field-help" role="status">정류장 저장 완료 · 버스 노선 미연결</p><button class="soft-button wide" data-action="retry-saved-boarding">저장한 정류장 노선 다시 조회</button>` : ""}
       <label class="field-block home-access-time"><span>집 → 첫 정류장·역 이동시간 (분)</span><input class="text-field-input" aria-label="첫 정류장·역까지 이동시간" aria-describedby="boarding-access-help" type="number" inputmode="numeric" min="0" max="180" step="1" placeholder="예: 5" value="${escapeHtml(state.commute.boardingAccessMin ?? "")}" data-field="commute.boardingAccessMin" /></label>
       <p class="field-help" id="boarding-access-help">직접 걸리는 시간을 0~180분으로 입력하세요. 첫 교통편이 마을버스라면 약 3분 여유를 더해 입력하는 것을 권장합니다. 예: 이동 5분 + 여유 3분 = 8분. 자동 추가되지는 않습니다.</p>
       <button class="home-trip-field" data-action="edit-home-trip" data-editor="destination" aria-expanded="${homeEditor === "destination"}" aria-controls="home-destination-editor"><span>도착지</span><strong>${escapeHtml(state.user.workAddress || "도착지를 선택하세요")}</strong><small>${homeEditor === "destination" ? "닫기 −" : "변경 +"}</small></button>
@@ -6003,6 +6009,17 @@ app.addEventListener("click", (event) => {
     }
     return render();
   }
+  if (action === "retry-saved-boarding") {
+    if (!state.live.stationName || state.live.provider === "none" || state.live.provider === "subway") return;
+    const candidate = {provider:state.live.provider,stationId:state.live.stationId || state.live.nodeId,
+      nodeId:state.live.nodeId,cityCode:state.live.cityCode,arsId:state.live.arsId,stationName:state.live.stationName,
+      posX:state.commute.stopLocation?.lng,posY:state.commute.stopLocation?.lat};
+    resetLiveSearchState(); resetLiveRouteSearchState();
+    state.ui.liveSearchResults = [candidate];
+    homeEditor = "departure";
+    void previewBoardingStop(stationSelectionKey(candidate));
+    return;
+  }
   if (action === "preview-boarding-stop") { void previewBoardingStop(target.dataset.stationId); return; }
   if (action === "search-boarding-area") { void findBoardingArea(); return; }
   if (action === "reload-bus-cities") { void loadBusCities(); return; }
@@ -6036,7 +6053,8 @@ app.addEventListener("click", (event) => {
   }
   if (action === "confirm-boarding") {
     const {candidate,route} = boardingPreview;
-    if (!candidate || !route) return;
+    const stopOnly = state.live.provider !== "subway" && !route && (boardingPreview.status === "error" || (boardingPreview.status === "ready" && !boardingPreview.routes.length));
+    if (!candidate || (!route && !stopOnly)) return;
     if (document.querySelector("#boarding-map")?.dataset.mapStatus !== "ready") {
       boardingPreview.error = "지도 표시가 완료된 뒤 위치를 확인해 주세요. 지도를 불러오지 못하면 연결 설정을 확인해 주세요.";
       return render();
@@ -6049,8 +6067,8 @@ app.addEventListener("click", (event) => {
     state.commute.transitJourney = null;
     commuteEstimateMeta.snapshot = null;
     Object.assign(state.live,{stationId:state.live.provider === "subway" ? route.stationId : candidate.stationId,
-      stationName:route.stationName || candidate.stationName,arsId:candidate.arsId || "",routeId:route.routeId,
-      routeNumber:route.routeNumber,order:route.order || "",cityCode:candidate.cityCode || "",nodeId:candidate.nodeId || "",snapshot:null,lastError:""});
+      stationName:route?.stationName || candidate.stationName,arsId:candidate.arsId || "",routeId:route?.routeId || "",
+      routeNumber:route?.routeNumber || "",order:route?.order || "",cityCode:candidate.cityCode || "",nodeId:candidate.nodeId || "",snapshot:null,lastError:"",status:"idle",lastSyncedAt:""});
     if (candidate.cityId) state.ui.busCityId = candidate.cityId;
     const selectedCity = busCitiesMeta.cities.find(city => city.id === state.ui.busCityId);
     if (selectedCity) state.ui.busCityQuery = cityDisplayName(selectedCity);
@@ -6059,10 +6077,12 @@ app.addEventListener("click", (event) => {
       state.live.cityCode = candidate.cityCode || state.live.cityCode;
     }
     syncLiveBindingState(); persist();
-    homeEditor = "route";
+    homeEditor = stopOnly ? "" : "route";
     resetBoardingPreview();
-    void refreshCommuteEstimate();
-    void refreshVisibleTransit();
+    if (!stopOnly) {
+      void refreshCommuteEstimate();
+      void refreshVisibleTransit();
+    }
     return render();
   }
   if (action === "goto") return goTo(target.dataset.screen);
