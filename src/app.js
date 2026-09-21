@@ -83,6 +83,13 @@ import { fetchPlaceApiConfig, searchAddressPlaces } from "./services/places.js";
 import { mountKakaoCommuteMap, mountKakaoBoardingMap } from "./services/kakao-map.js";
 import { parseSubwayRouteId, stationSelectionKey } from "./logic/station-search.js";
 import { loadState, resetState, sanitizeState, saveState } from "./state.js";
+import { createWorkspaceFetch } from "./services/workspace-fetch.js";
+
+if (typeof window.fetch === "function") {
+  window.fetch = createWorkspaceFetch(window.fetch.bind(window), {
+    origin: window.location.origin, locks: window.navigator?.locks,
+  });
+}
 
 const app = document.querySelector("#app");
 let state = loadState();

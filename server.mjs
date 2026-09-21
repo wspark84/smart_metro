@@ -2593,6 +2593,7 @@ async function handleRequest(request, response) {
   }
 
   if (requestUrl.pathname === "/api/bus/arrivals") {
+    let arrivalStage = "workspace";
     try {
       const liveRequestAuth = await resolveAuthenticatedRequest(request, now);
       if (liveRequestAuth?.user) {
@@ -2613,6 +2614,7 @@ async function handleRequest(request, response) {
         selectedStopId: requestUrl.searchParams.get("selectedStopId") || "",
         stopKey: requestUrl.searchParams.get("stopKey") || "",
       };
+      arrivalStage = "provider";
       const result = await loadWithCache({
         key: ["live-arrivals", binding],
         ttlMs: LIVE_ARRIVAL_CACHE_TTL_MS,
@@ -2632,6 +2634,7 @@ async function handleRequest(request, response) {
         stopName: effectiveStopName,
       });
 
+      arrivalStage = "observation";
       if (liveRequestAuth?.user && result.cacheStatus !== "stale-fallback") {
         await persistForecastObservation({
           provider: payload.provider || binding.provider,
@@ -2667,6 +2670,12 @@ async function handleRequest(request, response) {
       );
       return;
     } catch (error) {
+      const known = ["Gyeonggi API returned no arrival rows.", "Gyeonggi API returned no arrivals for the selected route.",
+        "Gyeonggi API row did not include valid arrival minutes.", "Gyeonggi live binding requires stationId."];
+      const message = String(error?.message || "");
+      const reason = known.includes(message) ? message : /^Gyeonggi API request failed with \d{3}\.$/.test(message) ? message
+        : error instanceof SyntaxError ? "INVALID_UPSTREAM_JSON" : error?.code === "DOCUMENT_CONFLICT" ? "DOCUMENT_CONFLICT" : "UNCLASSIFIED";
+      console.error("[bus-arrival]", JSON.stringify({stage:arrivalStage,reason}));
       response.writeHead(400, {
         "Content-Type": "application/json; charset=utf-8",
         "Cache-Control": "no-store",
