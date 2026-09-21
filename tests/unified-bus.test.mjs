@@ -78,6 +78,27 @@ test('invalid city cannot inject arbitrary provider or city code into upstream c
   await assert.rejects(searchUnifiedBusStations({cityId:'unknown',cityCode:'31010',keyword:'광교'},options),/도시 목록/);
   await assert.rejects(searchUnifiedBusStations({cityId:'seoul',keyword:''},options),/입력/);
 });
+
+test('actual provider adapter preserves GBIS 수원 rows through the complete unified pipeline',async()=>{
+  const originalFetch=globalThis.fetch,oldKey=process.env.GYEONGGI_SERVICE_KEY;
+  try {
+    process.env.GYEONGGI_SERVICE_KEY='test';
+    globalThis.fetch=async url=>{
+      assert.equal(url.pathname,'/6410000/busstationservice/v2/getBusStationListv2');
+      assert.equal(url.searchParams.get('keyword'),'04413');
+      return {ok:true,json:async()=>({response:{msgHeader:{resultCode:0},msgBody:{busStationList:[
+        {stationId:203000426,stationName:'더샵광교레이크시티.광교호반베르디움',mobileNo:'04413',regionName:'수원'},
+        {stationId:999,stationName:'다른 도시',regionName:'용인'},
+      ]}}})};
+    };
+    const result=await searchUnifiedBusStations({cityId:'gg:수원시',keyword:'04413'}, {
+      loadCities:async()=>({cities:buildBusCities([],{gyeonggi:true}),warnings:[]}),
+    });
+    assert.equal(result.stations.length,1);
+    assert.equal(result.stations[0].selectionId,'gyeonggi:203000426');
+    assert.equal(result.stations[0].stationNumber,'04413');
+  } finally {globalThis.fetch=originalFetch;if(oldKey===undefined)delete process.env.GYEONGGI_SERVICE_KEY;else process.env.GYEONGGI_SERVICE_KEY=oldKey;}
+});
 test('official empty search codes are not errors, but authorization failures are not empty successes',()=>{
   assert.deepEqual(normalizeSeoulStations(parseSeoulStationSearchXml('<headerCd>4</headerCd>')),[]);
   assert.throws(()=>parseSeoulStationSearchXml('<headerCd>7</headerCd><headerMsg>denied</headerMsg>'),/denied/);

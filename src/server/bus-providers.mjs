@@ -1,6 +1,7 @@
 import { fetchWithTimeout } from "./upstream-fetch.mjs";
 import { fetchSubwayArrival, fetchSubwayRows, searchSubwayStations, subwayDirections } from "./subway-providers.mjs";
 import { stationSearchQueries, rankStationCandidates } from "../logic/station-search.js";
+import { normalizeGyeonggiCity } from "../logic/gyeonggi-cities.js";
 import { fetchTagoArrivalRows, searchTagoStations, searchTagoStationRoutes } from "./tago-api.mjs";
 export { fetchTagoCities } from "./tago-api.mjs";
 
@@ -658,8 +659,8 @@ export async function searchLiveStations(binding) {
   for (const keyword of queries) {
     const result = await searchLiveStationsExact({...binding,keyword});
     if (binding.provider === "gyeonggi" && binding.regionName) {
-      const cityName = value => String(value || "").replace(/^경기도\s*/, "").trim();
-      result.stations = result.stations.filter(station => cityName(station.regionName) === cityName(binding.regionName));
+      const selectedCity = normalizeGyeonggiCity(binding.regionName);
+      result.stations = result.stations.filter(station => selectedCity && normalizeGyeonggiCity(station.regionName) === selectedCity);
     }
     if (result.stations.length) return {...result, stations:rankStationCandidates(result.stations,binding.keyword), matchedQuery:keyword};
   }
