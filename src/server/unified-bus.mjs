@@ -6,6 +6,12 @@ import { searchLiveStations } from './bus-providers.mjs';
 export const GYEONGGI_CITIES = '수원시 성남시 의정부시 안양시 부천시 광명시 평택시 동두천시 안산시 고양시 과천시 구리시 남양주시 오산시 시흥시 군포시 의왕시 하남시 용인시 파주시 이천시 안성시 김포시 화성시 광주시 양주시 포천시 여주시 연천군 가평군 양평군'.split(' ');
 const labels = {seoul:'서울 버스',gyeonggi:'경기 버스',tago:'전국 버스'};
 const bareCity = name => String(name || '').replace(/^경기도\s*/, '').trim();
+// GBIS returns short labels such as "수원"; match only known municipalities,
+// never a substring (e.g. 광주광역시 is not 경기도 광주시).
+const gyeonggiCity = name => {
+  const label=bareCity(name);
+  return GYEONGGI_CITIES.find(city=>label===city || label===city.replace(/[시군]$/, '')) || '';
+};
 
 export function buildBusCities(tagoCities, configured) {
   const consumed = new Set();
@@ -54,7 +60,7 @@ export async function searchUnifiedBusStations({cityId,keyword},{loadCities=fetc
     for(const station of result.value.stations || []) {
       // GBIS searches multiple municipalities. Do not include a different city,
       // or an unverifiable blank region, in the selected city's results.
-      if(provider==='gyeonggi' && bareCity(station.regionName)!==city.id.slice(3)) continue;
+      if(provider==='gyeonggi' && gyeonggiCity(station.regionName)!==city.id.slice(3)) continue;
       stations.push({...station,cityCode:station.cityCode || city.cityCode,provider,providerLabel:labels[provider],cityId:city.id,
         selectionId:`${provider}:${station.stationId}`});
     }

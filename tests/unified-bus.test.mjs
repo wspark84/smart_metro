@@ -54,6 +54,25 @@ test('partial provider outage returns usable results with warning, complete outa
   const empty=await searchUnifiedBusStations({cityId:'gg:수원시',keyword:'없음'},{...options,search:async()=>({stations:[]})});
   assert.deepEqual(empty.stations,[]);assert.deepEqual(empty.warnings,[]);
 });
+
+test('GBIS short region names match only the selected Gyeonggi municipality',async()=>{
+  for (const cityName of GYEONGGI_CITIES) {
+    const shortName=cityName.replace(/[시군]$/, '');
+    const result=await searchUnifiedBusStations({cityId:`gg:${cityName}`,keyword:'04413'}, {
+      loadCities:async()=>catalog,
+      search:async ({provider})=>({stations:provider==='gyeonggi' ? [
+        {stationId:'short',regionName:shortName},
+        {stationId:'full',regionName:cityName},
+        {stationId:'prefixed',regionName:`경기도 ${shortName}`},
+        {stationId:'other',regionName:cityName==='수원시'?'용인':'수원'},
+        {stationId:'unknown',regionName:''},
+        {stationId:'ambiguous',regionName:`${shortName}광역시`},
+        {stationId:'partial',regionName:shortName.slice(0,1)},
+      ]:[]}),
+    });
+    assert.deepEqual(result.stations.map(s=>s.stationId),['short','full','prefixed'],cityName);
+  }
+});
 test('invalid city cannot inject arbitrary provider or city code into upstream calls',async()=>{
   const options={loadCities:async()=>catalog,search:()=>assert.fail('must not query')};
   await assert.rejects(searchUnifiedBusStations({cityId:'unknown',cityCode:'31010',keyword:'광교'},options),/도시 목록/);
