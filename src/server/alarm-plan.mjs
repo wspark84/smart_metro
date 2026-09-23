@@ -11,6 +11,8 @@ import { buildLiveEtaGuard } from "../logic/live-eta-guard.js";
 import { isLiveConfigured, projectLiveArrivals, resolveCommuteLine, resolveCommuteStop } from "../logic/live-arrivals.js";
 import { buildEscalationTimeline, getNotificationSpec } from "../logic/notification-engine.js";
 import { resolveJourneyDuration } from "../logic/transit-journey.js";
+import { transitQueryKey, transitQueryForState } from "../logic/transit-journey.js";
+import { buildBoardingPlan, buildDepartureReminder, departurePlanningEnabled, DEPARTURE_REMINDER_MINUTES } from "../logic/boarding-plan.js";
 
 const MINUTE_MS = 60_000;
 
@@ -290,12 +292,69 @@ function sortTriggers(triggers = []) {
   return [...triggers].sort((left, right) => new Date(left.triggerAt).getTime() - new Date(right.triggerAt).getTime());
 }
 
+function buildDepartureAlarmPlan(state, today, options) {
+  const stop = getSelectedStop(state);
+  const line = getPrimaryLine(state, stop);
+  const scheduleState = describeScheduleState(state.schedule,today,getHolidayDates(state));
+  const binding = transitQueryKey(transitQueryForState(state));
+  const current = state.live.snapshot;
+  const matches = current && (!current.lineNumber || String(current.lineNumber) === String(state.live.routeNumber));
+  const prior = options.planningObservation?.binding === binding ? options.planningObservation : null;
+  const snapshot = matches && current.cacheStatus !== 'stale-fallback' ? current : prior?.snapshot;
+  const arrivalsMin = matches && current.cacheStatus !== 'stale-fallback' ? projectLiveArrivals(current,today) : [];
+  const gap = arrivalsMin.length >= 2 ? arrivalsMin[1]-arrivalsMin[0] : prior?.gap;
+  const gapAt = arrivalsMin.length >= 2 ? Date.parse(current.fetchedAt) : prior?.gapAt;
+  const guard = buildAccuracyLiveEtaGuard(options.accuracyRuntime);
+  const boarding = buildBoardingPlan({now:today,requiredArrivalTime:state.user.requiredArrivalTime,
+    route:{...resolveJourneyDuration(state,today),etaRiskBufferMin:guard.recommendedRiskBufferMin},
+    arrivalsMin,snapshot,headwayMin:state.commute.planningHeadwayMin,
+    officialHeadwayMin:state.commute.planningOfficialHeadwayMin,
+    observedHeadwayMin:today.getTime()-gapAt <= 30*MINUTE_MS ? gap : null});
+  const reminder = buildDepartureReminder(boarding,today,line.number);
+  const departureAt = reminder?.departureAt;
+  const valid = Boolean(departureAt && boarding.risk.targetResult.deltaMinutes >= 0);
+  const goalAt = combineDateAndTime(today,state.user.requiredArrivalTime);
+  const stageKey = JSON.stringify([binding,state.user.requiredArrivalTime]);
+  const allTriggers = scheduleState.firing && valid ? DEPARTURE_REMINDER_MINUTES.map(lead => {
+    const triggerAt = addMinutes(new Date(departureAt),-lead);
+    const level = lead <= 3 ? 'RED' : lead <= 5 ? 'ORANGE' : lead <= 10 ? 'YELLOW' : 'GREEN';
+    const evaluatedAt = triggerAt > today ? triggerAt : today;
+    const copy = buildDepartureReminder(boarding,evaluatedAt,line.number);
+    const context = {riskLevel:level,routeNumber:line.number,arrivalsMin:[],urgency:'RELAXED',
+      riskMessage:copy.body,escalationEnabled:false,
+      dndBypass:state.notification.dndBypass,preferredSoundPresetId:state.notification.soundPresetId,
+      preferredSpeechRate:state.notification.ttsSpeed,vibrationStrength:state.notification.vibrationStrength};
+    return {triggerAt:triggerAt.toISOString(),triggerKind:'departure',triggerLabel:`집 출발 ${lead}분 전`,
+      reminderKey:`departure:${stageKey}:${lead}`,leadMinutes:lead,
+      source:copy.departureEstimated ? 'headway-estimate' : 'live-snapshot',
+      arrivalsMin:[boarding.risk.targetResult.arrivalMinutes],observedArrivalsMin:arrivalsMin,
+      lastChanceConfirmed:boarding.risk.lastChanceConfirmed,riskLevel:level,urgency:'DEPARTURE',
+      etaRiskBufferMin:boarding.risk.etaRiskBufferMin,liveEtaGuardMode:guard.mode,
+      departureAt,departureEstimated:copy.departureEstimated,message:copy.body,
+      arrivalAtWork:boarding.risk.targetResult.arriveWorkAt.toISOString(),
+      notificationSpec:{...getNotificationSpec(context),...copy,riskLevel:level},
+      escalationTimeline:buildEscalationTimeline(context).map(({secondsSinceTrigger,escalationLabel,volumePercent,fullScreen,vibrationRepeats})=>
+        ({secondsSinceTrigger,escalationLabel,volumePercent,fullScreen,vibrationRepeats}))};
+  }) : [];
+  const triggers = allTriggers.filter(t=>Date.parse(t.triggerAt)>=today.getTime());
+  return {generatedAt:today.toISOString(),dateKey:dateOnlyKey(today),todayStatus:scheduleState,
+    mode:'departure-deadline',departureAt:valid ? departureAt : null,
+    planningObservation:{binding,snapshot,gap,gapAt},
+    stop:{id:stop.id,name:state.live.stationName || stop.name,stopCode:stop.stopCode},
+    route:{id:line.id,number:line.number,label:line.label,destination:line.destination},
+    window:{startAt:allTriggers[0]?.triggerAt || goalAt.toISOString(),endAt:departureAt || goalAt.toISOString(),repeatIntervalMin:null},
+    totalTriggers:allTriggers.length,baseTriggerCount:allTriggers.length,precheckTriggerCount:0,
+    remainingTriggers:triggers.length,remainingPrecheckTriggers:0,nextTrigger:triggers[0] || null,
+    stabilityWatch:{level:'none',precheckLeadMin:0,precheckTriggerAt:null},triggers,allTriggers};
+}
+
 export function buildAlarmPlan(state, now = new Date(), options = {}) {
   if (!state || typeof state !== "object") {
     throw new Error("Alarm plan requires an app state object.");
   }
 
   const today = now instanceof Date ? now : new Date(now);
+  if (departurePlanningEnabled(state)) return buildDepartureAlarmPlan(state,today,options);
   const accuracyRuntime = options?.accuracyRuntime || null;
   const holidayDates = getHolidayDates(state);
   const scheduleState = describeScheduleState(state.schedule, today, holidayDates);

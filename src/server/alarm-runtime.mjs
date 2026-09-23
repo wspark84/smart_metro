@@ -75,7 +75,7 @@ export function reconcileAlarmRuntime(
   }
 
   const currentNow = now instanceof Date ? now : new Date(now);
-  const plan = buildAlarmPlan(state, currentNow, options);
+  const plan = buildAlarmPlan(state, currentNow, {...options,planningObservation:runtimeState?.planningObservation});
   const nextRuntime = {
     ...createAlarmRuntimeState(),
     ...(runtimeState && typeof runtimeState === "object" ? clone(runtimeState) : {}),
@@ -89,8 +89,10 @@ export function reconcileAlarmRuntime(
   }
 
   const dueEvents = [];
+  const latestDepartureDue = plan.mode === 'departure-deadline'
+    ? plan.allTriggers.filter(t=>Date.parse(t.triggerAt)<=currentNow.getTime()).at(-1) : null;
   for (const trigger of plan.allTriggers) {
-    const triggerKey = buildTriggerKey(plan.dateKey, trigger.triggerAt);
+    const triggerKey = buildTriggerKey(plan.dateKey, trigger.reminderKey || trigger.triggerAt);
     if (new Date(trigger.triggerAt).getTime() > currentNow.getTime()) {
       continue;
     }
@@ -102,7 +104,12 @@ export function reconcileAlarmRuntime(
     // A restarted server must not ring the entire morning's expired alarms.
     const latenessMs = currentNow.getTime() - Date.parse(trigger.triggerAt);
     nextRuntime.firedTriggerKeys.push(triggerKey);
-    if (latenessMs > 90_000 || currentNow.getTime() > Date.parse(plan.window.endAt) + 90_000) continue;
+    if (plan.mode === 'departure-deadline') {
+      // Consume skipped stages together, but deliver only the most urgent one.
+      // Stage keys stay stable when live ETAs move the departure deadline.
+      if (trigger !== latestDepartureDue || latenessMs > 60_000 ||
+          currentNow.getTime() > Date.parse(plan.window.endAt) - 2*60_000) continue;
+    } else if (latenessMs > 90_000 || currentNow.getTime() > Date.parse(plan.window.endAt) + 90_000) continue;
     const event = buildTriggeredEvent({
       plan,
       trigger,
@@ -121,6 +128,7 @@ export function reconcileAlarmRuntime(
   nextRuntime.firedCountToday += dueEvents.length;
   nextRuntime.pendingCount = plan.allTriggers.filter((trigger) => new Date(trigger.triggerAt).getTime() > currentNow.getTime()).length;
   nextRuntime.lastError = "";
+  if (plan.planningObservation) nextRuntime.planningObservation = plan.planningObservation;
 
   return {
     runtime: nextRuntime,

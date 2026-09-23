@@ -27,7 +27,7 @@ async function load(key) {
 }
 
 export async function runWithDocumentStorage(auth, gateway, operation) {
-  const context = { root: resolve(buildUserDataRoot(auth.user.id)), accessToken: auth.accessToken, gateway, loaded: new Map(), writes: new Map() };
+  const context = { root: resolve(buildUserDataRoot(auth.user.id)), accessToken: auth.accessToken, gateway, backgroundWorker:auth.backgroundWorker===true, loaded: new Map(), writes: new Map() };
   return storage.run(context, async () => {
     const result = await operation();
     if (result.commit !== false && context.writes.size) {
@@ -38,6 +38,24 @@ export async function runWithDocumentStorage(auth, gateway, operation) {
     }
     return result;
   });
+}
+
+export function isBackgroundAlarmWorker() { return storage.getStore()?.backgroundWorker === true; }
+
+export async function getAlarmSchedulerStatus() {
+  const context=storage.getStore();
+  return context?.gateway.alarmSchedulerStatus ? context.gateway.alarmSchedulerStatus(context.accessToken) : {enabled:false};
+}
+
+// Persist the outbox and consumed reminder stages before external push delivery.
+// A stopped worker can resume queued work without creating the same stage twice.
+export async function checkpointAlarmWorker() {
+  const context=storage.getStore();
+  if (!context?.backgroundWorker || !context.writes.size) return;
+  const documents=await Promise.all([...context.writes].map(async([key,payload])=>({
+    document_key:key,payload,expected_revision:(await load(key))?.revision||0})));
+  await context.gateway.saveDocuments(context.accessToken,documents);
+  context.writes.clear();context.loaded.clear();
 }
 
 export async function readFile(path, encoding) {

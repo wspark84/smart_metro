@@ -97,7 +97,7 @@ function resolveNotificationSpec(alert, notificationSettings, now) {
   const referenceTime = alert?.activatedAt || alert?.createdAt || alert?.triggerAt || now;
   const secondsSinceTrigger = Math.max(0, Math.floor((new Date(now).getTime() - new Date(referenceTime).getTime()) / 1000));
 
-  return getNotificationSpec({
+  const spec = getNotificationSpec({
     riskLevel: alert?.riskLevel || alert?.notificationSpec?.riskLevel || "YELLOW",
     routeNumber: alert?.routeNumber || "",
     arrivalsMin: Array.isArray(alert?.arrivalsMin) ? alert.arrivalsMin : [],
@@ -106,12 +106,18 @@ function resolveNotificationSpec(alert, notificationSettings, now) {
     deliveryPriorityClass: String(alert?.deliveryPriorityClass || "normal"),
     deliveryPriorityReason: String(alert?.deliveryPriorityReason || ""),
     secondsSinceTrigger,
-    escalationEnabled: notificationSettings?.escalationEnabled !== false,
+    escalationEnabled: alert?.triggerKind === 'departure' ? false : notificationSettings?.escalationEnabled !== false,
     dndBypass: Boolean(notificationSettings?.dndBypass),
     preferredSoundPresetId: notificationSettings?.soundPresetId,
     preferredSpeechRate: notificationSettings?.ttsSpeed,
     vibrationStrength: notificationSettings?.vibrationStrength,
   });
+  if (alert?.triggerKind === 'departure' && alert.notificationSpec?.departureAt) {
+    // Preserve the departure-focused wording through push/TTS escalation.
+    for (const key of ['title','body','spokenText','alertPhraseKo','departureAt','departureEstimated'])
+      spec[key] = alert.notificationSpec[key];
+  }
+  return spec;
 }
 
 function buildDispatchKey(alert, notificationSpec) {
@@ -265,6 +271,9 @@ export function reconcileDispatchQueue(queueState, deliveryState, deviceProfile,
   }
   next.dateKey = context.dateKey || storedDateKey || null;
   const currentAlert = deliveryState?.currentAlert;
+  next.bundles = next.bundles.filter(bundle => !bundle.notificationSpec?.departureAt ||
+    (currentAlert?.status === 'ACTIVE' && bundle.alertTriggerKey === currentAlert.triggerKey &&
+      bundle.notificationSpec.departureAt === currentAlert.notificationSpec?.departureAt));
   const newBundles = [];
 
   if (currentAlert?.triggerKey && currentAlert.status === "ACTIVE") {

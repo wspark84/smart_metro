@@ -82,6 +82,11 @@ export function createSupabaseGateway({ env = process.env, fetchImpl = globalThi
     return client(accessToken);
   };
   return {
+    async alarmSchedulerStatus(accessToken) {
+      const result=await authenticatedClient(accessToken).rpc('smart_metro_alarm_scheduler_status');
+      if (result.error?.code==='PGRST202') return {enabled:false}; // Migration not installed yet.
+      return unwrap(result) || {enabled:false};
+    },
     async signUp({ email, password, name }) {
       if (!String(name || "").trim() || String(password || "").length < 8) {
         throw failure("INVALID_SIGNUP", "이름과 8자 이상의 비밀번호를 입력해 주세요.", 400);

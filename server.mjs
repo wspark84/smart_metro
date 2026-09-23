@@ -84,7 +84,8 @@ import { ensureLiveBindingState } from "./src/logic/live-bindings.js";
 import { STOP_LIBRARY } from "./src/mock-data.js";
 import { createRequestAuth, isTrustedMutation } from "./src/server/supabase-session.mjs";
 import { createSupabaseGateway } from "./src/server/supabase-gateway.mjs";
-import { bufferedResponse, runWithDocumentStorage } from "./src/server/document-storage.mjs";
+import { bufferedResponse, runWithDocumentStorage, isBackgroundAlarmWorker, checkpointAlarmWorker, getAlarmSchedulerStatus } from "./src/server/document-storage.mjs";
+import { runAlarmWorker } from "./src/server/alarm-worker.mjs";
 import { handleSocialLoginRoute, sendAuthJson } from "./src/server/social-login-routes.mjs";
 
 const PORT = Number(process.env.PORT || 4173);
@@ -1003,6 +1004,15 @@ async function tickAlarmRuntime(now = new Date()) {
   dispatchQueueState = dispatchResult.queue;
   const executionResult = reconcileDispatchExecutions(dispatchExecutionState, dispatchQueueState, deviceProfileState, now);
   dispatchExecutionState = executionResult.executions;
+  if (isBackgroundAlarmWorker()) {
+    await Promise.all([
+      writeAlarmRuntimeState(alarmRuntimeState,files.alarmRuntime),
+      writeAlarmDeliveryState(alarmDeliveryState,files.alarmDelivery),
+      writeDispatchQueueState(dispatchQueueState,files.dispatchQueue),
+      writeDispatchExecutionState(dispatchExecutionState,files.dispatchExecutions),
+    ]);
+    await checkpointAlarmWorker();
+  }
   const pushGatewayResult = await reconcilePushGatewayState(
     pushGatewayState,
     dispatchQueueState,
@@ -1187,6 +1197,17 @@ async function safeTickAlarmRuntime(user = activeUserContext?.user, now = new Da
 
   await activateUserContext(user);
   try {
+    if (!isBackgroundAlarmWorker()) {
+      const scheduler=await getAlarmSchedulerStatus();
+      if (scheduler.enabled) {
+        const current=await readEffectiveAppState();
+        return {runtime:alarmRuntimeState,dueEvents:[],scheduler,
+          plan:current ? buildAlarmPlan(current,now,{accuracyRuntime:busAccuracyRuntimeState,
+            planningObservation:alarmRuntimeState.planningObservation}) : null,
+          delivery:alarmDeliveryState,dispatch:dispatchQueueState,
+          executions:dispatchExecutionState,pushGateway:pushGatewayState};
+      }
+    }
     return await tickAlarmRuntime(now);
   } catch (error) {
     const files = getActiveFiles();
@@ -2258,6 +2279,7 @@ async function handleRequest(request, response) {
       response.end(
         JSON.stringify({
           runtime: result.runtime,
+          scheduler: result.scheduler || null,
           delivery: result.delivery,
           dispatch: {
             bundles: result.dispatch.bundles.slice(0, 3),
@@ -3172,6 +3194,17 @@ function sendLivenessResponse(response) {
 
 const server = createServer((request, response) => {
   const requestUrl = parseRequestUrl(request);
+  if (requestUrl.pathname === '/api/alarm-worker') {
+    if (request.method !== 'POST' || Number(request.headers['content-length'] || 0)>2048) {
+      sendAuthJson(response,405,{error:'Alarm worker accepts job POST requests only.'});return;
+    }
+    void runWithRuntimeLock(async()=>{
+      const payload=await readJsonBody(request);
+      const result=await runAlarmWorker(payload,user=>safeTickAlarmRuntime(user));
+      sendAuthJson(response,result.ok?200:503,result);
+    }).catch(error=>sendAuthJson(response,error?.statusCode===401?401:503,{error:'Alarm job could not be processed.'}));
+    return;
+  }
   // Public screen assets do not read account state. A slow provider or storage
   // request must not block the HTML and scripts needed to open the app.
   if (!requestUrl.pathname.startsWith("/api/") && ["GET", "HEAD"].includes(request.method)) {
