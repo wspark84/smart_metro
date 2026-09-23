@@ -86,6 +86,16 @@ export async function fetchBusHeadway(binding,{env=process.env,fetchImpl=fetch,n
         } catch (lookupError) {
           entry.until=Date.now()+60_000;
           const apiCode=lookupError?.message?.match(/^TAGO API 오류 \((\d+)\)/)?.[1];
+          const step={'route-list':'노선 번호 검색','route-path':'노선 경유 정류장 확인'}[lookupError?.lookupStage];
+          if(step) {
+            const reason=apiCode==='20' || [401,403].includes(lookupError.status) ? 'API 이용 권한 거부'
+              : apiCode==='22' ? '일일 조회 한도 초과'
+              : lookupError.code==='UPSTREAM_TIMEOUT' || ['TimeoutError','AbortError'].includes(lookupError.name) ? '응답 시간 초과'
+              : lookupError.status ? `HTTP ${Number(lookupError.status)}`
+              : ['Incomplete route metadata','Invalid route metadata','Route metadata limit exceeded'].includes(lookupError.message) ? '응답 목록의 누락 또는 형식 불일치'
+              : apiCode ? `API 오류 ${apiCode}` : '응답 해석 실패';
+            return {...unavailable,message:`TAGO ${step} 단계 실패: ${reason}.`};
+          }
           if(apiCode==='20') return {...unavailable,message:'TAGO 정류소정보 API 이용 권한이 거부되었습니다. 정류소정보 서비스 승인과 서버 인증키를 확인해 주세요.'};
           if(apiCode==='22') return {...unavailable,message:'TAGO 정류소정보 API의 일일 조회 한도를 초과했습니다.'};
           if(apiCode==='30') return {...unavailable,message:'TAGO 정류소정보 API 인증키가 유효하지 않습니다.'};

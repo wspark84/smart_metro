@@ -19,13 +19,14 @@ function sameLocationAndName(source,candidate) {
 }
 
 async function routeRows(operation,params,{env,fetchImpl}) {
+  try {
   const rows=[];
   let total;
   for(let pageNo=1;pageNo<=10;pageNo++) {
     const url=new URL(`https://apis.data.go.kr/1613000/BusRouteInfoInqireService/${operation}`);
     for(const [key,value] of Object.entries({serviceKey:env.TAGO_SERVICE_KEY,_type:'json',numOfRows:100,pageNo,...params})) url.searchParams.set(key,String(value));
     const response=await fetchWithTimeout(url,{}, {fetchImpl,timeoutMs:3000});
-    if(!response.ok) throw new Error('TAGO route lookup failed');
+    if(!response.ok) throw Object.assign(new Error('TAGO route lookup failed'),{status:response.status});
     const body=parseTagoResponse(await response.text());
     const count=Number(body.totalCount),page=Number(body.pageNo),size=Number(body.numOfRows);
     if(!Number.isSafeInteger(count) || count<0 || page!==pageNo || !Number.isSafeInteger(size) || size<1 || (total!==undefined && total!==count)) throw new Error('Incomplete route metadata');
@@ -38,6 +39,10 @@ async function routeRows(operation,params,{env,fetchImpl}) {
     if(rows.length>total || !batch.length) throw new Error('Incomplete route metadata');
   }
   throw new Error('Route metadata limit exceeded');
+  } catch(error) {
+    error.lookupStage=operation==='getRouteNoList' ? 'route-list' : 'route-path';
+    throw error;
+  }
 }
 
 export async function reverseTagoRoute(stop,routeNumber,options) {
@@ -73,7 +78,7 @@ export async function resolveTagoHeadwayBinding(binding,{env,fetchImpl,
     .filter(s=>sameLocationAndName(source[0],s));
   const cities=[...new Set(near.map(s=>s.cityCode).filter(Boolean))];
   if(cities.length!==1 || !number(source[0].stationNumber)) return missing('nearby-stop');
-  // getCrdntPrxmtSttnList does NOT publish nodeno. Obtain it from
+  // nodeno is optional in nearby responses. If absent, enrich it from
   // getSttnNoList, then join by the official city + node identity.
   const direct=near.filter(s=>sameHeadwayStation(source[0],s));
   if(direct.length>1) return missing('numbered-stop');
