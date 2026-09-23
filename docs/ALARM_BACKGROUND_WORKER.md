@@ -48,3 +48,15 @@ To stop background processing, set the control flag to false and deactivate the 
 - Home and alarm planning share the same forecast logic. Estimated rows and notifications explicitly say they are not real-time; actual arrival information supersedes them when available. Cancellations and service end are not guaranteed by headway extrapolation.
 
 `npm test` includes PostgreSQL capability ownership, wrong/replayed/expired tokens, forbidden settings writes, stale revisions, outbox checkpoint ordering, source updates, reminder deduplication, snooze and retry cancellation.
+# TAGO headway fallback for Gyeonggi arrivals
+
+When Gyeonggi route metadata fails, the server can use approved TAGO route
+metadata without changing the user's real-time arrival provider. It resolves
+the regional stop and route from official APIs, then requires matching public
+stop number, normalized name, coordinates within 60 metres, a unique passing
+route number, and compatible destination names when both are supplied.
+Ambiguous or incomplete identities are rejected; TAGO IDs are never inferred.
+The additional identity lookup is bounded to six seconds. Successful profiles
+use the existing per-account daily durable cache; failures retain the existing
+five-minute retry interval. No new environment variable or database migration
+is required. TAGO_SERVICE_KEY must have BusRouteInfoInqireService permission.

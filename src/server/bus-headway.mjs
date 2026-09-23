@@ -2,6 +2,7 @@ import {createHash} from 'node:crypto';
 import {fetchWithTimeout} from './upstream-fetch.mjs';
 import {headwayRange,koreanServiceDate} from '../logic/bus-headway.js';
 import {parseTagoResponse} from './tago-api.mjs';
+import {resolveTagoHeadwayBinding} from './tago-headway-binding.mjs';
 
 const caches = new WeakMap();
 const xml = (text,key) => text.match(new RegExp(`<${key}>([\\s\\S]*?)</${key}>`))?.[1]?.trim() || '';
@@ -40,7 +41,7 @@ export async function fetchBusHeadway(binding,{env=process.env,fetchImpl=fetch,n
   if (!key) return {...unavailable,message:binding.provider === 'tago' ? 'TAGO_SERVICE_KEY 설정이 필요합니다.' : unavailable.message};
   let cache = caches.get(fetchImpl);
   if (!cache) {cache=new Map();caches.set(fetchImpl,cache);}
-  const cacheKey = JSON.stringify([binding.provider,binding.cityCode,binding.routeId,koreanServiceDate(now),createHash('sha256').update(key).digest('hex')]);
+  const cacheKey = JSON.stringify([binding.provider,binding.cityCode,binding.routeId,binding.stationId,binding.stationName,koreanServiceDate(now),createHash('sha256').update(key+'|'+(env.TAGO_SERVICE_KEY || '')).digest('hex')]);
   const hit = cache.get(cacheKey);
   if (hit && hit.until > Date.now()) return structuredClone(await hit.value);
   if (cache.size >= 256) cache.delete(cache.keys().next().value);
@@ -63,6 +64,22 @@ export async function fetchBusHeadway(binding,{env=process.env,fetchImpl=fetch,n
       if (!['weekday','saturday','sunday','holiday','allDays'].some(day=>profile[day])) throw Object.assign(new Error('No interval'),{code:'NO_HEADWAY'});
       return {...profile,status:'ready',fetchedAt:now.toISOString()};
     } catch (error) {
+      if(binding.provider==='gyeonggi' && env.TAGO_SERVICE_KEY) {
+        try {
+          // Bound the additional identity lookup; a slow metadata provider must
+          // not keep the independently loaded real-time arrivals waiting.
+          const deadline=AbortSignal.timeout(6000);
+          const boundedFetch=(url,options={})=>fetchImpl(url,{...options,
+            signal:options.signal ? AbortSignal.any([deadline,options.signal]) : deadline});
+          const tago=await resolveTagoHeadwayBinding(binding,{env,fetchImpl:boundedFetch});
+          if(tago) {
+            const fallback=await fetchBusHeadway(tago,{env,fetchImpl,now});
+            if(fallback?.status==='ready') return {...fallback,matchedProvider:'tago',matchedRouteId:tago.routeId};
+            entry.until=Date.now()+60_000;
+            if(fallback) return fallback;
+          }
+        } catch { /* Keep arrivals usable; do not expose upstream URLs or keys. */ }
+      }
       entry.until=Date.now()+60_000;
       const code = error?.message?.match(/^TAGO API 오류 \((\d+)\)/)?.[1];
       const message = code === '20' || [401,403].includes(error?.status)
