@@ -71,7 +71,8 @@ export async function fetchBusHeadway(binding,{env=process.env,fetchImpl=fetch,n
           const deadline=AbortSignal.timeout(6000);
           const boundedFetch=(url,options={})=>fetchImpl(url,{...options,
             signal:options.signal ? AbortSignal.any([deadline,options.signal]) : deadline});
-          const tago=await resolveTagoHeadwayBinding(binding,{env,fetchImpl:boundedFetch});
+          let mismatch='';
+          const tago=await resolveTagoHeadwayBinding(binding,{env,fetchImpl:boundedFetch,onMismatch:stage=>{mismatch=stage;}});
           if(tago) {
             const fallback=await fetchBusHeadway(tago,{env,fetchImpl,now});
             if(fallback?.status==='ready') return {...fallback,matchedProvider:'tago',matchedRouteId:tago.routeId};
@@ -79,9 +80,15 @@ export async function fetchBusHeadway(binding,{env=process.env,fetchImpl=fetch,n
             if(fallback) return fallback;
           }
           entry.until=Date.now()+60_000;
-          return {...unavailable,message:'경기 배차간격 조회 실패 후 TAGO에서 같은 정류장·노선을 확정하지 못했습니다. 실시간 도착정보는 계속 사용합니다.'};
-        } catch {
+          const reasons={'regional-stop':'경기 정류장 ID 확인','regional-route':'경기 노선 ID 확인','nearby-stop':'TAGO 주변 정류장 위치 대조',
+            'numbered-stop':'TAGO 정류장 번호·ID 대조','tago-route':'TAGO 경유 노선 확인','destination':'노선 종점 대조'};
+          return {...unavailable,message:`TAGO 배차간격 연결 중 ${reasons[mismatch] || '정류장·노선 확인'} 단계에서 일치하는 정보를 찾지 못했습니다.`};
+        } catch (lookupError) {
           entry.until=Date.now()+60_000;
+          const apiCode=lookupError?.message?.match(/^TAGO API 오류 \((\d+)\)/)?.[1];
+          if(apiCode==='20') return {...unavailable,message:'TAGO 정류소정보 API 이용 권한이 거부되었습니다. 정류소정보 서비스 승인과 서버 인증키를 확인해 주세요.'};
+          if(apiCode==='22') return {...unavailable,message:'TAGO 정류소정보 API의 일일 조회 한도를 초과했습니다.'};
+          if(apiCode==='30') return {...unavailable,message:'TAGO 정류소정보 API 인증키가 유효하지 않습니다.'};
           return {...unavailable,message:'TAGO 배차간격 연결을 위한 정류장·노선 조회에 실패했습니다. 잠시 후 다시 확인합니다.'};
         }
       }
