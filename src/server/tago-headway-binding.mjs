@@ -35,7 +35,9 @@ export async function resolveTagoHeadwayBinding(binding,{env,fetchImpl,
   if(cities.length!==1 || !number(source[0].stationNumber)) return missing('nearby-stop');
   // getCrdntPrxmtSttnList does NOT publish nodeno. Obtain it from
   // getSttnNoList, then join by the official city + node identity.
-  const matches=(await numberedStations({serviceKey:env.TAGO_SERVICE_KEY,cityCode:cities[0],
+  const direct=near.filter(s=>sameHeadwayStation(source[0],s));
+  if(direct.length>1) return missing('numbered-stop');
+  const matches=direct.length===1 ? direct : (await numberedStations({serviceKey:env.TAGO_SERVICE_KEY,cityCode:cities[0],
     keyword:number(source[0].stationNumber),fetchImpl,diagnosticLogger:()=>{}}))
     .filter(s=>sameHeadwayStation(source[0],s) && near.some(n=>n.nodeId===s.nodeId && n.cityCode===s.cityCode));
   if(matches.length!==1) return missing('numbered-stop');

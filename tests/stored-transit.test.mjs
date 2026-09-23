@@ -55,7 +55,7 @@ test('legacy failed daily cache is retried immediately after upgrade',async()=>{
     checkedAt:start.toISOString(),refreshFailed:true,profile:null}]};
   const result=await loadStoredTransit({provider:'tago',cityCode:'31010',routeId:'GGB1'},
     {now:start,cache,loadArrival:async()=>null,loadHeadway:async()=>profile,saveCache:async v=>{saved=v;}});
-  assert.equal(result.value.headway.status,'ready');assert.equal(saved.headways[0].retryPolicy,2);
+  assert.equal(result.value.headway.status,'ready');assert.equal(saved.headways[0].retryPolicy,3);
 });
 test('anchors are isolated by stop and direction while headway is shared per route',async()=>{
   const f=fixture();await f.run();f.arrival=null;

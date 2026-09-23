@@ -19,6 +19,10 @@ test('cross-provider match requires exact public number, name and nearby coordin
   for(const change of [{stationNumber:'4414'},{stationName:'반대편'},{posX:'128'},{posY:''},{posY:null}])
     assert.equal(sameHeadwayStation(stop,{...tago,...change}),false);
 });
+test('optional number supplied by live nearby response avoids unreliable number search',async()=>{
+  const result=await resolveTagoHeadwayBinding(binding,{...deps,numberedStations:async()=>{throw new Error('must not query');}});
+  assert.equal(result.routeId,'official-route');
+});
 test('official route and station identities are used without transforming regional IDs',async()=>{
   const result=await resolveTagoHeadwayBinding(binding,{...deps,routes:async input=>{
     assert.equal(input.nodeId,'official-node');assert.equal(input.cityCode,'official-city');return [target];
@@ -30,8 +34,8 @@ test('ambiguous stations, routes, mismatched regional IDs or destinations fail c
     {stations:async()=>[{...stop,stationId:'other'}]},
     {regionalRoutes:async()=>[{...route,routeId:'other'}]},
     {nearby:async()=>[tago,{...tago,nodeId:'other'}],numberedStations:async()=>[tago,{...tago,nodeId:'other'}]},
-    {numberedStations:async()=>[{...tago,nodeId:'other'}]},
-    {numberedStations:async()=>[{...tago,stationNumber:'4414'}]},
+    {nearby:async()=>[{...tago,stationNumber:''}],numberedStations:async()=>[{...tago,nodeId:'other'}]},
+    {nearby:async()=>[{...tago,stationNumber:''}],numberedStations:async()=>[{...tago,stationNumber:'4414'}]},
     {routes:async()=>[target,{...target,routeId:'other'}]},
     {routes:async()=>[{...target,destinationName:'다른종점'}]},
   ]) assert.equal(await resolveTagoHeadwayBinding(binding,{...deps,...change}),null);
