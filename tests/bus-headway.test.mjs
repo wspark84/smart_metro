@@ -68,3 +68,31 @@ test('TAGO permission denial and absent intervals have distinct safe messages',a
     text:async()=>JSON.stringify({response:{header:{resultCode:'00'},body:{items:{item:{routeid:'GGB1'}}}}})})});
   assert.match(empty.message,/유효한 배차간격이 없습니다/);
 });
+
+test('TAGO reads XML errors even on HTTP 403 and distinguishes official error codes',async()=>{
+  for(const [code,pattern] of [[20,/이용 권한/],[22,/한도/],[30,/인증키/],[31,/만료/],[32,/IP/],[12,/주소/]]) {
+    let reads=0;
+    const result=await fetchBusHeadway({provider:'tago',cityCode:'31010',routeId:'test'},
+      {env:{TAGO_SERVICE_KEY:'secret'},fetchImpl:async()=>({ok:false,status:403,text:async()=>{
+        reads++;return `<OpenAPI_ServiceResponse><cmmMsgHeader><returnAuthMsg>secret</returnAuthMsg><returnReasonCode>${code}</returnReasonCode></cmmMsgHeader></OpenAPI_ServiceResponse>`;
+      }})});
+    assert.equal(reads,1);assert.match(result.message,pattern);assert.match(result.message,new RegExp(`TAGO ${code}`));
+    assert.equal(result.message.includes('secret'),false);
+    if(code!==20) assert.doesNotMatch(result.message,/이용 권한/);
+  }
+});
+test('unstructured HTTP denial is not misreported as a TAGO approval failure',async()=>{
+  const result=await fetchBusHeadway({provider:'tago',cityCode:'31010',routeId:'test'},
+    {env:{TAGO_SERVICE_KEY:'secret'},fetchImpl:async()=>({ok:false,status:403,text:async()=>'<html>secret blocked</html>'})});
+  assert.match(result.message,/HTTP 403/);assert.match(result.message,/코드 없음/);
+  assert.doesNotMatch(result.message,/이용 권한|secret/);
+});
+test('JSON gateway errors preserve codes and body read failures never expose credentials',async()=>{
+  const binding={provider:'tago',cityCode:'31010',routeId:'test'};
+  const result=await fetchBusHeadway(binding,{env:{TAGO_SERVICE_KEY:'secret'},fetchImpl:async()=>({ok:false,status:400,
+    text:async()=>JSON.stringify({response:{header:{resultCode:'30',resultMsg:'secret'}}})})});
+  assert.match(result.message,/TAGO 30/);assert.doesNotMatch(result.message,/secret/);
+  const unreadable=await fetchBusHeadway(binding,{env:{TAGO_SERVICE_KEY:'secret'},fetchImpl:async()=>({ok:false,status:403,
+    text:async()=>{throw new Error('secret in upstream URL');}})});
+  assert.doesNotMatch(unreadable.message,/secret|이용 권한/);
+});

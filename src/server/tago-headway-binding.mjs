@@ -1,6 +1,6 @@
 import {searchGyeonggiStations,searchGyeonggiStationRoutes} from './bus-providers.mjs';
 import {searchTagoNearbyStations,searchTagoStationRoutes,searchTagoStations} from './tago-api.mjs';
-import {parseTagoResponse} from './tago-api.mjs';
+import {readTagoResponse} from './tago-api.mjs';
 import {fetchWithTimeout} from './upstream-fetch.mjs';
 
 const number = value => /^\d+$/.test(String(value || '').trim()) ? String(value).trim().replace(/^0+/, '') : '';
@@ -26,8 +26,7 @@ async function routeRows(operation,params,{env,fetchImpl}) {
     const url=new URL(`https://apis.data.go.kr/1613000/BusRouteInfoInqireService/${operation}`);
     for(const [key,value] of Object.entries({serviceKey:env.TAGO_SERVICE_KEY,_type:'json',numOfRows:100,pageNo,...params})) url.searchParams.set(key,String(value));
     const response=await fetchWithTimeout(url,{}, {fetchImpl,timeoutMs:3000});
-    if(!response.ok) throw Object.assign(new Error('TAGO route lookup failed'),{status:response.status});
-    const body=parseTagoResponse(await response.text());
+    const body=await readTagoResponse(response);
     const count=Number(body.totalCount),page=Number(body.pageNo),size=Number(body.numOfRows);
     if(!Number.isSafeInteger(count) || count<0 || page!==pageNo || !Number.isSafeInteger(size) || size<1 || (total!==undefined && total!==count)) throw new Error('Incomplete route metadata');
     total=count;

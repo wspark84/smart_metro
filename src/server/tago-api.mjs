@@ -44,7 +44,39 @@ const ERROR_MESSAGES = {
 
 function apiError(code) {
   const numericCode = /^\d{1,3}$/.test(String(code).trim()) ? Number(code) : null;
-  return Object.assign(new Error(`TAGO API 오류${numericCode === null ? "" : ` (${numericCode})`}: ${ERROR_MESSAGES[numericCode] || "응답을 확인할 수 없습니다."}`), { retryable: [1, 4, 99].includes(numericCode) });
+  return Object.assign(new Error(`TAGO API 오류${numericCode === null ? "" : ` (${numericCode})`}: ${ERROR_MESSAGES[numericCode] || "응답을 확인할 수 없습니다."}`), { apiCode:numericCode, retryable: [1, 4, 99].includes(numericCode) });
+}
+
+// The gateway returns its XML error body even on non-2xx HTTP responses.
+// Preserve only numeric status/codes, never its raw body or a URL containing keys.
+export async function readTagoResponse(response) {
+  let text;
+  try { text=await response.text(); }
+  catch { throw Object.assign(new Error('TAGO 응답 본문을 읽지 못했습니다.'),{code:'TAGO_BODY_READ_FAILED'}); }
+  const status=Number.isInteger(response.status) && response.status>=100 && response.status<=599 ? response.status : null;
+  let body;
+  try { body=parseTagoResponse(text); }
+  catch(error) {
+    if(response.ok || (Number.isInteger(error.apiCode) && error.apiCode>0)) {
+      error.status=status;
+      throw error;
+    }
+  }
+  if(!response.ok) throw Object.assign(new Error('TAGO HTTP request failed.'),{status});
+  return body;
+}
+
+export function describeTagoError(error) {
+  const code=error?.apiCode;
+  if(Number.isInteger(code) && code>0 && code<=999) {
+    const reasons={1:'제공기관 서비스 오류',4:'제공기관 통신 오류',12:'API 서비스 주소 또는 제공 상태 확인 필요',
+      20:'API 이용 권한 거부',22:'일일 조회 한도 초과',30:'등록되지 않은 인증키',31:'인증키 활용기간 만료',32:'등록되지 않은 서버 IP',99:'제공기관 또는 요청값 오류'};
+    return `${reasons[code] || '제공기관 오류'} (TAGO ${code}${error.status ? `, HTTP ${error.status}` : ''})`;
+  }
+  if(error?.code==='TAGO_BODY_READ_FAILED') return 'TAGO 응답 본문 읽기 실패';
+  if(Number.isInteger(error?.status) && error.status>=100 && error.status<=599)
+    return `HTTP ${error.status} 응답 (TAGO 오류 코드 없음, 원인 미확인)`;
+  return null;
 }
 
 function xmlValue(text, tag) {

@@ -1,7 +1,7 @@
 import {createHash} from 'node:crypto';
 import {fetchWithTimeout} from './upstream-fetch.mjs';
 import {headwayRange,koreanServiceDate} from '../logic/bus-headway.js';
-import {parseTagoResponse} from './tago-api.mjs';
+import {parseTagoResponse,readTagoResponse,describeTagoError} from './tago-api.mjs';
 import {resolveTagoHeadwayBinding} from './tago-headway-binding.mjs';
 
 const caches = new WeakMap();
@@ -19,7 +19,9 @@ export function normalizeGyeonggiHeadway(payload, routeId) {
 }
 
 export function normalizeTagoHeadway(text, routeId) {
-  const body = parseTagoResponse(text);
+  return tagoHeadwayFromBody(parseTagoResponse(text),routeId);
+}
+function tagoHeadwayFromBody(body,routeId) {
   const row = rows(body.items?.item).find(row => String(row.routeid) === String(routeId));
   if (!row) throw new Error('Route metadata mismatch');
   return {source:'TAGO 버스노선정보',weekday:headwayRange(row.intervaltime),
@@ -57,9 +59,9 @@ export async function fetchBusHeadway(binding,{env=process.env,fetchImpl=fetch,n
       if (binding.provider === 'gyeonggi') url.searchParams.set('format','json');
       if (binding.provider === 'tago') {url.searchParams.set('_type','json');url.searchParams.set('cityCode',binding.cityCode || '');}
       const response = await fetchWithTimeout(url,{}, {fetchImpl,timeoutMs:4000});
-      if (!response.ok) throw Object.assign(new Error('Route metadata request failed'),{status:response.status});
+      if (!response.ok && binding.provider !== 'tago') throw Object.assign(new Error('Route metadata request failed'),{status:response.status});
       const profile = binding.provider === 'gyeonggi' ? normalizeGyeonggiHeadway(await response.json(),binding.routeId)
-        : binding.provider === 'tago' ? normalizeTagoHeadway(await response.text(),binding.routeId)
+        : binding.provider === 'tago' ? tagoHeadwayFromBody(await readTagoResponse(response),binding.routeId)
         : normalizeSeoulHeadway(await response.text(),binding.routeId);
       if (!['weekday','saturday','sunday','holiday','allDays'].some(day=>profile[day])) throw Object.assign(new Error('No interval'),{code:'NO_HEADWAY'});
       return {...profile,status:'ready',fetchedAt:now.toISOString()};
@@ -88,12 +90,9 @@ export async function fetchBusHeadway(binding,{env=process.env,fetchImpl=fetch,n
           const apiCode=lookupError?.message?.match(/^TAGO API 오류 \((\d+)\)/)?.[1];
           const step={'route-list':'노선 번호 검색','route-path':'노선 경유 정류장 확인'}[lookupError?.lookupStage];
           if(step) {
-            const reason=apiCode==='20' || [401,403].includes(lookupError.status) ? 'API 이용 권한 거부'
-              : apiCode==='22' ? '일일 조회 한도 초과'
-              : lookupError.code==='UPSTREAM_TIMEOUT' || ['TimeoutError','AbortError'].includes(lookupError.name) ? '응답 시간 초과'
-              : lookupError.status ? `HTTP ${Number(lookupError.status)}`
+            const reason=describeTagoError(lookupError) || (lookupError.code==='UPSTREAM_TIMEOUT' || ['TimeoutError','AbortError'].includes(lookupError.name) ? '응답 시간 초과'
               : ['Incomplete route metadata','Invalid route metadata','Route metadata limit exceeded'].includes(lookupError.message) ? '응답 목록의 누락 또는 형식 불일치'
-              : apiCode ? `API 오류 ${apiCode}` : '응답 해석 실패';
+              : '응답 해석 실패');
             return {...unavailable,message:`TAGO ${step} 단계 실패: ${reason}.`};
           }
           if(apiCode==='20') return {...unavailable,message:'TAGO 정류소정보 API 이용 권한이 거부되었습니다. 정류소정보 서비스 승인과 서버 인증키를 확인해 주세요.'};
@@ -103,6 +102,10 @@ export async function fetchBusHeadway(binding,{env=process.env,fetchImpl=fetch,n
         }
       }
       entry.until=Date.now()+60_000;
+      if(binding.provider==='tago') {
+        const detail=describeTagoError(error);
+        if(detail) return {...unavailable,message:`TAGO 배차간격 조회 실패: ${detail}.`};
+      }
       const code = error?.message?.match(/^TAGO API 오류 \((\d+)\)/)?.[1];
       const message = code === '20' || [401,403].includes(error?.status)
         ? '버스노선정보 API 이용 권한을 확인해 주세요. 승인 후 최대 5분 간격으로 다시 확인합니다.'

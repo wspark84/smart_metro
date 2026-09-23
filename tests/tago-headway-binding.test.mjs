@@ -8,6 +8,16 @@ const route={routeId:'regional-route',routeNumber:'1',destinationName:'종점'};
 const target={routeId:'official-route',routeNumber:'1',destinationName:'종점'};
 const binding={provider:'gyeonggi',stationId:stop.stationId,stationName:stop.stationName,routeId:route.routeId};
 const deps={env:{},stations:async()=>[stop],regionalRoutes:async()=>[route],nearby:async()=>[tago],numberedStations:async()=>[tago],routes:async()=>[target]};
+test('reverse route lookup preserves official gateway errors instead of discarding HTTP error bodies',async()=>{
+  let reads=0;
+  await assert.rejects(reverseTagoRoute(tago,'1',{env:{TAGO_SERVICE_KEY:'secret'},fetchImpl:async()=>({ok:false,status:403,text:async()=>{
+    reads++;return '<OpenAPI_ServiceResponse><cmmMsgHeader><returnReasonCode>32</returnReasonCode><returnAuthMsg>secret</returnAuthMsg></cmmMsgHeader></OpenAPI_ServiceResponse>';
+  }})}),error=>{
+    assert.equal(error.apiCode,32);assert.equal(error.status,403);assert.equal(error.lookupStage,'route-list');
+    assert.doesNotMatch(error.message,/secret/);return true;
+  });
+  assert.equal(reads,1);
+});
 test('empty stop route index is resolved from route list and exact official path node',async()=>{
   const result=await resolveTagoHeadwayBinding(binding,{...deps,routes:async()=>[],reverseRoutes:async(s,n)=>{
     assert.equal(s.nodeId,'official-node');assert.equal(n,'1');return [target];}});
