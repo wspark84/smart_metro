@@ -2280,8 +2280,8 @@ async function refreshVisibleTransit() {
     const payload = await fetchLiveArrivals(binding);
     if (!isAuthenticated() || authMeta.user.id !== userId || JSON.stringify(getLiveBinding()) !== key) return;
     state.live.snapshot = payload;
-    state.live.status = "ready";
-    state.live.lastError = "";
+    state.live.status = payload.liveStatus === 'unavailable' ? 'error' : 'ready';
+    state.live.lastError = payload.liveStatus === 'unavailable' ? '실시간 정보 없음 · 저장한 자료로 예상합니다.' : '';
     state.live.lastSyncedAt = payload.fetchedAt;
     const age = Date.now() - Date.parse(state.commute.transitJourney?.fetchedAt || "");
     if (state.commute.transitJourney?.boardingConfirmed && age > 5 * 60_000 && commuteEstimateMeta.status !== "loading") {
@@ -2508,6 +2508,12 @@ function getDashboardModel() {
   if (isLiveConfigured(state) && state.live.routeNumber) {
     const key = JSON.stringify([authMeta.user?.id,getLiveBinding()]);
     if (planningObservation?.key !== key) planningObservation = {key,snapshot:null,gap:null,gapAt:0};
+    const savedSnapshot = state.live.snapshot;
+    if (savedSnapshot?.headway?.status === 'ready') planningObservation.headway = savedSnapshot.headway;
+    if (savedSnapshot?.lastObservation && (!planningObservation.snapshot ||
+      Date.parse(savedSnapshot.lastObservation.fetchedAt) > Date.parse(planningObservation.snapshot.fetchedAt))) {
+      planningObservation.snapshot = savedSnapshot.lastObservation;
+    }
     if (liveSnapshot && arrivalsMin.length && liveSnapshot.cacheStatus !== "stale-fallback") {
       planningObservation.snapshot = liveSnapshot;
       if (arrivalsMin.length >= 2) {
@@ -2515,7 +2521,7 @@ function getDashboardModel() {
         planningObservation.gapAt = Date.parse(liveSnapshot.fetchedAt);
       }
     }
-    const headwayInfo = selectBusHeadway(planningObservation.snapshot?.headway,now,getEffectiveHolidayDates());
+    const headwayInfo = selectBusHeadway(planningObservation.headway || planningObservation.snapshot?.headway,now,getEffectiveHolidayDates());
     homePlan = buildBoardingPlan({now,requiredArrivalTime:state.user.requiredArrivalTime,
       route:{...resolveJourneyDuration(state,now),etaRiskBufferMin:liveEtaGuard.recommendedRiskBufferMin},
       arrivalsMin:liveSnapshot?.cacheStatus === "stale-fallback" ? [] : arrivalsMin,
@@ -5047,7 +5053,7 @@ function renderHomeTimetable(model, lineLabel, direction) {
         const late = known && item.deltaMinutes < 0;
         const cut = known && model.risk.lastChanceConfirmed && item.index === model.risk.targetResult.index;
         return `<tr class="${known ? late || !item.catchable ? "is-late" : "is-ontime" : "is-unknown"} ${cut ? "is-cut" : ""}">
-          <td class="timetable-time">${escapeHtml(formatClock(addMinutes(model.now, item.arrivalMinutes)))}<small style="display:block;font-size:11px;font-weight:400">${item.estimated ? "배차 예상" : "실시간"}</small></td>
+          <td class="timetable-time">${escapeHtml(formatClock(addMinutes(model.now, item.arrivalMinutes)))}<small style="display:block;font-size:11px;font-weight:400">${item.estimated ? "배차간격 기준 예상 · 실시간 아님" : "실시간"}</small></td>
           <td class="timetable-line"><strong>${escapeHtml(lineLabel || "선택한 노선")}</strong><span>${escapeHtml(direction || model.stop.name)}</span></td>
           <td class="timetable-arrival">${known ? escapeHtml(formatClock(item.arriveWorkAt)) : "—"}</td>
           <td class="timetable-verdict">${known && !item.catchable ? "탑승 어려움" : known ? late ? `지각${item.estimated ? " 예상" : ""}<br><small>+${Math.abs(item.deltaMinutes)}분</small>` : item.deltaMinutes > 0 ? `${item.deltaMinutes}분 여유${item.estimated ? " 예상" : ""}` : item.estimated ? "정시 예상" : "정시" : "미확인"}</td>
@@ -5125,6 +5131,8 @@ function renderHome(screen, model) {
       <p class="home-verdict">${escapeHtml(verdict)}</p>
       ${plan?.latestBoardAt ? `<p class="home-evidence-note">목표 ${escapeHtml(state.user.requiredArrivalTime)} · 탑승 마감 기준 ${escapeHtml(formatClock(plan.latestBoardAt))} (경로 소요시간 기준, 해당 시각의 운행을 보장하지 않음)</p>` : ""}
       ${plan?.interval ? `<p class="home-evidence-note">${escapeHtml(plan.intervalSource)} ${Math.round(plan.interval*10)/10}분으로 이후 차량을 추정합니다. 실시간·예상 시간을 구분해 확인하세요.</p>` : ""}
+      ${plan?.hasEstimates && plan.anchorCheckedAt ? `<p class="home-evidence-note">${escapeHtml(formatClock(new Date(plan.anchorCheckedAt)))}에 확인한 도착정보 기준 · 운행 종료·결행은 예상에 반영되지 않을 수 있습니다.</p>` : ""}
+      ${plan?.headwayInfo?.checkedAt ? `<p class="home-evidence-note">배차간격 하루 1회 확인 · 최근 확인 ${escapeHtml(new Date(plan.headwayInfo.checkedAt).toLocaleString('ko-KR',{timeZone:'Asia/Seoul'}))}${plan.headwayInfo.stale ? ' · 오늘 조회 실패로 이전에 저장한 간격 사용' : ''}</p>` : ""}
       ${plan && !plan.interval ? `<p class="home-evidence-note">공식 배차간격을 확인하지 못해 이후 차량의 시간을 추정하지 않습니다. 조회된 실시간 도착정보만 표시합니다.</p>` : ""}
       ${hasPrediction && !confirmed && !target.estimated ? `<p class="home-evidence-note">조회된 교통편 기준이며, 마지막 탑승편으로 확정되지 않았습니다.</p>` : ""}
       <p class="field-help" role="status">${plan?.headwayInfo ? `배차간격 자동 조회 · ${escapeHtml(plan.headwayInfo.text)} · ${escapeHtml(plan.headwayInfo.source)}. ${plan.headwayInfo.min !== plan.headwayInfo.max ? `예상 계산에는 최대 간격 ${plan.headwayInfo.max}분을 사용합니다. ` : ""}실제 운행 시각은 실시간 정보로 갱신합니다.` : "배차간격은 선택한 노선의 공식 API에서 자동으로 조회합니다. 직접 입력할 필요가 없습니다."}</p>
@@ -6600,12 +6608,12 @@ app.addEventListener("click", (event) => {
     render();
     fetchLiveArrivals(getLiveBinding())
       .then((payload) => {
-        state.live.status = "ready";
+        state.live.status = payload.liveStatus === 'unavailable' ? 'error' : 'ready';
         state.live.snapshot = payload;
         state.live.stationName = payload.stopName || state.live.stationName;
         state.live.lastSyncedAt = payload.servedAt || payload.fetchedAt || new Date().toISOString();
         state.live.lastError =
-          payload.cacheStatus === "stale-fallback"
+          payload.liveStatus === 'unavailable' ? '실시간 정보 없음 · 저장한 자료로 예상합니다.' : payload.cacheStatus === "stale-fallback"
             ? payload.fallbackError || "최근 실시간 조회에 실패해 마지막으로 확인한 정보를 표시합니다."
             : "";
         syncLiveBindingState();
@@ -6616,7 +6624,7 @@ app.addEventListener("click", (event) => {
               ? "cache hit"
               : "fresh live";
         pushHistory(
-          "실시간 도착정보 갱신 완료",
+          payload.liveStatus === 'unavailable' ? '실시간 정보 없음 · 예상 자료 확인' : "실시간 도착정보 갱신 완료",
           `${payload.provider} 도착 예정: ${payload.arrivalsMin.join(", ")}분 (${modeLabel}).`,
         );
         void refreshBusAccuracySummary();

@@ -1,6 +1,6 @@
 import {createHash} from 'node:crypto';
 import {fetchWithTimeout} from './upstream-fetch.mjs';
-import {headwayRange} from '../logic/bus-headway.js';
+import {headwayRange,koreanServiceDate} from '../logic/bus-headway.js';
 import {parseTagoResponse} from './tago-api.mjs';
 
 const caches = new WeakMap();
@@ -33,18 +33,18 @@ export function normalizeSeoulHeadway(text, routeId) {
   return {source:'서울 버스노선정보',allDays:headwayRange(xml(block,'term'))};
 }
 
-export async function fetchBusHeadway(binding,{env=process.env,fetchImpl=fetch}={}) {
+export async function fetchBusHeadway(binding,{env=process.env,fetchImpl=fetch,now=new Date()}={}) {
   if (!['seoul','gyeonggi','tago'].includes(binding.provider) || !binding.routeId) return null;
   const key = env[binding.provider === 'seoul' ? 'SEOUL_OPEN_API_KEY' : binding.provider === 'gyeonggi' ? 'GYEONGGI_SERVICE_KEY' : 'TAGO_SERVICE_KEY'];
   const unavailable = {status:'unavailable',message:'공식 배차간격을 확인하지 못했습니다. 노선정보 API 권한 또는 제공 여부를 확인해야 합니다.'};
   if (!key) return unavailable;
   let cache = caches.get(fetchImpl);
   if (!cache) {cache=new Map();caches.set(fetchImpl,cache);}
-  const cacheKey = JSON.stringify([binding.provider,binding.cityCode,binding.routeId,createHash('sha256').update(key).digest('hex')]);
+  const cacheKey = JSON.stringify([binding.provider,binding.cityCode,binding.routeId,koreanServiceDate(now),createHash('sha256').update(key).digest('hex')]);
   const hit = cache.get(cacheKey);
   if (hit && hit.until > Date.now()) return structuredClone(await hit.value);
   if (cache.size >= 256) cache.delete(cache.keys().next().value);
-  const entry = {until:Date.now()+6*60*60*1000};
+  const entry = {until:Date.now()+24*60*60*1000};
   entry.value = (async()=>{
     try {
       const url = new URL(binding.provider === 'gyeonggi'
@@ -61,7 +61,7 @@ export async function fetchBusHeadway(binding,{env=process.env,fetchImpl=fetch}=
         : binding.provider === 'tago' ? normalizeTagoHeadway(await response.text(),binding.routeId)
         : normalizeSeoulHeadway(await response.text(),binding.routeId);
       if (!['weekday','saturday','sunday','holiday','allDays'].some(day=>profile[day])) throw new Error('No interval');
-      return {...profile,status:'ready',fetchedAt:new Date().toISOString()};
+      return {...profile,status:'ready',fetchedAt:now.toISOString()};
     } catch {
       entry.until=Date.now()+60_000;
       return unavailable; // Do not leak request URLs or keys, or fail real-time arrivals.

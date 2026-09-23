@@ -41,6 +41,8 @@ import { readDispatchExecutionState, writeDispatchExecutionState } from "./src/s
 import { buildAlarmPlan } from "./src/server/alarm-plan.mjs";
 import { refreshAlarmArrivals, isAlarmRefreshWindow } from "./src/server/alarm-arrival-refresh.mjs";
 import { fetchLiveArrival, fetchTagoCities, getBusApiConfig, searchLiveStationRoutes, searchLiveStations } from "./src/server/bus-providers.mjs";
+import { fetchBusHeadway } from "./src/server/bus-headway.mjs";
+import { loadStoredTransit } from "./src/server/stored-transit.mjs";
 import { TRANSIT_LOOKUP_PATHS, transitLookup } from "./src/server/transit-lookups.mjs";
 import { createDispatchQueueState, reconcileDispatchQueue } from "./src/server/dispatch-engine.mjs";
 import { readDispatchQueueState, writeDispatchQueueState } from "./src/server/dispatch-queue-store.mjs";
@@ -341,6 +343,20 @@ let busAccuracyRuntimeState = createBusAccuracyRuntimeState();
 let dispatchQueueState = createDispatchQueueState();
 let dispatchExecutionState = createDispatchExecutionState();
 let pushGatewayState = createPushGatewayState();
+
+async function loadSavedTransit(binding, now = new Date()) {
+  const files = getActiveFiles();
+  return loadStoredTransit(binding, {
+    now, cache:alarmRuntimeState.transitCache,
+    loadArrival:() => loadWithCache({key:['live-arrivals',binding],ttlMs:LIVE_ARRIVAL_CACHE_TTL_MS,
+      allowStaleOnError:false,loader:() => fetchLiveArrival(binding)}),
+    loadHeadway:() => fetchBusHeadway(binding,{now}),
+    saveCache:async transitCache => {
+      alarmRuntimeState = {...alarmRuntimeState,transitCache};
+      await writeAlarmRuntimeState(alarmRuntimeState,files.alarmRuntime);
+    },
+  });
+}
 
 async function activateUserContext(user) {
   const safeUser = user && typeof user === "object" ? user : { id: user };
@@ -976,8 +992,7 @@ async function tickAlarmRuntime(now = new Date()) {
       ['provider', 'stationId', 'stationName', 'arsId', 'routeId', 'order', 'cityCode', 'nodeId', 'routeNumber']
         .map((key) => [key, live[key] || '']),
     );
-    return loadWithCache({key:['alarm-arrivals', binding], ttlMs:LIVE_ARRIVAL_CACHE_TTL_MS,
-      loader:() => fetchLiveArrival(binding)});
+    return loadSavedTransit(binding);
   });
   now = new Date();
   const result = reconcileAlarmRuntime(state, alarmRuntimeState, now, {
@@ -2637,11 +2652,7 @@ async function handleRequest(request, response) {
         stopKey: requestUrl.searchParams.get("stopKey") || "",
       };
       arrivalStage = "provider";
-      const result = await loadWithCache({
-        key: ["live-arrivals", binding],
-        ttlMs: LIVE_ARRIVAL_CACHE_TTL_MS,
-        loader: () => fetchLiveArrival(binding),
-      });
+      const result = await loadSavedTransit(binding);
       const payload = result.value;
       const effectiveRouteNumber = String(payload.lineNumber || binding.routeNumber || "").trim();
       const effectiveStopName = String(payload.stopName || "").trim();
@@ -2657,7 +2668,7 @@ async function handleRequest(request, response) {
       });
 
       arrivalStage = "observation";
-      if (liveRequestAuth?.user && result.cacheStatus !== "stale-fallback") {
+      if (liveRequestAuth?.user && result.cacheStatus !== "stale-fallback" && payload.liveStatus !== "unavailable") {
         await persistForecastObservation({
           provider: payload.provider || binding.provider,
           routeNumber: effectiveRouteNumber,
@@ -2678,7 +2689,7 @@ async function handleRequest(request, response) {
         JSON.stringify({
           ...payload,
           source:
-            result.cacheStatus === "stale-fallback"
+            payload.liveStatus === "unavailable" ? "stored-planning" : result.cacheStatus === "stale-fallback"
               ? "fallback-cache"
               : result.cacheStatus === "cache-hit"
                 ? "cache"

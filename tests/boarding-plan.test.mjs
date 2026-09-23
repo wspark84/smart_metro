@@ -91,6 +91,17 @@ test('server remembers a recent anchor through a short provider outage but label
   assert.equal(after.plan.nextTrigger.lastChanceConfirmed,false);
 });
 
+test('server reconstructs estimates from durable observation without prior process memory',()=>{
+  const at=new Date('2026-09-23T09:00:00+09:00');
+  const s=alarmState(at,[]);
+  s.live.snapshot.liveStatus='unavailable';
+  s.live.snapshot.lastObservation={fetchedAt:now.toISOString(),arrivalsMin:[2,9],lineNumber:'1'};
+  const p=buildAlarmPlan(s,at);
+  assert.equal(formatClock(new Date(p.departureAt)),'09:14');
+  assert.ok(p.allTriggers.every(t=>t.source==='headway-estimate'));
+  assert.match(p.allTriggers[0].message,/실시간 아님/);
+});
+
 test('push and spoken alerts retain departure wording, and obsolete queued alerts are cancelled',()=>{
   const at=new Date('2026-09-23T09:04:00+09:00');
   const first=reconcileAlarmRuntime(alarmState(at,[5,15]),undefined,at);
@@ -155,13 +166,16 @@ test('no headway or no anchor never invents bus departures',()=>{
   assert.equal(build({arrivalsMin:[],snapshot:null,officialHeadwayMin:10}).rows.length,0);
 });
 test('stale anchor, unknown journey and past target disable extrapolation',()=>{
-  assert.equal(build({arrivalsMin:[],now:new Date(now.getTime()+31*60000)}).rows.length,0);
+  assert.equal(build({arrivalsMin:[],now:new Date(now.getTime()+24*60*60000)}).rows.length,0);
+  assert.ok(build({arrivalsMin:[],now:new Date(now.getTime()+31*60000)}).rows.every(row=>row.estimated));
   assert.equal(build({route:{...route,durationAvailable:false}}).hasEstimates,false);
   assert.equal(build({requiredArrivalTime:'07:00'}).hasEstimates,false);
 });
 test('invalid intervals are rejected and horizon stays bounded',()=>{
   for(const v of ['',null,0,-1,1,181,Infinity,'abc'])assert.equal(validHeadway(v),null);
-  assert.equal(build({requiredArrivalTime:'23:59',officialHeadwayMin:2}).hasEstimates,false);
+  const plan=build({requiredArrivalTime:'23:59',officialHeadwayMin:2});
+  assert.equal(plan.hasEstimates,true);
+  assert.ok(plan.rows.length<=724);
 });
 
 test('planning headways survive both persistence formats',()=>{
@@ -244,5 +258,5 @@ test('invalid input never sends a save; estimated rows show explicit sources and
   assert.equal(writes,0);assert.equal(v.run('homeTripSave.status'),'error');
   v.context.plan=build({officialHeadwayMin:10});v.context.clock=now;
   const html=v.run('renderHomeTimetable({homePlan:plan,risk:plan.risk,now:clock,stop:{name:"정류장"}},"1번","")');
-  assert.match(html,/57분 여유/);assert.match(html,/배차 예상/);assert.match(html,/실시간/);
+  assert.match(html,/57분 여유/);assert.match(html,/배차간격 기준 예상 · 실시간 아님/);assert.match(html,/실시간/);
 });

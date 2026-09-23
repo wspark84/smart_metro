@@ -301,12 +301,13 @@ function buildDepartureAlarmPlan(state, today, options) {
   const current = state.live.snapshot;
   const matches = current && (!current.lineNumber || String(current.lineNumber) === String(state.live.routeNumber));
   const prior = options.planningObservation?.binding === binding ? options.planningObservation : null;
-  const snapshot = matches && current.cacheStatus !== 'stale-fallback' ? current : prior?.snapshot;
-  const arrivalsMin = matches && current.cacheStatus !== 'stale-fallback' ? projectLiveArrivals(current,today) : [];
+  const arrivalsMin = matches && current.cacheStatus !== 'stale-fallback' && current.liveStatus !== 'unavailable' ? projectLiveArrivals(current,today) : [];
+  const snapshot = arrivalsMin.length ? current : matches && current.lastObservation ? current.lastObservation : prior?.snapshot;
+  const headway = matches && current.headway?.status === 'ready' ? current.headway : prior?.headway || snapshot?.headway;
   const gap = arrivalsMin.length >= 2 ? arrivalsMin[1]-arrivalsMin[0] : prior?.gap;
   const gapAt = arrivalsMin.length >= 2 ? Date.parse(current.fetchedAt) : prior?.gapAt;
   const guard = buildAccuracyLiveEtaGuard(options.accuracyRuntime);
-  const headwayInfo = selectBusHeadway(snapshot?.headway,today,getHolidayDates(state));
+  const headwayInfo = selectBusHeadway(headway,today,getHolidayDates(state));
   const boarding = buildBoardingPlan({now:today,requiredArrivalTime:state.user.requiredArrivalTime,
     route:{...resolveJourneyDuration(state,today),etaRiskBufferMin:guard.recommendedRiskBufferMin},
     arrivalsMin,snapshot,officialHeadwayMin:headwayInfo?.minutes,headwayInfo,
@@ -341,7 +342,7 @@ function buildDepartureAlarmPlan(state, today, options) {
   const triggers = allTriggers.filter(t=>Date.parse(t.triggerAt)>=today.getTime());
   return {generatedAt:today.toISOString(),dateKey:dateOnlyKey(today),todayStatus:scheduleState,
     mode:'departure-deadline',departureAt:valid ? departureAt : null,
-    planningObservation:{binding,snapshot,gap,gapAt},
+    planningObservation:{binding,snapshot,headway,gap,gapAt},
     stop:{id:stop.id,name:state.live.stationName || stop.name,stopCode:stop.stopCode},
     route:{id:line.id,number:line.number,label:line.label,destination:line.destination},
     window:{startAt:allTriggers[0]?.triggerAt || goalAt.toISOString(),endAt:departureAt || goalAt.toISOString(),repeatIntervalMin:null},

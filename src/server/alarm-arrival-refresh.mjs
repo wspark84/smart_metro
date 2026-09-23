@@ -31,8 +31,9 @@ export async function refreshAlarmArrivals(state, now, loadArrival) {
       String(state.live.snapshot?.lineNumber) === String(state.live.routeNumber)) return state;
   try {
     const result = await loadArrival(state.live);
-    return {...state, live:{...state.live, snapshot:{...result.value, fetchedAt:result.fetchedAt},
-      status:'ready', lastSyncedAt:result.fetchedAt, lastError:''}};
+    return {...state, live:{...state.live, snapshot:{...result.value, fetchedAt:result.fetchedAt,cacheStatus:result.cacheStatus},
+      status:result.value.liveStatus === 'unavailable' ? 'error' : 'ready', lastSyncedAt:result.fetchedAt,
+      lastError:result.value.liveStatus === 'unavailable' ? '실시간 정보 없음 · 배차간격 기준 예상 사용' : ''}};
   } catch (error) {
     return {...state, live:{...state.live, snapshot:null, status:'error',
       lastError:error instanceof Error ? error.message : '실시간 버스 도착정보 조회에 실패했습니다.'}};

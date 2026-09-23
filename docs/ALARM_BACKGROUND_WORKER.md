@@ -31,11 +31,19 @@ To stop background processing, set the control flag to false and deactivate the 
 - A job can read only its user's application documents. Writes are restricted to alarm/runtime/dispatch documents and device-token invalidation, not trip settings.
 - Existing document revisions remain enforced. Outbox and consumed stages are checkpointed before external push delivery.
 - Foreground requests become reads when the scheduler is enabled, avoiding duplicate foreground/background execution.
-- Estimates remain labeled estimates. A recent anchor may be retained for 30 minutes; journey validation expires after 15 minutes unless refreshed successfully.
+- Estimates remain labeled estimates. Bus anchors with official headways remain usable only on the same Korean calendar date; observed subway gaps retain the 30-minute limit. Journey validation expires after 15 minutes unless refreshed successfully.
 - Supabase schedules up to 20 eligible accounts per minute, oldest scheduled first. This is an initial capacity limit, not a general-scale scheduler; increase capacity/shard and load-test before broader launch.
 - Minute-level scheduling and network/provider latency mean exact second-level delivery is not guaranteed.
 - Physical-device push permission, valid subscription/token, installed-app requirements, and real receipt must be verified separately. A passing server job is not proof of a received phone notification.
 
 ## Tests
+
+### Durable bus planning cache
+
+- The existing account-owned `alarm-runtime.transitCache` stores up to 32 route headway profiles and 32 stop/route/direction observations; no new database permission is required.
+- The first app or worker lookup each Korean calendar day checks official headway metadata. Subsequent lookups use the saved profile, including after process restart or deployment. Changed values update the change timestamp; unchanged values retain it.
+- A failed daily metadata check retains the previous profile, labels it stale, and does not retry on every real-time poll that day.
+- Real-time failures and empty replies do not erase the last actual observation. Forecasts add official intervals to that observation, never refresh its timestamp, and never cross into a new date. No observation means no invented forecast.
+- Home and alarm planning share the same forecast logic. Estimated rows and notifications explicitly say they are not real-time; actual arrival information supersedes them when available. Cancellations and service end are not guaranteed by headway extrapolation.
 
 `npm test` includes PostgreSQL capability ownership, wrong/replayed/expired tokens, forbidden settings writes, stale revisions, outbox checkpoint ordering, source updates, reminder deduplication, snooze and retry cancellation.

@@ -1,5 +1,4 @@
 import { fetchWithTimeout } from "./upstream-fetch.mjs";
-import { fetchBusHeadway } from "./bus-headway.mjs";
 import { fetchSubwayArrival, fetchSubwayRows, searchSubwayStations, subwayDirections } from "./subway-providers.mjs";
 import { stationSearchQueries, rankStationCandidates } from "../logic/station-search.js";
 import { normalizeGyeonggiCity } from "../logic/gyeonggi-cities.js";
@@ -612,11 +611,6 @@ export function getBusApiConfig() {
 }
 
 export async function fetchLiveArrival(binding) {
-  const [arrival,headway] = await Promise.all([fetchLiveArrivalOnly(binding),fetchBusHeadway(binding)]);
-  return {...arrival,headway};
-}
-
-async function fetchLiveArrivalOnly(binding) {
   if (binding.provider === "subway") return fetchSubwayArrival(binding);
   if (binding.provider === "seoul") {
     return {
