@@ -13,6 +13,7 @@ import { buildEscalationTimeline, getNotificationSpec } from "../logic/notificat
 import { resolveJourneyDuration } from "../logic/transit-journey.js";
 import { transitQueryKey, transitQueryForState } from "../logic/transit-journey.js";
 import { buildBoardingPlan, buildDepartureReminder, departurePlanningEnabled, DEPARTURE_REMINDER_MINUTES } from "../logic/boarding-plan.js";
+import { selectBusHeadway } from "../logic/bus-headway.js";
 
 const MINUTE_MS = 60_000;
 
@@ -305,10 +306,11 @@ function buildDepartureAlarmPlan(state, today, options) {
   const gap = arrivalsMin.length >= 2 ? arrivalsMin[1]-arrivalsMin[0] : prior?.gap;
   const gapAt = arrivalsMin.length >= 2 ? Date.parse(current.fetchedAt) : prior?.gapAt;
   const guard = buildAccuracyLiveEtaGuard(options.accuracyRuntime);
+  const headwayInfo = selectBusHeadway(snapshot?.headway,today,getHolidayDates(state));
   const boarding = buildBoardingPlan({now:today,requiredArrivalTime:state.user.requiredArrivalTime,
     route:{...resolveJourneyDuration(state,today),etaRiskBufferMin:guard.recommendedRiskBufferMin},
-    arrivalsMin,snapshot,headwayMin:state.commute.planningHeadwayMin,
-    officialHeadwayMin:state.commute.planningOfficialHeadwayMin,
+    arrivalsMin,snapshot,officialHeadwayMin:headwayInfo?.minutes,headwayInfo,
+    allowObservedHeadway:state.live.provider === 'subway',
     observedHeadwayMin:today.getTime()-gapAt <= 30*MINUTE_MS ? gap : null});
   const reminder = buildDepartureReminder(boarding,today,line.number);
   const departureAt = reminder?.departureAt;

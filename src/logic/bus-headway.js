@@ -1,0 +1,24 @@
+// Only provider metadata is accepted here; legacy user-entered values are ignored.
+export function headwayRange(min, max = min) {
+  const values = [min, max].map(value => {
+    if (value === null || value === undefined || String(value).trim() === '') return null;
+    const n = Number(value);
+    return Number.isFinite(n) && n >= 2 && n <= 180 ? n : null;
+  }).filter(value => value !== null);
+  return values.length ? {min:Math.min(...values),max:Math.max(...values)} : null;
+}
+
+export function selectBusHeadway(profile, now, holidayDates = []) {
+  if (!profile || profile.status !== 'ready') return null;
+  const date = new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Seoul',year:'numeric',month:'2-digit',day:'2-digit'}).format(now);
+  const day = new Date(`${date}T12:00:00+09:00`).getUTCDay();
+  const holiday = holidayDates.includes(date);
+  const type = holiday ? 'holiday' : day === 6 ? 'saturday' : day === 0 ? 'sunday' : 'weekday';
+  // Never substitute a weekday interval for missing weekend/holiday information.
+  const raw = profile[type] || profile.allDays;
+  const range = raw && headwayRange(raw.min,raw.max);
+  if (!range) return null;
+  const label = profile.allDays ? '공식 제공 간격' : ({weekday:'평일',saturday:'토요일',sunday:'일요일',holiday:'공휴일'})[type];
+  return {...range,minutes:range.max,source:profile.source,label,
+    text:`${label} ${range.min === range.max ? range.max : `${range.min}~${range.max}`}분`};
+}

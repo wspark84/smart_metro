@@ -15,12 +15,13 @@ import {transitQueryKey,transitQueryForState} from '../src/logic/transit-journey
 const now=new Date('2026-09-23T08:20:00+09:00');
 const route={durationAvailable:true,onboardToDestinationMin:34,boardingAccessMin:5};
 const build=(overrides={})=>buildBoardingPlan({now,requiredArrivalTime:'10:00',route,arrivalsMin:[2,9],
-  snapshot:{fetchedAt:now.toISOString(),arrivalsMin:[2,9]},...overrides});
+  snapshot:{fetchedAt:now.toISOString(),arrivalsMin:[2,9]},officialHeadwayMin:7,...overrides});
 
 function alarmState(at=now,arrivals=[2,9]) {
   const s=structuredClone(DEFAULT_STATE);
   Object.assign(s.live,{provider:'gyeonggi',stationId:'203000426',routeId:'241201001',order:'37',routeNumber:'1',
-    snapshot:{fetchedAt:at.toISOString(),lineNumber:'1',arrivalsMin:arrivals}});
+    snapshot:{fetchedAt:at.toISOString(),lineNumber:'1',arrivalsMin:arrivals,
+      headway:{status:'ready',source:'경기도 버스노선 조회',weekday:{min:10,max:10}}}});
   s.user.requiredArrivalTime='10:00';
   s.commute.boardingAccessMin=5;s.commute.planningHeadwayMin=10;
   s.commute.planningBindingKey=JSON.stringify([s.live.provider,s.live.stationId,s.live.routeId,s.live.order]);
@@ -120,7 +121,7 @@ test('the final three-minute alert cannot retry at one minute or re-escalate aft
   assert.equal(reconcileDispatchQueue(after30.queue,cleared,{},nextAt).queue.bundles.length,0);
 });
 test('10:00 target chooses a later estimated catchable bus, not the early 08:29 bus',()=>{
-  const p=build({headwayMin:10});
+  const p=build({officialHeadwayMin:10});
   assert.equal(formatClock(p.risk.targetResult.arriveWorkAt),'09:53');
   assert.equal(formatClock(p.risk.departure.leaveAt),'09:14');
   assert.equal(p.risk.targetResult.estimated,true);
@@ -129,16 +130,17 @@ test('10:00 target chooses a later estimated catchable bus, not the early 08:29 
   assert.equal(p.rows[1].deltaMinutes,57);
 });
 test('missed first bus does not suppress later estimates',()=>{
-  const p=build({arrivalsMin:[2],headwayMin:10,snapshot:{fetchedAt:now.toISOString(),arrivalsMin:[2]}});
+  const p=build({arrivalsMin:[2],officialHeadwayMin:10,snapshot:{fetchedAt:now.toISOString(),arrivalsMin:[2]}});
   assert.ok(p.risk.departure.remainingMin>0);
   assert.equal(p.rows[0].catchable,false);
 });
-test('observed vehicle gap is explicitly distinguished from an official headway',()=>{
-  assert.equal(build().intervalSource,'최근 두 차량의 도착 간격');
+test('bus estimates never use a manual value or an observed vehicle gap instead of official metadata',()=>{
+  assert.equal(build({officialHeadwayMin:null,headwayMin:10}).interval,null);
+  assert.equal(build({officialHeadwayMin:null,allowObservedHeadway:true}).intervalSource,'최근 두 차량의 도착 간격');
   assert.equal(build({officialHeadwayMin:15}).intervalSource,'공식 배차간격');
 });
 test('fresh live observations replace the old anchor and are never labelled estimated',()=>{
-  const p=build({arrivalsMin:[8,20],snapshot:{fetchedAt:now.toISOString(),arrivalsMin:[8,20]}});
+  const p=build({arrivalsMin:[8,20],officialHeadwayMin:12,snapshot:{fetchedAt:now.toISOString(),arrivalsMin:[8,20]}});
   assert.deepEqual(p.rows.slice(0,2).map(r=>[r.arrivalMinutes,r.estimated]),[[8,false],[20,false]]);
   assert.equal(p.rows[2].arrivalMinutes,32);
 });
@@ -147,10 +149,10 @@ test('short outage retains explicitly estimated future departures, not stale liv
   assert.ok(p.rows.length>0);assert.ok(p.rows.every(r=>r.estimated));
 });
 test('no headway or no anchor never invents bus departures',()=>{
-  const p=build({arrivalsMin:[2],snapshot:null});
+  const p=build({arrivalsMin:[2],snapshot:null,officialHeadwayMin:null});
   assert.equal(p.rows.length,1);assert.equal(p.risk.departure,null);
   assert.equal(formatClock(p.latestBoardAt),'09:26');
-  assert.equal(build({arrivalsMin:[],snapshot:null,headwayMin:10}).rows.length,0);
+  assert.equal(build({arrivalsMin:[],snapshot:null,officialHeadwayMin:10}).rows.length,0);
 });
 test('stale anchor, unknown journey and past target disable extrapolation',()=>{
   assert.equal(build({arrivalsMin:[],now:new Date(now.getTime()+31*60000)}).rows.length,0);
@@ -159,7 +161,7 @@ test('stale anchor, unknown journey and past target disable extrapolation',()=>{
 });
 test('invalid intervals are rejected and horizon stays bounded',()=>{
   for(const v of ['',null,0,-1,1,181,Infinity,'abc'])assert.equal(validHeadway(v),null);
-  assert.equal(build({requiredArrivalTime:'23:59',headwayMin:2}).hasEstimates,false);
+  assert.equal(build({requiredArrivalTime:'23:59',officialHeadwayMin:2}).hasEstimates,false);
 });
 
 test('planning headways survive both persistence formats',()=>{
@@ -197,6 +199,8 @@ test('home input remains a draft through refresh until the completion button is 
   assert.match(v.app.innerHTML,/value="10:00" data-trip-field="target"/);
   assert.match(v.app.innerHTML,/아직 적용되지 않았습니다/);
   assert.match(v.app.innerHTML,/정보 입력 완료/);
+  assert.doesNotMatch(v.app.innerHTML,/data-trip-field="headway"|예상 계산용 배차간격/);
+  assert.match(v.app.innerHTML,/공식 API에서 자동으로 조회/);
 });
 
 test('completion waits for server acknowledgement before applying fields and reporting saved',async()=>{
@@ -212,7 +216,7 @@ test('completion waits for server acknowledgement before applying fields and rep
   assert.equal(v.run('state.user.requiredArrivalTime'),'10:00');
   assert.equal(v.run('state.commute.boardingAccessMin'),5);
   assert.equal(calls.length,2);
-  assert.equal(calls[1][1].commute.planningHeadwayMin,10);
+  assert.equal(calls[1][1].commute.planningHeadwayMin,null);
 });
 
 test('failed completion retains draft and never claims server save succeeded',async()=>{
@@ -238,7 +242,7 @@ test('invalid input never sends a save; estimated rows show explicit sources and
   let writes=0;const v=await view({saveRemoteAppState:async()=>writes++});
   v.run('getHomeTripDraft();homeTripDraft.access="-1";');await v.run('submitHomeTrip()');
   assert.equal(writes,0);assert.equal(v.run('homeTripSave.status'),'error');
-  v.context.plan=build({headwayMin:10});v.context.clock=now;
+  v.context.plan=build({officialHeadwayMin:10});v.context.clock=now;
   const html=v.run('renderHomeTimetable({homePlan:plan,risk:plan.risk,now:clock,stop:{name:"정류장"}},"1번","")');
   assert.match(html,/57분 여유/);assert.match(html,/배차 예상/);assert.match(html,/실시간/);
 });

@@ -2,6 +2,18 @@
 
 The confirmed home form enables departure planning for the selected route. Reminder stages are 20, 10, 5 and 3 minutes before leaving home, including the user's walk to the first stop. One-minute and zero-minute alerts are deliberately excluded.
 
+## Official bus headways
+
+Headways are not user inputs. The arrival adapter queries official route metadata in parallel with arrivals, with a four-second metadata timeout and a bounded six-hour per-route cache (failures cached for one minute). A metadata failure does not discard successful live arrivals.
+
+- Gyeonggi: `busrouteservice/v2/getBusRouteInfoItemv2`, weekday/Saturday/Sunday/public-holiday minimum and maximum intervals. [Official fields](https://www.gbis.go.kr/gbis2014/publicService.action?cmd=mBusRouteInfo).
+- Seoul: `busRouteInfo/getRouteInfo`, `term` in minutes. [Official service](https://www.data.go.kr/data/15000193/openapi.do).
+- TAGO: `BusRouteInfoInqireService/getRouteInfoIem`, `intervaltime`, `intervalsattime`, `intervalsuntime`. [Official service](https://www.data.go.kr/data/15098529/openapi.do).
+
+These route-information services may require separate API approval even when arrival/station services use the same credential. Runtime permission and data availability must be checked after deployment; local fixture tests do not establish production entitlement.
+
+The Korean calendar selects the relevant interval. Missing weekend/holiday fields are not replaced with weekday data. TAGO does not declare a public-holiday interval in the verified contract, so a known holiday without such data disables TAGO extrapolation. A range is displayed as a range and its maximum is used as the labeled estimate interval, not a guaranteed service time. Both frontend planning and background alarms consume the same metadata selector. Legacy manual values and observed bus gaps no longer drive bus extrapolation. Subway's existing observed-gap behavior is unchanged.
+
 ## Deployment
 
 1. Apply `202609230001_alarm_worker.sql`. It adds restricted capability RPCs and private tables; it does not change existing document RLS policies. The worker is disabled initially.

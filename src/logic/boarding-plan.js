@@ -31,7 +31,7 @@ export function validHeadway(value) {
 
 // Planning estimates may drive labeled reminders, never confirmed-vehicle claims.
 export function buildBoardingPlan({ now, requiredArrivalTime, route, arrivalsMin = [], snapshot,
-  headwayMin, officialHeadwayMin, observedHeadwayMin }) {
+  officialHeadwayMin, observedHeadwayMin, allowObservedHeadway = false, headwayInfo = null }) {
   const base = evaluateLateRisk({now, requiredArrivalTime, route, busArrivalsMin:arrivalsMin});
   const duration = base.onboardToDestinationMin;
   const latestBoardAt = duration ? addMinutes(combineDateAndTime(now, requiredArrivalTime),
@@ -43,9 +43,9 @@ export function buildBoardingPlan({ now, requiredArrivalTime, route, arrivalsMin
     .filter(v => v !== null && v !== '' && Number.isFinite(Number(v)) && Number(v) >= 0)
     .map(Number).sort((a,b) => a-b) : [];
   const observedGap = raw.length >= 2 ? validHeadway(raw[1] - raw[0]) : recent ? validHeadway(observedHeadwayMin) : null;
-  const interval = validHeadway(headwayMin) || validHeadway(officialHeadwayMin) || observedGap;
-  const intervalSource = validHeadway(headwayMin) ? '직접 입력한 배차간격'
-    : validHeadway(officialHeadwayMin) ? '공식 배차간격' : observedGap ? '최근 두 차량의 도착 간격' : '';
+  const interval = validHeadway(officialHeadwayMin) || (allowObservedHeadway ? observedGap : null);
+  const intervalSource = validHeadway(officialHeadwayMin) ? '공식 배차간격'
+    : allowObservedHeadway && observedGap ? '최근 두 차량의 도착 간격' : '';
   const real = [...new Set(arrivalsMin.filter(v => typeof v === 'number' && Number.isFinite(v) && v >= 0))].sort((a,b)=>a-b);
   const planned = real.map(minutes => ({minutes, estimated:false}));
   const anchor = real.length ? real.at(-1) : raw.length ? raw.at(-1) - age : null;
@@ -72,7 +72,7 @@ export function buildBoardingPlan({ now, requiredArrivalTime, route, arrivalsMin
     ? '배차간격으로 추정한 탑승편입니다. 실제 운행·교통 상황에 따라 달라지며 실시간 도착정보로 갱신합니다.'
     : evaluated.message
     : duration ? '지금 조회된 차는 이동시간상 탑승이 어렵거나 도착정보가 없습니다. 이후 교통편을 확인하고 있습니다.' : evaluated.message;
-  return { rows, interval, intervalSource, latestBoardAt, estimatedLast,
+  return { rows, interval, intervalSource, headwayInfo, latestBoardAt, estimatedLast,
     hasEstimates:rows.some(row=>row.estimated),
     risk:{...evaluated,results:rows,targetResult:target || {...base.results[0],level:'UNKNOWN',arrivalMinutes:null},
       followingResult:following,lastChanceConfirmed:confirmed,departure,message} };

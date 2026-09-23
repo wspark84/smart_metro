@@ -85,6 +85,7 @@ import { parseSubwayRouteId, stationSelectionKey } from "./logic/station-search.
 import { loadState, resetState, sanitizeState, saveState } from "./state.js";
 import { createWorkspaceFetch } from "./services/workspace-fetch.js";
 import { buildBoardingPlan, validHeadway, buildDepartureReminder } from "./logic/boarding-plan.js";
+import { selectBusHeadway } from "./logic/bus-headway.js";
 
 if (typeof window.fetch === "function") {
   window.fetch = createWorkspaceFetch(window.fetch.bind(window), {
@@ -104,14 +105,13 @@ function planningRouteKey() {
 
 function tripInputKey() {
   return JSON.stringify([authMeta.user?.id, transitQueryKey(transitQueryForState(state)),
-    state.user.requiredArrivalTime,state.commute.boardingAccessMin,state.commute.planningHeadwayMin]);
+    state.user.requiredArrivalTime,state.commute.boardingAccessMin]);
 }
 
 function getHomeTripDraft() {
   const routeKey = JSON.stringify([authMeta.user?.id, state.live.provider,state.live.stationId,state.live.routeId]);
   if (!homeTripDraft || homeTripDraft.routeKey !== routeKey || (!homeTripDraft.dirty && homeTripSave.status !== "saving")) homeTripDraft = {routeKey,
-    access:String(state.commute.boardingAccessMin ?? ""),target:state.user.requiredArrivalTime,
-    headway:String(state.commute.planningHeadwayMin ?? ""),dirty:false};
+    access:String(state.commute.boardingAccessMin ?? ""),target:state.user.requiredArrivalTime,dirty:false};
   return homeTripDraft;
 }
 
@@ -119,17 +119,15 @@ async function submitHomeTrip() {
   if (homeTripSave.status === "saving") return;
   const draft = getHomeTripDraft();
   const access = normalizeBoardingAccessMin(draft.access);
-  const headway = validHeadway(draft.headway);
-  if (access === null || !/^([01]\d|2[0-3]):[0-5]\d$/.test(draft.target) ||
-      (draft.headway.trim() && headway === null)) {
-    homeTripSave = {status:"error",message:"이동시간은 0~180분, 도착 목표는 시각으로 입력해 주세요. 배차간격은 비우거나 2~180분으로 입력하세요.",key:""};
+  if (access === null || !/^([01]\d|2[0-3]):[0-5]\d$/.test(draft.target)) {
+    homeTripSave = {status:"error",message:"이동시간은 0~180분, 도착 목표는 시각으로 입력해 주세요.",key:""};
     render(); return;
   }
   const userId = authMeta.user?.id;
   const queryKey = transitQueryKey(transitQueryForState(state));
   const snapshot = sanitizeState(JSON.parse(JSON.stringify(state)));
   snapshot.commute.boardingAccessMin = access;
-  snapshot.commute.planningHeadwayMin = headway;
+  snapshot.commute.planningHeadwayMin = null;
   snapshot.commute.planningBindingKey = planningRouteKey();
   snapshot.user.requiredArrivalTime = draft.target;
   for (const timer of [remoteSaveTimer,domainSyncTimer]) if (timer) window.clearTimeout(timer);
@@ -142,7 +140,7 @@ async function submitHomeTrip() {
     await syncDomainSnapshot(snapshot);
     if (authMeta.user?.id !== userId || transitQueryKey(transitQueryForState(state)) !== queryKey) return;
     state.commute.boardingAccessMin = access;
-    state.commute.planningHeadwayMin = headway;
+    state.commute.planningHeadwayMin = null;
     state.commute.planningBindingKey = snapshot.commute.planningBindingKey;
     state.user.requiredArrivalTime = draft.target;
     saveState(state);
@@ -2517,12 +2515,12 @@ function getDashboardModel() {
         planningObservation.gapAt = Date.parse(liveSnapshot.fetchedAt);
       }
     }
+    const headwayInfo = selectBusHeadway(planningObservation.snapshot?.headway,now,getEffectiveHolidayDates());
     homePlan = buildBoardingPlan({now,requiredArrivalTime:state.user.requiredArrivalTime,
       route:{...resolveJourneyDuration(state,now),etaRiskBufferMin:liveEtaGuard.recommendedRiskBufferMin},
       arrivalsMin:liveSnapshot?.cacheStatus === "stale-fallback" ? [] : arrivalsMin,
       snapshot:planningObservation.snapshot,
-      headwayMin:state.commute.planningBindingKey === planningRouteKey() ? state.commute.planningHeadwayMin : null,
-      officialHeadwayMin:state.commute.planningBindingKey === planningRouteKey() ? state.commute.planningOfficialHeadwayMin : null,
+      officialHeadwayMin:headwayInfo?.minutes,headwayInfo,allowObservedHeadway:state.live.provider === "subway",
       observedHeadwayMin:now.getTime()-planningObservation.gapAt <= 30*60000 ? planningObservation.gap : null});
   }
   const notificationContext = {
@@ -5103,7 +5101,7 @@ function renderHome(screen, model) {
       ${departure ? `<p class="home-evidence-note">교통편 도착까지 ${Math.ceil(target.arrivalMinutes)}분 · 이동시간 ${departure.accessMin}분 · ${escapeHtml(formatClock(departure.leaveAt))}까지 집에서 출발</p>` : `<p class="home-evidence-note">첫 정류장·역까지 이동시간을 입력하면 집에서 출발할 시간을 안내합니다.</p>`}
       <p class="home-verdict"><i aria-hidden="true"></i><span>${escapeHtml(verdict)}</span></p>
       ${plan?.interval ? `<p class="home-evidence-note">${escapeHtml(plan.intervalSource)} ${Math.round(plan.interval*10)/10}분으로 이후 차량을 추정합니다. 실시간·예상 시간을 구분해 확인하세요.</p>` : ""}
-      ${plan && !plan.interval ? `<p class="home-evidence-note">배차간격을 아직 확인하지 못했습니다. 아래에 배차간격을 입력하면 최근 조회 시각을 기준으로 이후 차량을 추정합니다.</p>` : ""}
+      ${plan && !plan.interval ? `<p class="home-evidence-note">공식 배차간격을 확인하지 못해 이후 차량의 시간을 추정하지 않습니다. 조회된 실시간 도착정보만 표시합니다.</p>` : ""}
       ${hasPrediction && !confirmed && !target.estimated ? `<p class="home-evidence-note">조회된 교통편 기준이며, 마지막 탑승편으로 확정되지 않았습니다.</p>` : ""}
     </section>
     ${renderHomeTimetable(model, state.live.routeNumber ? `${state.live.routeNumber}${state.live.provider === "subway" ? "" : "번"}` : "", subwayDirection ? `${subwayDirection.direction} · ${subwayDirection.nextStation} 방면` : "")}
@@ -5121,10 +5119,9 @@ function renderHome(screen, model) {
       <button class="home-trip-field" data-action="edit-home-trip" data-editor="destination" aria-expanded="${homeEditor === "destination"}" aria-controls="home-destination-editor"><span>도착지</span><strong>${escapeHtml(state.user.workAddress || "도착지를 선택하세요")}</strong><small>${homeEditor === "destination" ? "닫기 −" : "변경 +"}</small></button>
       ${homeEditor === "destination" ? renderHomeDestinationEditor() : ""}
       <label class="home-target field-block"><span>도착 목표</span><input aria-label="목적지 도착 목표 시간" type="time" value="${escapeHtml(tripDraft.target)}" data-trip-field="target" data-field="user.requiredArrivalTime" required /></label>
-      <label class="field-block"><span>배차간격 (분, 선택)</span><input class="text-field-input" aria-label="예상 계산용 배차간격" type="number" min="2" max="180" step="1" placeholder="비워두면 조회된 간격 사용" value="${escapeHtml(tripDraft.headway)}" data-trip-field="headway" data-field="commute.planningHeadwayMin" /></label>
-      <p class="field-help">직접 입력한 간격을 우선 사용합니다. 없으면 공식 간격 또는 최근 두 차량 간격으로 추정합니다. 예상 출발시간에도 준비 알림을 보내고, 실시간 정보가 확인되면 출발시간과 알림 시각을 갱신합니다.</p>
+      <p class="field-help" role="status">${plan?.headwayInfo ? `배차간격 자동 조회 · ${escapeHtml(plan.headwayInfo.text)} · ${escapeHtml(plan.headwayInfo.source)}. ${plan.headwayInfo.min !== plan.headwayInfo.max ? `예상 계산에는 최대 간격 ${plan.headwayInfo.max}분을 사용합니다. ` : ""}실제 운행 시각은 실시간 정보로 갱신합니다.` : "배차간격은 선택한 노선의 공식 API에서 자동으로 조회합니다. 직접 입력할 필요가 없습니다."}</p>
       </fieldset>
-      <p class="field-help" role="${homeTripSave.status === "error" ? "alert" : "status"}" data-trip-save-status>${escapeHtml(tripDraft.dirty && homeTripSave.status !== "saving" && homeTripSave.status !== "error" ? "입력 중 · 아직 적용되지 않았습니다. 정보 입력 완료를 눌러 주세요." : homeTripSave.status === "saved" && homeTripSave.key !== tripInputKey() ? "설정이 변경되었습니다. 정보 입력 완료를 눌러 다시 확인해 주세요." : homeTripSave.message || "이동시간·도착 목표·배차간격은 정보 입력 완료를 누르면 적용됩니다. 출발지와 도착지 선택은 각 선택 버튼에서 저장됩니다.")}</p>
+      <p class="field-help" role="${homeTripSave.status === "error" ? "alert" : "status"}" data-trip-save-status>${escapeHtml(tripDraft.dirty && homeTripSave.status !== "saving" && homeTripSave.status !== "error" ? "입력 중 · 아직 적용되지 않았습니다. 정보 입력 완료를 눌러 주세요." : homeTripSave.status === "saved" && homeTripSave.key !== tripInputKey() ? "설정이 변경되었습니다. 정보 입력 완료를 눌러 다시 확인해 주세요." : homeTripSave.message || "이동시간·도착 목표는 정보 입력 완료를 누르면 적용됩니다. 출발지와 도착지 선택은 각 선택 버튼에서 저장됩니다.")}</p>
       <button class="soft-button wide" data-action="complete-home-trip" ${homeTripSave.status === "saving" ? "disabled" : ""}>${homeTripSave.status === "saving" ? "저장 중…" : "정보 입력 완료"}</button>
     </section>
     <section class="home-alarm-actions" aria-label="오늘 알림">
@@ -6707,7 +6704,7 @@ app.addEventListener("input", (event) => {
   if (homeTripSave.status === "saving") return;
   if (target.dataset.tripField && isAuthenticated()) {
     const draft = getHomeTripDraft();
-    if (!["access","target","headway"].includes(target.dataset.tripField)) return;
+    if (!["access","target"].includes(target.dataset.tripField)) return;
     draft[target.dataset.tripField] = target.value;
     draft.dirty = true;
     homeTripSave = {status:"idle",message:"",key:""};
