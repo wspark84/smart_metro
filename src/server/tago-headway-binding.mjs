@@ -1,10 +1,13 @@
 import {searchGyeonggiStations,searchGyeonggiStationRoutes} from './bus-providers.mjs';
-import {searchTagoNearbyStations,searchTagoStationRoutes} from './tago-api.mjs';
+import {searchTagoNearbyStations,searchTagoStationRoutes,searchTagoStations} from './tago-api.mjs';
 
 const number = value => /^\d+$/.test(String(value || '').trim()) ? String(value).trim().replace(/^0+/, '') : '';
 const name = value => String(value || '').replace(/[\s.,·]/g,'');
 export function sameHeadwayStation(source,candidate) {
   if (!number(source.stationNumber) || number(source.stationNumber)!==number(candidate.stationNumber)) return false;
+  return sameLocationAndName(source,candidate);
+}
+function sameLocationAndName(source,candidate) {
   const coordinates=[source.posX,source.posY,candidate.posX,candidate.posY];
   if(coordinates.some(v=>v==null || String(v).trim()==='' || !Number.isFinite(Number(v)))) return false;
   const [x,y,cx,cy]=coordinates.map(Number);
@@ -17,7 +20,7 @@ export function sameHeadwayStation(source,candidate) {
 // must be returned by their official APIs, including the city of this stop.
 export async function resolveTagoHeadwayBinding(binding,{env,fetchImpl,
   stations=searchGyeonggiStations,regionalRoutes=searchGyeonggiStationRoutes,
-  nearby=searchTagoNearbyStations,routes=searchTagoStationRoutes}={}) {
+  nearby=searchTagoNearbyStations,numberedStations=searchTagoStations,routes=searchTagoStationRoutes}={}) {
   if(binding.provider!=='gyeonggi' || !binding.stationId || !binding.stationName) return null;
   const source=(await stations({serviceKey:env.GYEONGGI_SERVICE_KEY,keyword:binding.stationName,fetchImpl}))
     .filter(s=>s.stationId===String(binding.stationId));
@@ -25,8 +28,15 @@ export async function resolveTagoHeadwayBinding(binding,{env,fetchImpl,
   const own=(await regionalRoutes({serviceKey:env.GYEONGGI_SERVICE_KEY,stationId:binding.stationId,fetchImpl}))
     .filter(r=>r.routeId===String(binding.routeId));
   if(own.length!==1 || !own[0].routeNumber) return null;
-  const matches=(await nearby({serviceKey:env.TAGO_SERVICE_KEY,lat:source[0].posY,lng:source[0].posX,fetchImpl}))
-    .filter(s=>sameHeadwayStation(source[0],s));
+  const near=(await nearby({serviceKey:env.TAGO_SERVICE_KEY,lat:source[0].posY,lng:source[0].posX,fetchImpl}))
+    .filter(s=>sameLocationAndName(source[0],s));
+  const cities=[...new Set(near.map(s=>s.cityCode).filter(Boolean))];
+  if(cities.length!==1 || !number(source[0].stationNumber)) return null;
+  // getCrdntPrxmtSttnList does NOT publish nodeno. Obtain it from
+  // getSttnNoList, then join by the official city + node identity.
+  const matches=(await numberedStations({serviceKey:env.TAGO_SERVICE_KEY,cityCode:cities[0],
+    keyword:number(source[0].stationNumber),fetchImpl,diagnosticLogger:()=>{}}))
+    .filter(s=>sameHeadwayStation(source[0],s) && near.some(n=>n.nodeId===s.nodeId && n.cityCode===s.cityCode));
   if(matches.length!==1) return null;
   const stop=matches[0];
   const candidates=(await routes({serviceKey:env.TAGO_SERVICE_KEY,cityCode:stop.cityCode,nodeId:stop.nodeId,

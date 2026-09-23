@@ -7,7 +7,13 @@ const tago={...stop,nodeId:'official-node',stationId:'official-node',cityCode:'o
 const route={routeId:'regional-route',routeNumber:'1',destinationName:'종점'};
 const target={routeId:'official-route',routeNumber:'1',destinationName:'종점'};
 const binding={provider:'gyeonggi',stationId:stop.stationId,stationName:stop.stationName,routeId:route.routeId};
-const deps={env:{},stations:async()=>[stop],regionalRoutes:async()=>[route],nearby:async()=>[tago],routes:async()=>[target]};
+const deps={env:{},stations:async()=>[stop],regionalRoutes:async()=>[route],nearby:async()=>[tago],numberedStations:async()=>[tago],routes:async()=>[target]};
+test('nearby response without undocumented nodeno is enriched using official station-number lookup',async()=>{
+  let lookedUp=false;
+  const result=await resolveTagoHeadwayBinding(binding,{...deps,nearby:async()=>[{...tago,stationNumber:''}],
+    numberedStations:async input=>{lookedUp=true;assert.equal(input.cityCode,'official-city');assert.equal(input.keyword,'4413');return [tago];}});
+  assert.equal(result?.routeId,'official-route');assert.equal(lookedUp,true);
+});
 test('cross-provider match requires exact public number, name and nearby coordinates',()=>{
   assert.equal(sameHeadwayStation(stop,tago),true);
   for(const change of [{stationNumber:'4414'},{stationName:'반대편'},{posX:'128'},{posY:''},{posY:null}])
@@ -23,7 +29,9 @@ test('ambiguous stations, routes, mismatched regional IDs or destinations fail c
   for(const change of [
     {stations:async()=>[{...stop,stationId:'other'}]},
     {regionalRoutes:async()=>[{...route,routeId:'other'}]},
-    {nearby:async()=>[tago,{...tago,nodeId:'other'}]},
+    {nearby:async()=>[tago,{...tago,nodeId:'other'}],numberedStations:async()=>[tago,{...tago,nodeId:'other'}]},
+    {numberedStations:async()=>[{...tago,nodeId:'other'}]},
+    {numberedStations:async()=>[{...tago,stationNumber:'4414'}]},
     {routes:async()=>[target,{...target,routeId:'other'}]},
     {routes:async()=>[{...target,destinationName:'다른종점'}]},
   ]) assert.equal(await resolveTagoHeadwayBinding(binding,{...deps,...change}),null);
@@ -38,7 +46,8 @@ test('Gyeonggi failure obtains and caches TAGO headway through verified official
     if(url.pathname.includes('getBusRouteInfoItem')) return {ok:false,status:403};
     if(url.pathname.includes('getBusStationList')) return gg('busStationList',{stationId:stop.stationId,stationName:stop.stationName,mobileNo:'04413',x:127.06,y:37.28});
     if(url.pathname.includes('getBusStationViaRouteList')) return gg('busRouteList',{routeId:route.routeId,routeName:'1',endStationName:'종점'});
-    if(url.pathname.includes('getCrdntPrxmtSttnList')) return page({nodeid:'official-node',nodenm:stop.stationName,nodeno:4413,citycode:'official-city',gpslong:127.06,gpslati:37.28});
+    if(url.pathname.includes('getCrdntPrxmtSttnList')) return page({nodeid:'official-node',nodenm:stop.stationName,citycode:'official-city',gpslong:127.06,gpslati:37.28});
+    if(url.pathname.includes('getSttnNoList')) return page({nodeid:'official-node',nodenm:stop.stationName,nodeno:4413,gpslong:127.06,gpslati:37.28});
     if(url.pathname.includes('getSttnThrghRouteList')) return page({routeid:'official-route',routeno:'1',endnodenm:'종점'});
     assert.match(url.pathname,/getRouteInfoIem/);
     assert.equal(url.searchParams.get('routeId'),'official-route');
@@ -47,6 +56,6 @@ test('Gyeonggi failure obtains and caches TAGO headway through verified official
   const options={env:{GYEONGGI_SERVICE_KEY:'gg-test',TAGO_SERVICE_KEY:'tago-test'},fetchImpl};
   const result=await fetchBusHeadway(binding,options);
   assert.equal(result.status,'ready');assert.equal(result.source,'TAGO 버스노선정보');assert.equal(result.weekday.max,12);
-  assert.equal(calls,6);
-  await fetchBusHeadway(binding,options);assert.equal(calls,6);
+  assert.equal(calls,7);
+  await fetchBusHeadway(binding,options);assert.equal(calls,7);
 });
