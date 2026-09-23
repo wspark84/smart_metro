@@ -78,7 +78,12 @@ export async function fetchBusHeadway(binding,{env=process.env,fetchImpl=fetch,n
             entry.until=Date.now()+60_000;
             if(fallback) return fallback;
           }
-        } catch { /* Keep arrivals usable; do not expose upstream URLs or keys. */ }
+          entry.until=Date.now()+60_000;
+          return {...unavailable,message:'경기 배차간격 조회 실패 후 TAGO에서 같은 정류장·노선을 확정하지 못했습니다. 실시간 도착정보는 계속 사용합니다.'};
+        } catch {
+          entry.until=Date.now()+60_000;
+          return {...unavailable,message:'TAGO 배차간격 연결을 위한 정류장·노선 조회에 실패했습니다. 잠시 후 다시 확인합니다.'};
+        }
       }
       entry.until=Date.now()+60_000;
       const code = error?.message?.match(/^TAGO API 오류 \((\d+)\)/)?.[1];
