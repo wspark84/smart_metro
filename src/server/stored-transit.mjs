@@ -2,6 +2,7 @@ import {koreanServiceDate} from '../logic/bus-headway.js';
 
 const BUS_PROVIDERS = ['seoul','gyeonggi','tago'];
 const MAX_ENTRIES = 32;
+const FAILED_RETRY_MS = 5 * 60_000;
 export const headwayBindingKey = b => JSON.stringify([b.provider,b.cityCode || '',b.routeId || '']);
 export const observationBindingKey = b => JSON.stringify([b.provider,b.cityCode || '',b.stationId || b.nodeId || '',b.routeId || '',b.order || '']);
 const validMinutes = value => Array.isArray(value) ? value.filter(v=>typeof v==='number' && Number.isFinite(v) && v>=0) : [];
@@ -24,7 +25,9 @@ export async function loadStoredTransit(binding,{cache={},loadArrival,loadHeadwa
   // Start the independent real-time request immediately. Its failure must not
   // prevent today's metadata check or erase either durable last-known value.
   const arrivalTask = Promise.resolve().then(loadArrival).then(value=>({value}),()=>({value:null}));
-  if (!stored || stored.checkedDate !== today) {
+  const failedRetryDue = stored?.refreshFailed && (stored.retryPolicy !== 1 ||
+    now.getTime() - Date.parse(stored.checkedAt || '') >= FAILED_RETRY_MS);
+  if (!stored || stored.checkedDate !== today || failedRetryDue) {
     let profile;
     try { profile = await loadHeadway(); } catch { profile = null; }
     const ready = profile?.status === 'ready';
@@ -32,7 +35,7 @@ export async function loadStoredTransit(binding,{cache={},loadArrival,loadHeadwa
     stored = {key:routeKey,checkedDate:today,checkedAt:now.toISOString(),
       profile:ready ? profile : stored?.profile || null,
       lastChangedAt:changed ? now.toISOString() : stored?.lastChangedAt || null,
-      refreshFailed:!ready};
+      refreshFailed:!ready,retryPolicy:1,failure:ready ? null : profile?.message || '배차간격 조회에 실패했습니다. 잠시 후 다시 확인합니다.'};
     next.headways = replace(next.headways,stored);
     dirty = true;
   }
@@ -57,7 +60,7 @@ export async function loadStoredTransit(binding,{cache={},loadArrival,loadHeadwa
   if (dirty) await saveCache(next);
   const headway = stored.profile ? {...stored.profile,checkedAt:stored.checkedAt,
     lastChangedAt:stored.lastChangedAt,stale:stored.refreshFailed} : {
-    status:'unavailable',checkedAt:stored.checkedAt,message:'공식 배차간격을 아직 확인하지 못했습니다.',
+    status:'unavailable',checkedAt:stored.checkedAt,message:stored.failure || '공식 배차간격을 아직 확인하지 못했습니다.',
   };
   const value = {...(real ? payload : {}),provider:binding.provider,
     lineNumber:real ? payload.lineNumber || binding.routeNumber : binding.routeNumber,

@@ -41,6 +41,22 @@ test('failed daily check preserves official metadata and is not retried every ar
   assert.equal(f.checks,2);assert.equal(result.value.headway.stale,true);
   assert.equal(result.value.headway.weekday.max,15);
 });
+test('new approval is picked up after five minutes, then success is reused for the day',async()=>{
+  const f=fixture();f.metadata={status:'unavailable',message:'approval pending'};
+  await f.run();await f.run(new Date(start.getTime()+4*60000));assert.equal(f.checks,1);
+  f.metadata=profile;
+  const result=await f.run(new Date(start.getTime()+5*60000));
+  assert.equal(f.checks,2);assert.equal(result.value.headway.status,'ready');
+  await f.run(new Date(start.getTime()+60*60000));assert.equal(f.checks,2);
+});
+test('legacy failed daily cache is retried immediately after upgrade',async()=>{
+  let saved;
+  const cache={headways:[{key:JSON.stringify(['tago','31010','GGB1']),checkedDate:'2026-09-23',
+    checkedAt:start.toISOString(),refreshFailed:true,profile:null}]};
+  const result=await loadStoredTransit({provider:'tago',cityCode:'31010',routeId:'GGB1'},
+    {now:start,cache,loadArrival:async()=>null,loadHeadway:async()=>profile,saveCache:async v=>{saved=v;}});
+  assert.equal(result.value.headway.status,'ready');assert.equal(saved.headways[0].retryPolicy,1);
+});
 test('anchors are isolated by stop and direction while headway is shared per route',async()=>{
   const f=fixture();await f.run();f.arrival=null;
   const result=await f.run(start,{...binding,order:'4'});

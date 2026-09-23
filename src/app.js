@@ -5134,6 +5134,7 @@ function renderHome(screen, model) {
       ${plan?.hasEstimates && plan.anchorCheckedAt ? `<p class="home-evidence-note">${escapeHtml(formatClock(new Date(plan.anchorCheckedAt)))}에 확인한 도착정보 기준 · 운행 종료·결행은 예상에 반영되지 않을 수 있습니다.</p>` : ""}
       ${plan?.headwayInfo?.checkedAt ? `<p class="home-evidence-note">배차간격 하루 1회 확인 · 최근 확인 ${escapeHtml(new Date(plan.headwayInfo.checkedAt).toLocaleString('ko-KR',{timeZone:'Asia/Seoul'}))}${plan.headwayInfo.stale ? ' · 오늘 조회 실패로 이전에 저장한 간격 사용' : ''}</p>` : ""}
       ${plan && !plan.interval ? `<p class="home-evidence-note">공식 배차간격을 확인하지 못해 이후 차량의 시간을 추정하지 않습니다. 조회된 실시간 도착정보만 표시합니다.</p>` : ""}
+      ${state.live.snapshot?.headway?.status === 'unavailable' ? `<p class="home-evidence-note" role="status">${escapeHtml(state.live.snapshot.headway.message || '배차간격을 다시 확인하고 있습니다.')}</p>` : ''}
       ${hasPrediction && !confirmed && !target.estimated ? `<p class="home-evidence-note">조회된 교통편 기준이며, 마지막 탑승편으로 확정되지 않았습니다.</p>` : ""}
       <p class="field-help" role="status">${plan?.headwayInfo ? `배차간격 자동 조회 · ${escapeHtml(plan.headwayInfo.text)} · ${escapeHtml(plan.headwayInfo.source)}. ${plan.headwayInfo.min !== plan.headwayInfo.max ? `예상 계산에는 최대 간격 ${plan.headwayInfo.max}분을 사용합니다. ` : ""}실제 운행 시각은 실시간 정보로 갱신합니다.` : "배차간격은 선택한 노선의 공식 API에서 자동으로 조회합니다. 직접 입력할 필요가 없습니다."}</p>
     </section>

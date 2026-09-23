@@ -48,3 +48,23 @@ test('missing approval/provider errors do not leak keys or disable arrival proce
     {env:{TAGO_SERVICE_KEY:'secret-test-key'},fetchImpl:async()=>{throw new Error('url contains secret-test-key');}});
   assert.equal(result.status,'unavailable');assert.equal(JSON.stringify(result).includes('secret-test-key'),false);
 });
+test('approved TAGO route metadata uses existing key and preserves weekday/weekend values',async()=>{
+  const result=await fetchBusHeadway({provider:'tago',cityCode:'31010',routeId:'GGB1'},
+    {env:{TAGO_SERVICE_KEY:'test-key'},fetchImpl:async url=>{
+      assert.equal(url.pathname,'/1613000/BusRouteInfoInqireService/getRouteInfoIem');
+      assert.equal(url.searchParams.get('cityCode'),'31010');assert.equal(url.searchParams.get('routeId'),'GGB1');
+      assert.equal(url.searchParams.get('serviceKey'),'test-key');
+      return {ok:true,text:async()=>JSON.stringify({response:{header:{resultCode:'00'},body:{items:{item:{
+        routeid:'GGB1',intervaltime:12,intervalsattime:18,intervalsuntime:20}}}}})};
+    }});
+  assert.equal(result.status,'ready');assert.equal(result.weekday.max,12);assert.equal(result.saturday.max,18);
+});
+test('TAGO permission denial and absent intervals have distinct safe messages',async()=>{
+  const binding={provider:'tago',cityCode:'31010',routeId:'GGB1'};
+  const denied=await fetchBusHeadway(binding,{env:{TAGO_SERVICE_KEY:'secret'},fetchImpl:async()=>({ok:true,
+    text:async()=>'<OpenAPI_ServiceResponse><returnReasonCode>20</returnReasonCode></OpenAPI_ServiceResponse>'})});
+  assert.match(denied.message,/이용 권한/);
+  const empty=await fetchBusHeadway(binding,{env:{TAGO_SERVICE_KEY:'secret'},fetchImpl:async()=>({ok:true,
+    text:async()=>JSON.stringify({response:{header:{resultCode:'00'},body:{items:{item:{routeid:'GGB1'}}}}})})});
+  assert.match(empty.message,/유효한 배차간격이 없습니다/);
+});

@@ -37,7 +37,7 @@ export async function fetchBusHeadway(binding,{env=process.env,fetchImpl=fetch,n
   if (!['seoul','gyeonggi','tago'].includes(binding.provider) || !binding.routeId) return null;
   const key = env[binding.provider === 'seoul' ? 'SEOUL_OPEN_API_KEY' : binding.provider === 'gyeonggi' ? 'GYEONGGI_SERVICE_KEY' : 'TAGO_SERVICE_KEY'];
   const unavailable = {status:'unavailable',message:'공식 배차간격을 확인하지 못했습니다. 노선정보 API 권한 또는 제공 여부를 확인해야 합니다.'};
-  if (!key) return unavailable;
+  if (!key) return {...unavailable,message:binding.provider === 'tago' ? 'TAGO_SERVICE_KEY 설정이 필요합니다.' : unavailable.message};
   let cache = caches.get(fetchImpl);
   if (!cache) {cache=new Map();caches.set(fetchImpl,cache);}
   const cacheKey = JSON.stringify([binding.provider,binding.cityCode,binding.routeId,koreanServiceDate(now),createHash('sha256').update(key).digest('hex')]);
@@ -56,15 +56,23 @@ export async function fetchBusHeadway(binding,{env=process.env,fetchImpl=fetch,n
       if (binding.provider === 'gyeonggi') url.searchParams.set('format','json');
       if (binding.provider === 'tago') {url.searchParams.set('_type','json');url.searchParams.set('cityCode',binding.cityCode || '');}
       const response = await fetchWithTimeout(url,{}, {fetchImpl,timeoutMs:4000});
-      if (!response.ok) throw new Error('Route metadata request failed');
+      if (!response.ok) throw Object.assign(new Error('Route metadata request failed'),{status:response.status});
       const profile = binding.provider === 'gyeonggi' ? normalizeGyeonggiHeadway(await response.json(),binding.routeId)
         : binding.provider === 'tago' ? normalizeTagoHeadway(await response.text(),binding.routeId)
         : normalizeSeoulHeadway(await response.text(),binding.routeId);
-      if (!['weekday','saturday','sunday','holiday','allDays'].some(day=>profile[day])) throw new Error('No interval');
+      if (!['weekday','saturday','sunday','holiday','allDays'].some(day=>profile[day])) throw Object.assign(new Error('No interval'),{code:'NO_HEADWAY'});
       return {...profile,status:'ready',fetchedAt:now.toISOString()};
-    } catch {
+    } catch (error) {
       entry.until=Date.now()+60_000;
-      return unavailable; // Do not leak request URLs or keys, or fail real-time arrivals.
+      const code = error?.message?.match(/^TAGO API 오류 \((\d+)\)/)?.[1];
+      const message = code === '20' || [401,403].includes(error?.status)
+        ? '버스노선정보 API 이용 권한을 확인해 주세요. 승인 후 최대 5분 간격으로 다시 확인합니다.'
+        : code === '22' ? '버스노선정보 API의 일일 조회 한도를 초과했습니다.'
+        : code === '30' ? '버스노선정보 API 인증키가 등록되지 않았습니다.'
+        : error?.code === 'NO_HEADWAY' ? '이 노선의 API 응답에 유효한 배차간격이 없습니다.'
+        : error?.code === 'UPSTREAM_TIMEOUT' ? '버스노선정보 조회 응답이 지연되고 있습니다. 잠시 후 다시 확인합니다.'
+        : '버스노선정보를 확인하지 못했습니다. 최대 5분 간격으로 다시 확인합니다.';
+      return {...unavailable,message}; // Allowlisted messages only: never return URLs or secrets.
     }
   })();
   cache.set(cacheKey,entry);
