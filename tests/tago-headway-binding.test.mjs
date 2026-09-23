@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {sameHeadwayStation,resolveTagoHeadwayBinding} from '../src/server/tago-headway-binding.mjs';
+import {sameHeadwayStation,resolveTagoHeadwayBinding,reverseTagoRoute} from '../src/server/tago-headway-binding.mjs';
 import {fetchBusHeadway} from '../src/server/bus-headway.mjs';
 const stop={stationId:'regional-stop',stationName:'테스트.정류장',stationNumber:'04413',posX:'127.06',posY:'37.28'};
 const tago={...stop,nodeId:'official-node',stationId:'official-node',cityCode:'official-city',stationNumber:'4413'};
@@ -8,6 +8,19 @@ const route={routeId:'regional-route',routeNumber:'1',destinationName:'종점'};
 const target={routeId:'official-route',routeNumber:'1',destinationName:'종점'};
 const binding={provider:'gyeonggi',stationId:stop.stationId,stationName:stop.stationName,routeId:route.routeId};
 const deps={env:{},stations:async()=>[stop],regionalRoutes:async()=>[route],nearby:async()=>[tago],numberedStations:async()=>[tago],routes:async()=>[target]};
+test('empty stop route index is resolved from route list and exact official path node',async()=>{
+  const result=await resolveTagoHeadwayBinding(binding,{...deps,routes:async()=>[],reverseRoutes:async(s,n)=>{
+    assert.equal(s.nodeId,'official-node');assert.equal(n,'1');return [target];}});
+  assert.equal(result.routeId,'official-route');
+});
+test('reverse lookup verifies the official node and rejects similarly numbered routes',async()=>{
+  const run=async node=>reverseTagoRoute(tago,'1',{env:{TAGO_SERVICE_KEY:'test'},fetchImpl:async url=>{
+    const item=url.pathname.endsWith('getRouteNoList') ? [{routeid:'r1',routeno:'1'},{routeid:'r11',routeno:'11'}] : [{routeid:'r1',nodeid:node}];
+    if(url.pathname.endsWith('getRouteAcctoThrghSttnList')) assert.equal(url.searchParams.get('routeId'),'r1');
+    return {ok:true,text:async()=>JSON.stringify({response:{header:{resultCode:'00'},body:{items:{item},totalCount:item.length,pageNo:1,numOfRows:100}}})};
+  }});
+  assert.equal((await run('official-node'))[0].routeId,'r1');assert.deepEqual(await run('opposite-stop'),[]);
+});
 test('nearby response without undocumented nodeno is enriched using official station-number lookup',async()=>{
   let lookedUp=false;
   const result=await resolveTagoHeadwayBinding(binding,{...deps,nearby:async()=>[{...tago,stationNumber:''}],

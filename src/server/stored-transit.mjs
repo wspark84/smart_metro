@@ -25,7 +25,7 @@ export async function loadStoredTransit(binding,{cache={},loadArrival,loadHeadwa
   // Start the independent real-time request immediately. Its failure must not
   // prevent today's metadata check or erase either durable last-known value.
   const arrivalTask = Promise.resolve().then(loadArrival).then(value=>({value}),()=>({value:null}));
-  const failedRetryDue = stored?.refreshFailed && (stored.retryPolicy !== 3 ||
+  const failedRetryDue = stored?.refreshFailed && (stored.retryPolicy !== 4 ||
     now.getTime() - Date.parse(stored.checkedAt || '') >= FAILED_RETRY_MS);
   if (!stored || stored.checkedDate !== today || failedRetryDue) {
     let profile;
@@ -35,7 +35,7 @@ export async function loadStoredTransit(binding,{cache={},loadArrival,loadHeadwa
     stored = {key:routeKey,checkedDate:today,checkedAt:now.toISOString(),
       profile:ready ? profile : stored?.profile || null,
       lastChangedAt:changed ? now.toISOString() : stored?.lastChangedAt || null,
-      refreshFailed:!ready,retryPolicy:3,failure:ready ? null : profile?.message || '배차간격 조회에 실패했습니다. 잠시 후 다시 확인합니다.'};
+      refreshFailed:!ready,retryPolicy:4,failure:ready ? null : profile?.message || '배차간격 조회에 실패했습니다. 잠시 후 다시 확인합니다.'};
     next.headways = replace(next.headways,stored);
     dirty = true;
   }

@@ -68,7 +68,7 @@ export async function fetchBusHeadway(binding,{env=process.env,fetchImpl=fetch,n
         try {
           // Bound the additional identity lookup; a slow metadata provider must
           // not keep the independently loaded real-time arrivals waiting.
-          const deadline=AbortSignal.timeout(6000);
+          const deadline=AbortSignal.timeout(10000);
           const boundedFetch=(url,options={})=>fetchImpl(url,{...options,
             signal:options.signal ? AbortSignal.any([deadline,options.signal]) : deadline});
           let mismatch='';
