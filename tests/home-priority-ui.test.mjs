@@ -52,7 +52,11 @@ test('estimated and unconfirmed departure evidence remains explicitly labeled', 
   const v = await view();
   const setup = "model.dataSource='LIVE';model.risk=evaluateLateRisk({now:model.now,requiredArrivalTime:'23:59',route:{boardingAccessMin:5,onboardToDestinationMin:20},busArrivalsMin:[16]});";
   assert.match(v.html(setup).split('</section>')[0], /마지막 편 미확정/);
+  assert.match(v.html(setup).split('</section>')[0], /실시간 정보로 예상/);
   assert.match(v.html(setup + 'model.risk.targetResult.estimated=true;').split('</section>')[0], /배차간격으로 예상/);
+  const live = v.html(setup + 'model.risk.targetResult.estimated=false;model.risk.lastChanceConfirmed=true;').split('</section>')[0];
+  assert.match(live, /실시간 정보로 예상/);
+  assert.doesNotMatch(live, /배차간격으로 예상/);
 });
 
 test('hero shows destination arrival and only warns of missing the last trip with a late following trip', async () => {

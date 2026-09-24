@@ -5088,7 +5088,7 @@ function renderHome(screen, model) {
   const departure = hasPrediction ? model.risk.departure : null;
   const urgent = hasPrediction && (model.risk.urgency === "HURRY" || (departure ? departure.remainingMin <= 5 : confirmed && target.arrivalMinutes <= 5));
   const title = (confirmed || plan?.estimatedLast) && departure ? "늦지 않는 마지막 출발까지" : "집에서 출발까지 남은 시간";
-  const departureStatus = !departure ? "정보 확인 필요 · 마지막 탑승편 확인 대기" : target.deltaMinutes < 0 ? "지각 예상 · 다른 경로 확인" : target.estimated ? "배차간격으로 예상" : confirmed ? "실시간 · 마지막 탑승편" : "실시간 · 마지막 편 미확정";
+  const departureStatus = !departure ? "정보 확인 필요 · 마지막 탑승편 확인 대기" : target.estimated ? "배차간격으로 예상" : confirmed ? "실시간 정보로 예상" : "실시간 정보로 예상 · 마지막 편 미확정";
   const paused = state.schedule.snoozeDate === dateOnlyKey(model.now);
   const verdict = state.live.provider !== "none" && state.live.stationName && !state.live.routeNumber
     ? "출발지가 선택됐습니다. 노선 미연결 상태라 실시간 도착시간·출발 알림은 아직 사용할 수 없습니다."
