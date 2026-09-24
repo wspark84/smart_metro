@@ -27,7 +27,9 @@ export function selectBusHeadway(profile, now, holidayDates = []) {
   const range = raw && headwayRange(raw.min,raw.max);
   if (!range) return null;
   const label = profile.allDays ? '공식 제공 간격' : ({weekday:'평일',saturday:'토요일',sunday:'일요일',holiday:'공휴일'})[type];
-  return {...range,minutes:range.max,source:profile.source,label,checkedAt:profile.checkedAt || profile.fetchedAt,
+  // Midpoint of the published range, not an observed mean of actual arrivals.
+  const minutes = (range.min + range.max) / 2;
+  return {...range,minutes,source:profile.source,label,checkedAt:profile.checkedAt || profile.fetchedAt,
     fetchedAt:profile.fetchedAt,stale:profile.stale === true,lastChangedAt:profile.lastChangedAt,
     text:`${label} ${range.min === range.max ? range.max : `${range.min}~${range.max}`}분`};
 }

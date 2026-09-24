@@ -82,8 +82,11 @@ export async function fetchBusHeadway(binding,{env=process.env,fetchImpl=fetch,n
             if(fallback) return fallback;
           }
           entry.until=Date.now()+60_000;
+          if(mismatch==='route-not-listed') return {...unavailable,reason:'TAGO_ROUTE_NOT_LISTED',
+            message:'TAGO의 해당 도시 노선 검색 결과에 선택한 버스 번호가 없습니다. 다른 노선으로 대체하지 않습니다. 경기도_버스노선 조회 API의 승인 및 해당 노선 배차간격 제공 여부를 확인해 주세요.'};
           const reasons={'regional-stop':'경기 정류장 ID 확인','regional-route':'경기 노선 ID 확인','nearby-stop':'TAGO 주변 정류장 위치 대조',
-            'numbered-stop':'TAGO 정류장 번호·ID 대조','tago-route':'TAGO 경유 노선 확인','destination':'노선 종점 대조'};
+            'numbered-stop':'TAGO 정류장 번호·ID 대조','tago-route':'TAGO 경유 노선 확인','destination':'노선 종점 대조',
+            'route-candidate-limit':'동일 번호 노선의 안전한 조회 한도 확인','route-stop-not-found':'노선 경유 정류장 ID 대조'};
           return {...unavailable,message:`TAGO 배차간격 연결 중 ${reasons[mismatch] || '정류장·노선 확인'} 단계에서 일치하는 정보를 찾지 못했습니다.`};
         } catch (lookupError) {
           entry.until=Date.now()+60_000;

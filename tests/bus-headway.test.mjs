@@ -9,11 +9,19 @@ const gg={response:{msgHeader:{resultCode:0},msgBody:{busRouteInfoItem:row}}};
 const profile={status:'ready',...normalizeGyeonggiHeadway(gg,row.routeId)};
 
 test('Gyeonggi official intervals select Korean weekday, Saturday, Sunday and holiday',()=>{
-  assert.equal(selectBusHeadway(profile,new Date('2026-09-23T08:00:00+09:00')).minutes,12);
-  assert.equal(selectBusHeadway(profile,new Date('2026-09-26T00:30:00+09:00')).minutes,20);
-  assert.equal(selectBusHeadway(profile,new Date('2026-09-27T08:00:00+09:00')).minutes,25);
-  assert.equal(selectBusHeadway(profile,new Date('2026-09-23T08:00:00+09:00'),['2026-09-23']).minutes,30);
+  assert.equal(selectBusHeadway(profile,new Date('2026-09-23T08:00:00+09:00')).minutes,10);
+  assert.equal(selectBusHeadway(profile,new Date('2026-09-26T00:30:00+09:00')).minutes,17.5);
+  assert.equal(selectBusHeadway(profile,new Date('2026-09-27T08:00:00+09:00')).minutes,21.5);
+  assert.equal(selectBusHeadway(profile,new Date('2026-09-23T08:00:00+09:00'),['2026-09-23']).minutes,25);
   assert.match(selectBusHeadway(profile,new Date('2026-09-23T08:00:00+09:00')).text,/8~12분/);
+});
+
+test('official 13 to 45 minute range uses midpoint 29 without changing the source range',()=>{
+  const result=selectBusHeadway({status:'ready',weekday:{min:13,max:45}},new Date('2026-09-24T08:00:00+09:00'));
+  assert.equal(result.minutes,29);
+  assert.equal(result.min,13);
+  assert.equal(result.max,45);
+  assert.equal(selectBusHeadway({status:'ready',allDays:{min:12,max:12}},new Date('2026-09-24T08:00:00+09:00')).minutes,12);
 });
 
 test('missing weekend metadata never falls back to weekday; malformed intervals cannot invent service',()=>{

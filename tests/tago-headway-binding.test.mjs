@@ -8,6 +8,19 @@ const route={routeId:'regional-route',routeNumber:'1',destinationName:'종점'};
 const target={routeId:'official-route',routeNumber:'1',destinationName:'종점'};
 const binding={provider:'gyeonggi',stationId:stop.stationId,stationName:stop.stationName,routeId:route.routeId};
 const deps={env:{},stations:async()=>[stop],regionalRoutes:async()=>[route],nearby:async()=>[tago],numberedStations:async()=>[tago],routes:async()=>[target]};
+
+test('a successful partial-number search without the exact route reports missing coverage',async()=>{
+  let mismatch='';
+  const result=await resolveTagoHeadwayBinding(binding,{...deps,routes:async()=>[],
+    onMismatch:stage=>{mismatch=stage;},fetchImpl:async url=>{
+      assert.match(url.pathname,/getRouteNoList$/);
+      const item=[{routeid:'official-11',routeno:11},{routeid:'official-13',routeno:13}];
+      return {ok:true,text:async()=>JSON.stringify({response:{header:{resultCode:'00'},
+        body:{items:{item},totalCount:2,pageNo:1,numOfRows:100}}})};
+    }});
+  assert.equal(result,null);
+  assert.equal(mismatch,'route-not-listed');
+});
 test('reverse route lookup preserves official gateway errors instead of discarding HTTP error bodies',async()=>{
   let reads=0;
   await assert.rejects(reverseTagoRoute(tago,'1',{env:{TAGO_SERVICE_KEY:'secret'},fetchImpl:async()=>({ok:false,status:403,text:async()=>{

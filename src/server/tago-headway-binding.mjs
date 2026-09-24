@@ -48,7 +48,8 @@ export async function reverseTagoRoute(stop,routeNumber,options) {
   const listed=await routeRows('getRouteNoList',{cityCode:stop.cityCode,routeNo:routeNumber},options);
   const candidates=[...new Map(listed.filter(r=>String(r.routeno).trim()===routeNumber && r.routeid)
     .map(r=>[String(r.routeid),r])).values()];
-  if(!candidates.length || candidates.length>5) return [];
+  if(!candidates.length) { options.onMismatch?.('route-not-listed'); return []; }
+  if(candidates.length>5) { options.onMismatch?.('route-candidate-limit'); return []; }
   const verified=await Promise.all(candidates.map(async row=>{
     const path=await routeRows('getRouteAcctoThrghSttnList',{cityCode:stop.cityCode,routeId:row.routeid},options);
     if(path.some(p=>p.routeid && String(p.routeid)!==String(row.routeid))) return null;
@@ -56,7 +57,9 @@ export async function reverseTagoRoute(stop,routeNumber,options) {
     return {provider:'tago',cityCode:stop.cityCode,nodeId:stop.nodeId,stationId:stop.nodeId,
       routeId:String(row.routeid),routeNumber,destinationName:String(row.endnodenm || '')};
   }));
-  return verified.filter(Boolean);
+  const matches=verified.filter(Boolean);
+  if(!matches.length) options.onMismatch?.('route-stop-not-found');
+  return matches;
 }
 
 // Never derive TAGO IDs by adding a prefix to a regional ID. Both identities
@@ -88,8 +91,10 @@ export async function resolveTagoHeadwayBinding(binding,{env,fetchImpl,
   const stop=matches[0];
   let candidates=(await routes({serviceKey:env.TAGO_SERVICE_KEY,cityCode:stop.cityCode,nodeId:stop.nodeId,
     routeNumber:own[0].routeNumber,fetchImpl})).filter(r=>r.routeNumber===own[0].routeNumber);
-  if(!candidates.length) candidates=await reverseRoutes(stop,own[0].routeNumber,{env,fetchImpl});
-  if(candidates.length!==1) return missing('tago-route');
+  let reverseMismatch='';
+  if(!candidates.length) candidates=await reverseRoutes(stop,own[0].routeNumber,{env,fetchImpl,
+    onMismatch:stage=>{reverseMismatch=stage;}});
+  if(candidates.length!==1) return missing(reverseMismatch || 'tago-route');
   if(own[0].destinationName && candidates[0].destinationName && name(own[0].destinationName)!==name(candidates[0].destinationName)) return missing('destination');
   return {...candidates[0],provider:'tago'};
 }
