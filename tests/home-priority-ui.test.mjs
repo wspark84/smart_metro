@@ -24,7 +24,7 @@ async function view() {
 test('home prioritizes countdown, core inputs, submit, and only then transit detail', async () => {
   const v = await view();
   const html = v.html();
-  const markers = ['class="home-countdown ', 'class="home-trip"', 'data-editor="departure"', 'data-editor="destination"', 'data-trip-field="target"', 'data-trip-field="access"', 'data-action="complete-home-trip"', 'class="home-transit-detail"', 'class="home-timetable"'];
+  const markers = ['class="home-countdown ', 'class="home-trip"', 'data-editor="departure"', 'data-editor="destination"', 'data-trip-field="target"', 'data-trip-field="access"', 'data-action="complete-home-trip"', 'class="home-alarm-actions"', 'data-action="departed"', 'class="home-timetable"', 'class="home-transit-detail"', 'class="home-help"'];
   const indexes = markers.map(marker => html.indexOf(marker));
   indexes.forEach((index, i) => assert.ok(index >= 0 && (!i || index > indexes[i-1]), markers[i]));
 });
@@ -70,7 +70,17 @@ test('departure action no longer overlays the core input workspace', async () =>
   const rule = css.match(/\.home-alarm-actions \.primary-cta\s*\{([^}]+)\}/)[1];
   assert.match(rule, /position:\s*static/);
   assert.doesNotMatch(rule, /position:\s*fixed/);
-  assert.match(css, /\.home-trip \.home-trip-submit[^}]+min-height:\s*52px/);
+  assert.match(css, /\.home-trip \.home-trip-submit[^}]+min-height:\s*44px/);
+});
+
+test('alarm controls follow save and explanatory help remains below all actions', async () => {
+  const v = await view();
+  const html = v.html();
+  assert.match(html, /disabled aria-pressed="true">알람 켜기/);
+  assert.match(html, /aria-pressed="false">알람 끄기/);
+  assert.ok(html.indexOf('id="boarding-access-help"') > html.indexOf('data-action="departed"'));
+  v.run('state.schedule.snoozeDate=dateOnlyKey(new Date());');
+  assert.match(v.html(), /disabled aria-pressed="true">알람 끄기/);
 });
 
 test('an unsaved target change marks the hero as based on previous settings', async () => {

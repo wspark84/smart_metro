@@ -5103,25 +5103,35 @@ function renderHome(screen, model) {
     <section class="home-countdown ${urgent ? "is-urgent" : ""}" aria-labelledby="home-countdown-title">
       <div class="home-countdown-heading"><h1 id="home-countdown-title">${title}</h1><span class="home-prediction-label" data-home-evidence>${tripDraft.dirty ? "미적용 · 이전 설정 기준" : departureStatus}</span></div>
       <div class="home-countdown-value">${departure ? departure.minutes : "—"}<span>${departure ? departure.remainingMin < 0 ? "출발 기한 지남" : departure.remainingMin < 1 ? "지금 출발" : "분 안에 출발" : "아직 계산할 수 없어요"}</span></div>
-      ${departure ? `<p class="home-leave-by"><strong>${escapeHtml(formatClock(departure.leaveAt))}</strong>까지 집에서 출발<span>정류장·역까지 ${departure.accessMin}분 반영</span></p>` : `<p class="home-setup-prompt">${normalizeBoardingAccessMin(state.commute.boardingAccessMin) === null ? "아래에서 경로와 정류장까지 이동시간을 입력해 주세요." : "도착정보를 확인하지 못했습니다. 아래 경로를 확인해 주세요."}</p>`}
+      ${departure ? `<p class="home-leave-by"><strong>${escapeHtml(formatClock(departure.leaveAt))}</strong>까지 집에서 출발<span>정류장·역까지 ${departure.accessMin}분 반영</span></p>` : ""}
       ${hasPrediction && target.deltaMinutes < 0 ? `<p class="home-verdict">현재 교통편에 타도 목표시간보다 늦을 것으로 예상됩니다.</p>` : ""}
     </section>
     <section class="home-trip" aria-labelledby="home-trip-title">
-      <h2 id="home-trip-title">어디에, 몇 시까지 가세요?</h2><p class="home-trip-intro">출발지와 도착지를 누르고, 도착할 시간을 정하세요.</p>
+      <h2 id="home-trip-title">어디에, 몇 시까지 가세요?</h2>
       <fieldset style="border:0;padding:0;margin:0;min-width:0" ${homeTripSave.status === "saving" ? "disabled" : ""}>
       <button class="home-trip-field" data-action="edit-home-trip" data-editor="departure" aria-expanded="${homeEditor === "departure"}" aria-controls="home-departure-editor"><span>출발지 · 탑승 정류장 / 역</span><strong>${escapeHtml(model.stop.name || "출발지를 선택하세요")}</strong><small>${homeEditor === "departure" ? "닫기" : "검색·변경 ›"}</small></button>
       ${homeEditor === "departure" ? renderHomeDepartureEditor() : ""}
       ${state.live.provider !== "none" && state.live.provider !== "subway" && state.live.stationName && !state.live.routeNumber ? `<p class="field-help" role="status">정류장 선택 완료 · 버스 노선 미연결</p><button class="soft-button wide" data-action="retry-saved-boarding">선택한 정류장 노선 다시 조회</button>` : ""}
       <button class="home-trip-field" data-action="edit-home-trip" data-editor="destination" aria-expanded="${homeEditor === "destination"}" aria-controls="home-destination-editor"><span>도착지</span><strong>${escapeHtml(state.user.workAddress || "도착지를 선택하세요")}</strong><small>${homeEditor === "destination" ? "닫기" : "검색·변경 ›"}</small></button>
       ${homeEditor === "destination" ? renderHomeDestinationEditor() : ""}
-      <label class="home-target field-block"><span>도착 목표시간<small>이 시간까지 도착할게요</small></span><input aria-label="목적지 도착 목표 시간" type="time" value="${escapeHtml(tripDraft.target)}" data-trip-field="target" data-field="user.requiredArrivalTime" required /></label>
-      <label class="field-block home-access-time"><span>집 → 첫 정류장·역<small>걸리는 시간 (분)</small></span><input class="text-field-input" aria-label="첫 정류장·역까지 이동시간" aria-describedby="boarding-access-help" type="number" inputmode="numeric" min="0" max="180" step="1" placeholder="예: 5" value="${escapeHtml(tripDraft.access)}" data-trip-field="access" data-field="commute.boardingAccessMin" /></label>
-      <p class="field-help" id="boarding-access-help">첫 교통편이 마을버스라면 약 3분 여유를 더해 입력하세요. 예: 이동 5분 + 여유 3분 = 8분. 자동 추가되지는 않습니다.</p>
+      <div class="home-time-fields">
+      <label class="home-target field-block"><span>도착 목표시간</span><input aria-label="목적지 도착 목표 시간" type="time" value="${escapeHtml(tripDraft.target)}" data-trip-field="target" data-field="user.requiredArrivalTime" required /></label>
+      <label class="field-block home-access-time"><span>정류장까지 (분)</span><input class="text-field-input" aria-label="첫 정류장·역까지 이동시간" aria-describedby="boarding-access-help" type="number" inputmode="numeric" min="0" max="180" step="1" placeholder="예: 5" value="${escapeHtml(tripDraft.access)}" data-trip-field="access" data-field="commute.boardingAccessMin" /></label>
+      </div>
       </fieldset>
-      <p class="field-help" role="${homeTripSave.status === "error" ? "alert" : "status"}" data-trip-save-status>${escapeHtml(tripDraft.dirty && homeTripSave.status !== "saving" && homeTripSave.status !== "error" ? "입력 중 · 아직 적용되지 않았습니다. 정보 입력 완료를 눌러 주세요." : homeTripSave.status === "saved" && homeTripSave.key !== tripInputKey() ? "설정이 변경되었습니다. 정보 입력 완료를 눌러 다시 확인해 주세요." : homeTripSave.message || "이동시간·도착 목표는 정보 입력 완료를 누르면 적용됩니다. 출발지와 도착지 선택은 각 선택 버튼에서 저장됩니다.")}</p>
+      <p class="field-help" role="${homeTripSave.status === "error" ? "alert" : "status"}" data-trip-save-status>${escapeHtml(tripDraft.dirty && homeTripSave.status !== "saving" && homeTripSave.status !== "error" ? "아직 적용되지 않았습니다. 완료 버튼을 눌러 주세요." : homeTripSave.status === "saved" && homeTripSave.key !== tripInputKey() ? "변경된 설정을 다시 적용해 주세요." : homeTripSave.message || "")}</p>
       <button class="soft-button wide home-trip-submit" data-action="complete-home-trip" ${homeTripSave.status === "saving" ? "disabled" : ""}>${homeTripSave.status === "saving" ? "저장 중…" : "정보 입력 완료"}</button>
-      ${renderHomeStorageStatus()}
     </section>
+    <section class="home-alarm-actions" aria-label="오늘 알림">
+      <div class="home-alarm-toggle" role="group" aria-label="오늘 알람 설정">
+        <button class="soft-button" data-action="toggle-today-snooze" ${!paused ? 'disabled aria-pressed="true"' : 'aria-pressed="false"'}>알람 켜기</button>
+        <button class="soft-button" data-action="toggle-today-snooze" ${paused ? 'disabled aria-pressed="true"' : 'aria-pressed="false"'}>알람 끄기</button>
+      </div>
+      <button class="primary-cta" data-action="departed">출발했어요</button>
+    </section>
+    ${renderHomeTimetable(model, state.live.routeNumber ? `${state.live.routeNumber}${state.live.provider === "subway" ? "" : "번"}` : "", subwayDirection ? `${subwayDirection.direction} · ${subwayDirection.nextStation} 방면` : "")}
+    <div class="home-countdown-actions"><button class="ghost-link" data-action="sync-live-arrivals" ${!isLiveConfigured(state) || state.live.status === "loading" ? "disabled" : ""}>${state.live.status === "loading" ? "확인 중…" : "도착정보 새로고침"}</button><button class="ghost-link" data-action="edit-home-trip" data-editor="route" aria-expanded="${homeEditor === "route"}">목적지 경로 확인</button></div>
+    ${homeEditor === "route" ? renderCommuteEstimatePanel() : ""}
     <section class="home-transit-detail" aria-label="출발시간 계산 근거와 교통편">
       <h2>교통편과 계산 근거</h2>
       ${confirmed ? `<p>놓치면 늦는 마지막 탑승편</p>` : ""}
@@ -5138,12 +5148,10 @@ function renderHome(screen, model) {
       ${hasPrediction && !confirmed && !target.estimated ? `<p class="home-evidence-note">조회된 교통편 기준이며, 마지막 탑승편으로 확정되지 않았습니다.</p>` : ""}
       <p class="field-help" role="status">${plan?.headwayInfo ? `배차간격 자동 조회 · ${escapeHtml(plan.headwayInfo.text)} · ${escapeHtml(plan.headwayInfo.source)}. ${plan.headwayInfo.min !== plan.headwayInfo.max ? `배차간격 중간값 ${plan.headwayInfo.minutes}분 기준 예상입니다. 실제 운행 기록의 평균은 아닙니다. ` : ""}실제 운행 시각은 실시간 정보로 갱신합니다.` : "배차간격은 선택한 노선의 공식 API에서 자동으로 조회합니다. 직접 입력할 필요가 없습니다."}</p>
     </section>
-    ${renderHomeTimetable(model, state.live.routeNumber ? `${state.live.routeNumber}${state.live.provider === "subway" ? "" : "번"}` : "", subwayDirection ? `${subwayDirection.direction} · ${subwayDirection.nextStation} 방면` : "")}
-    <div class="home-countdown-actions"><button class="ghost-link" data-action="sync-live-arrivals" ${!isLiveConfigured(state) || state.live.status === "loading" ? "disabled" : ""}>${state.live.status === "loading" ? "확인 중…" : "도착정보 새로고침"}</button><button class="ghost-link" data-action="edit-home-trip" data-editor="route" aria-expanded="${homeEditor === "route"}">목적지 경로 확인</button></div>
-    ${homeEditor === "route" ? renderCommuteEstimatePanel() : ""}
-    <section class="home-alarm-actions" aria-label="오늘 알림">
-      <div><strong>${model.scheduleState.firing ? "알람 켜짐" : "알람 꺼짐"}</strong><button class="ghost-link" data-action="toggle-today-snooze">${paused ? "오늘 알람 다시 켜기" : "오늘 알람 끄기"}</button></div>
-      <button class="primary-cta" data-action="departed">출발했어요</button>
+    <section class="home-help" aria-label="입력과 알림 안내">
+      ${renderHomeStorageStatus()}
+      <p class="field-help">이동시간·도착 목표는 정보 입력 완료를 누르면 적용됩니다. 출발지와 도착지 선택은 각 선택 버튼에서 저장됩니다.</p>
+      <p class="field-help" id="boarding-access-help">첫 교통편이 마을버스라면 약 3분 여유를 더해 입력하세요. 예: 이동 5분 + 여유 3분 = 8분. 자동 추가되지는 않습니다.</p>
       <p class="field-help">정보 입력을 완료하면 집에서 출발할 시각의 20분·10분·5분·3분 전에 단계별로 알립니다. 실시간 정보의 오차를 고려해 1분 전과 출발 시각 알람은 보내지 않습니다. 예상 정보는 예상이라고 표시하며, 실시간 정보로 갱신합니다.<br>출발했어요를 누르면 오늘 남은 알람을 중지합니다.</p>
       <p class="field-help">앱을 닫은 상태의 알림 수신은 아직 검증되지 않았습니다. 중요한 일정은 휴대폰 기본 알람도 함께 설정해 주세요.</p>
     </section>
