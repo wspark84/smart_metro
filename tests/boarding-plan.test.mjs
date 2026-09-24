@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {buildBoardingPlan,validHeadway} from '../src/logic/boarding-plan.js';
+import {buildBoardingPlan,validHeadway,departurePrediction,detectEarlyDeparture} from '../src/logic/boarding-plan.js';
 import {formatClock} from '../src/logic/commute.js';
 import {readFile} from 'node:fs/promises';
 import vm from 'node:vm';
@@ -49,6 +49,55 @@ test('live last vehicle replaces forecast deadline and reminder copy',()=>{
   assert.equal(p.allTriggers[0].lastChanceConfirmed,true);
   assert.match(p.allTriggers[0].notificationSpec.body,/실시간 도착정보 기준.*09:17까지 집에서 출발/);
   assert.doesNotMatch(p.allTriggers[0].notificationSpec.body,/배차간격 예상/);
+});
+
+test('15:15 estimate advancing to 15:04 live triggers one emergency even with five-minute access',()=>{
+  const before=new Date('2026-09-23T14:59:00+09:00');
+  const at=new Date('2026-09-23T15:00:00+09:00');
+  const s=alarmState(before,[]);s.user.requiredArrivalTime='16:00';
+  s.live.snapshot.headway.weekday={min:13,max:45};
+  s.live.snapshot.liveStatus='unavailable';
+  s.live.snapshot.lastObservation={fetchedAt:before.toISOString(),arrivalsMin:[16]};
+  const first=reconcileAlarmRuntime(s,undefined,before);
+  assert.equal(formatClock(new Date(first.plan.departureAt)),'15:10');
+  assert.equal(first.dueEvents.length,0);
+  s.live.snapshot={...s.live.snapshot,liveStatus:'ready',fetchedAt:at.toISOString(),arrivalsMin:[4]};
+  const second=reconcileAlarmRuntime(s,first.runtime,at);
+  assert.equal(second.dueEvents.length,1);
+  assert.equal(second.dueEvents[0].triggerKind,'early-arrival');
+  assert.match(second.dueEvents[0].detail,/11분 앞당겨/);
+  assert.match(second.dueEvents[0].detail,/지금 바로 출발/);
+  assert.match(second.dueEvents[0].detail,/탑승을 보장할 수 없습니다/);
+  const delivered=reconcileAlarmDelivery(undefined,second,at);
+  const dispatched=reconcileDispatchQueue(undefined,delivered,{}, {dateKey:second.plan.dateKey},at);
+  assert.equal(dispatched.newBundles.length,1);
+  assert.match(dispatched.newBundles[0].notificationSpec.spokenText,/11분 앞당겨/);
+  const later=new Date(at.getTime()+20_000);
+  const third=reconcileAlarmRuntime(s,second.runtime,later);
+  assert.equal(third.dueEvents.length,0);
+  assert.ok(reconcileAlarmDelivery(delivered,third,later).currentAlert);
+  assert.equal(reconcileAlarmDelivery(delivered,third,new Date('2026-09-23T15:04:00+09:00')).currentAlert,null);
+  s.schedule.snoozeDate='2026-09-23';
+  assert.equal(reconcileAlarmRuntime(s,first.runtime,at).dueEvents.length,0);
+});
+
+test('urgent live vehicle stays visible instead of silently choosing a late estimated vehicle',()=>{
+  const at=new Date('2026-09-23T15:00:00+09:00');
+  const p=build({now:at,requiredArrivalTime:'16:00',arrivalsMin:[4],officialHeadwayMin:29,
+    snapshot:{fetchedAt:at.toISOString(),arrivalsMin:[4]}});
+  assert.equal(p.urgentBoarding,true);
+  assert.equal(p.risk.targetResult.arrivalMinutes,4);
+  assert.equal(p.risk.targetResult.estimated,false);
+  assert.equal(p.risk.targetResult.catchable,false);
+  assert.ok(p.risk.followingResult.deltaMinutes<0);
+  const prior={boardingAt:'2026-09-23T15:15:00+09:00'};
+  assert.ok(detectEarlyDeparture(p,prior,at,at.toISOString()));
+  assert.equal(detectEarlyDeparture(p,null,at,at.toISOString()),null);
+  assert.equal(detectEarlyDeparture(p,prior,at,'2026-09-23T14:57:00+09:00'),null);
+  assert.equal(detectEarlyDeparture(p,departurePrediction(p,at),at,at.toISOString()),null);
+  const estimated=build({now:at,requiredArrivalTime:'16:00',arrivalsMin:[],officialHeadwayMin:29,
+    snapshot:{fetchedAt:at.toISOString(),arrivalsMin:[4]}});
+  assert.equal(detectEarlyDeparture(estimated,prior,at,at.toISOString()),null);
 });
 
 test('deadline movement does not duplicate stages and catches up only the most urgent stage',()=>{
@@ -202,6 +251,27 @@ async function view(overrides={}) {
   vm.runInContext('authMeta.status="authenticated";authMeta.user={id:"test",name:"테스트",providers:["google"]};',context);
   return {context,app,handlers,run:code=>vm.runInContext(code,context)};
 }
+
+test('foreground early-arrival alert plays once immediately and respects alarms being off',async()=>{
+  const v=await view();
+  v.run(`
+    let emergencyPlays=0;
+    const emergencyNow=new Date('2026-09-23T15:00:00+09:00');
+    const emergencyPlan=buildBoardingPlan({now:emergencyNow,requiredArrivalTime:'16:00',
+      route:{durationAvailable:true,onboardToDestinationMin:34,boardingAccessMin:5},
+      arrivalsMin:[4],officialHeadwayMin:29,snapshot:{fetchedAt:emergencyNow.toISOString(),arrivalsMin:[4]}});
+    state.live.snapshot={fetchedAt:emergencyNow.toISOString()};
+    getDashboardModel=()=>({homePlan:emergencyPlan,now:emergencyNow,scheduleState:{firing:true}});
+    playNotificationSpec=spec=>{if(!spec.spokenText.includes('지금 바로 출발')) throw new Error('wrong copy');emergencyPlays++;return {playedSound:true};};
+    pushHistory=()=>{};queueAlarmRuntimeRefresh=()=>{};render=()=>{};
+    announceEarlyArrival({boardingAt:'2026-09-23T15:15:00+09:00'});
+    announceEarlyArrival({boardingAt:'2026-09-23T15:15:00+09:00'});
+  `);
+  assert.equal(v.run('emergencyPlays'),1);
+  assert.equal(v.run('earlyArrivalNotice.advancedMin'),11);
+  v.run(`playedEarlyArrivalKey='';getDashboardModel=()=>({homePlan:emergencyPlan,now:emergencyNow,scheduleState:{firing:false}});announceEarlyArrival({boardingAt:'2026-09-23T15:15:00+09:00'});`);
+  assert.equal(v.run('emergencyPlays'),1);
+});
 
 test('home input remains a draft through refresh until the completion button is used',async()=>{
   const v=await view();

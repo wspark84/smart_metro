@@ -106,15 +106,15 @@ function resolveNotificationSpec(alert, notificationSettings, now) {
     deliveryPriorityClass: String(alert?.deliveryPriorityClass || "normal"),
     deliveryPriorityReason: String(alert?.deliveryPriorityReason || ""),
     secondsSinceTrigger,
-    escalationEnabled: alert?.triggerKind === 'departure' ? false : notificationSettings?.escalationEnabled !== false,
+    escalationEnabled: ['departure','early-arrival'].includes(alert?.triggerKind) ? false : notificationSettings?.escalationEnabled !== false,
     dndBypass: Boolean(notificationSettings?.dndBypass),
     preferredSoundPresetId: notificationSettings?.soundPresetId,
     preferredSpeechRate: notificationSettings?.ttsSpeed,
     vibrationStrength: notificationSettings?.vibrationStrength,
   });
-  if (alert?.triggerKind === 'departure' && alert.notificationSpec?.departureAt) {
+  if (['departure','early-arrival'].includes(alert?.triggerKind) && alert.notificationSpec?.departureAt) {
     // Preserve the departure-focused wording through push/TTS escalation.
-    for (const key of ['title','body','spokenText','alertPhraseKo','departureAt','departureEstimated'])
+    for (const key of ['title','body','spokenText','alertPhraseKo','departureAt','departureEstimated','emergencyKey','emergencyContextKey','expiresAt'])
       spec[key] = alert.notificationSpec[key];
   }
   return spec;

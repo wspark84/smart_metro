@@ -85,7 +85,7 @@ import { mountKakaoCommuteMap, mountKakaoBoardingMap } from "./services/kakao-ma
 import { parseSubwayRouteId, stationSelectionKey } from "./logic/station-search.js";
 import { loadState, resetState, sanitizeState, saveState } from "./state.js";
 import { createWorkspaceFetch } from "./services/workspace-fetch.js";
-import { buildBoardingPlan, validHeadway, buildDepartureReminder } from "./logic/boarding-plan.js";
+import { buildBoardingPlan, validHeadway, buildDepartureReminder, departurePrediction, detectEarlyDeparture } from "./logic/boarding-plan.js";
 import { selectBusHeadway } from "./logic/bus-headway.js";
 
 if (typeof window.fetch === "function") {
@@ -100,6 +100,8 @@ let homeTripDraft = null;
 let homeTripSave = {status:"idle",message:"",key:""};
 let planningObservation = null;
 let homeDisplayPrediction = null;
+let earlyArrivalNotice = null;
+let playedEarlyArrivalKey = '';
 
 function planningRouteKey() {
   return JSON.stringify([state.live.provider,state.live.stationId || state.live.nodeId,state.live.routeId,state.live.order]);
@@ -416,6 +418,8 @@ function resetWorkspaceMeta() {
   homeTripSave = {status:"idle",message:"",key:""};
   planningObservation = null;
   homeDisplayPrediction = null;
+  earlyArrivalNotice = null;
+  playedEarlyArrivalKey = '';
   busCitiesMeta.request++;
   busCitiesMeta.status = "idle";
   busCitiesMeta.cities = [];
@@ -1299,6 +1303,10 @@ function maybeAutoPlayActiveAlarm() {
   }
 
   if (browserPlaybackMeta.lastDispatchKey === playbackKey) {
+    return;
+  }
+  if (bundle.notificationSpec.emergencyKey && bundle.notificationSpec.emergencyKey===playedEarlyArrivalKey) {
+    browserPlaybackMeta.lastDispatchKey=playbackKey;
     return;
   }
 
@@ -2278,6 +2286,8 @@ async function refreshVisibleTransit() {
   const binding = getLiveBinding();
   const key = JSON.stringify(binding);
   const userId = authMeta.user.id;
+  const previousModel = getDashboardModel();
+  const previousPrediction = departurePrediction(previousModel.homePlan,previousModel.now);
   visibleTransitRefreshPending = true;
   render();
   try {
@@ -2287,10 +2297,12 @@ async function refreshVisibleTransit() {
     state.live.status = payload.liveStatus === 'unavailable' ? 'error' : 'ready';
     state.live.lastError = payload.liveStatus === 'unavailable' ? '실시간 정보 없음 · 저장한 자료로 예상합니다.' : '';
     state.live.lastSyncedAt = payload.fetchedAt;
+    announceEarlyArrival(previousPrediction);
     const age = Date.now() - Date.parse(state.commute.transitJourney?.fetchedAt || "");
     if (state.commute.transitJourney?.boardingConfirmed && age > 5 * 60_000 && commuteEstimateMeta.status !== "loading") {
       await refreshCommuteEstimate();
     }
+    if (authMeta.user?.id===userId && JSON.stringify(getLiveBinding())===key) announceEarlyArrival(previousPrediction);
   } catch (error) {
     if (!isAuthenticated() || authMeta.user.id !== userId || JSON.stringify(getLiveBinding()) !== key) return;
     state.live.snapshot = null;
@@ -2300,6 +2312,34 @@ async function refreshVisibleTransit() {
     visibleTransitRefreshPending = false;
     if (isAuthenticated()) render();
   }
+}
+
+function emergencyContextKey() {
+  return JSON.stringify([transitQueryKey(transitQueryForState(state)),state.user.requiredArrivalTime]);
+}
+
+function announceEarlyArrival(previous) {
+  const model=getDashboardModel();
+  if (!model.scheduleState.firing) return;
+  const notice=detectEarlyDeparture(model.homePlan,previous,model.now,state.live.snapshot?.fetchedAt);
+  if (!notice) return;
+  const contextKey=emergencyContextKey();
+  const emergencyKey=`early:${contextKey}:${Math.floor(Date.parse(notice.boardingAt)/60000)}`;
+  if (playedEarlyArrivalKey===emergencyKey) return;
+  earlyArrivalNotice={...notice,contextKey,emergencyKey};
+  playedEarlyArrivalKey=emergencyKey;
+  const spec={...getNotificationSpec({riskLevel:'RED',urgency:'HURRY',escalationEnabled:false,
+    preferredSoundPresetId:state.notification.soundPresetId}),title:notice.title,body:notice.body,
+    spokenText:notice.body,emergencyKey,volumePercent:100,vibrationRepeats:5};
+  try {
+    const playback=playNotificationSpec(spec);
+    if (!playback.playedSound && !playback.playedTts) browserPlaybackMeta.lastError='긴급 알림 소리가 제한되었습니다. 화면 안내를 확인해 주세요.';
+  } catch {
+    browserPlaybackMeta.lastError='긴급 알림 소리를 재생하지 못했습니다. 화면 안내를 확인해 주세요.';
+  }
+  pushHistory(notice.title,notice.body,'ERROR');
+  queueAlarmRuntimeRefresh(0);
+  render();
 }
 
 function focusPanel(screen, panelId, panelItemId = "", panelItemKind = "", panelItemKey = "") {
@@ -5089,7 +5129,9 @@ function renderHome(screen, model) {
   if (homeDisplayPrediction?.key !== displayKey) homeDisplayPrediction = null;
   const refreshing = visibleTransitRefreshPending || state.live.status === "loading" || commuteEstimateMeta.status === "loading";
   const elapsed = homeDisplayPrediction ? (model.now - homeDisplayPrediction.now) / 60000 : Infinity;
-  const retaining = refreshing && homeDisplayPrediction && elapsed >= 0 && elapsed <= 2;
+  const emergencyUpdate = plan?.urgentBoarding || (earlyArrivalNotice?.contextKey===emergencyContextKey() &&
+    Date.parse(earlyArrivalNotice.boardingAt)>model.now.getTime());
+  const retaining = !emergencyUpdate && refreshing && homeDisplayPrediction && elapsed >= 0 && elapsed <= 2;
   if (retaining) {
     const previous = homeDisplayPrediction;
     const shift = row => row ? {...row,arrivalMinutes:Number.isFinite(row.arrivalMinutes) ? row.arrivalMinutes-elapsed : row.arrivalMinutes} : row;
@@ -5110,7 +5152,9 @@ function renderHome(screen, model) {
   const confirmed = hasPrediction && model.risk.lastChanceConfirmed;
   const departure = hasPrediction ? model.risk.departure : null;
   const urgent = hasPrediction && (model.risk.urgency === "HURRY" || (departure ? departure.remainingMin <= 5 : confirmed && target.arrivalMinutes <= 5));
-  const title = (confirmed || plan?.estimatedLast) && departure ? "늦지 않는 마지막 출발까지" : "집에서 출발까지 남은 시간";
+  const title = plan?.urgentBoarding ? "지금 바로 출발하세요" : (confirmed || plan?.estimatedLast) && departure ? "늦지 않는 마지막 출발까지" : "집에서 출발까지 남은 시간";
+  const earlyNotice = earlyArrivalNotice?.contextKey===emergencyContextKey() && model.scheduleState.firing &&
+    Date.parse(earlyArrivalNotice.boardingAt)>model.now.getTime() ? earlyArrivalNotice : null;
   const departureStatus = !departure ? "정보 확인 필요 · 마지막 탑승편 확인 대기" : target.estimated ? "배차간격으로 예상" : confirmed ? "실시간 정보로 예상" : "실시간 정보로 예상 · 마지막 편 미확정";
   const paused = state.schedule.snoozeDate === dateOnlyKey(model.now);
   const verdict = state.live.provider !== "none" && state.live.stationName && !state.live.routeNumber
@@ -5125,9 +5169,11 @@ function renderHome(screen, model) {
   return `<main class="screen screen-home">
     <section class="home-countdown ${urgent ? "is-urgent" : ""}" aria-labelledby="home-countdown-title">
       <div class="home-countdown-heading"><h1 id="home-countdown-title">${title}</h1><span class="home-prediction-label" data-home-evidence>${tripDraft.dirty ? "미적용 · 이전 설정 기준" : retaining ? "갱신 중 · 이전 계산 유지" : departureStatus}</span></div>
-      <div class="home-countdown-value">${departure ? departure.minutes : "—"}<span>${departure ? departure.remainingMin < 0 ? "출발 기한 지남" : departure.remainingMin < 1 ? "지금 출발" : "분 안에 출발" : "아직 계산할 수 없어요"}</span></div>
-      ${departure ? `<p class="home-leave-by"><strong>${escapeHtml(formatClock(departure.leaveAt))}</strong>까지 집에서 출발<span>정류장·역까지 ${departure.accessMin}분 반영</span></p>` : ""}
-      ${hasPrediction && target.arriveWorkAt ? `<p class="home-arrive-by">→ 목적지 <strong>${escapeHtml(formatClock(target.arriveWorkAt))}</strong> 도착 예상</p>` : ""}
+      <div class="home-countdown-value">${departure ? departure.minutes : "—"}<span>${plan?.urgentBoarding ? "지금 출발 · 탑승 미확정" : departure ? departure.remainingMin < 0 ? "출발 기한 지남" : departure.remainingMin < 1 ? "지금 출발" : "분 안에 출발" : "아직 계산할 수 없어요"}</span></div>
+      ${earlyNotice ? `<p class="home-last-warning" role="alert">긴급 · 실시간 도착이 ${Math.floor(earlyNotice.advancedMin)}분 앞당겨졌어요. 지금 바로 출발하세요.</p>` : ''}
+      ${plan?.urgentBoarding ? `<p class="home-last-warning">평소 이동시간으로는 탑승이 빠듯합니다. 탑승 여부를 확인하며 안전하게 이동하세요.</p>` : ''}
+      ${plan?.urgentBoarding ? `<p class="home-leave-by"><strong>${escapeHtml(formatClock(addMinutes(model.now,target.arrivalMinutes)))}</strong> 차량 도착 예상<span>정류장·역까지 평소 ${departure.accessMin}분</span></p>` : departure ? `<p class="home-leave-by"><strong>${escapeHtml(formatClock(departure.leaveAt))}</strong>까지 집에서 출발<span>정류장·역까지 ${departure.accessMin}분 반영</span></p>` : ""}
+      ${hasPrediction && target.arriveWorkAt ? `<p class="home-arrive-by">→ ${plan?.urgentBoarding ? '탑승 시 ' : ''}목적지 <strong>${escapeHtml(formatClock(target.arriveWorkAt))}</strong> 도착 예상</p>` : ""}
       ${hasPrediction && (confirmed || plan?.estimatedLast) && model.risk.followingResult?.deltaMinutes < 0 ? `<p class="home-last-warning">놓치면 다음 차는 지각 예상${model.risk.followingResult.arriveWorkAt ? ` · ${escapeHtml(formatClock(model.risk.followingResult.arriveWorkAt))} 도착` : ""}</p>` : ""}
       ${hasPrediction && target.deltaMinutes < 0 ? `<p class="home-verdict">현재 교통편에 타도 목표시간보다 늦을 것으로 예상됩니다.</p>` : ""}
     </section>
@@ -6641,6 +6687,8 @@ app.addEventListener("click", (event) => {
     const requestBinding = getLiveBinding();
     const requestKey = JSON.stringify(requestBinding);
     const requestUserId = authMeta.user?.id;
+    const previousModel=getDashboardModel();
+    const previousPrediction=departurePrediction(previousModel.homePlan,previousModel.now);
     state.live.status = "loading";
     state.live.lastError = "";
     render();
@@ -6668,6 +6716,7 @@ app.addEventListener("click", (event) => {
         );
         void refreshBusAccuracySummary();
         void runAutoBusAccuracyProbeCycle();
+        announceEarlyArrival(previousPrediction);
         render();
       })
       .catch((error) => {

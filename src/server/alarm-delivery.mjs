@@ -45,7 +45,14 @@ export function reconcileAlarmDelivery(deliveryState = createAlarmDeliveryState(
 
   const dueEvents = Array.isArray(runtimeResult?.dueEvents) ? runtimeResult.dueEvents : [];
   const plan = runtimeResult?.plan;
+  const emergency=next.currentAlert?.triggerKind==='early-arrival';
+  if (emergency && (currentNow.getTime()>=Date.parse(next.currentAlert.notificationSpec?.expiresAt) ||
+      next.currentAlert.notificationSpec?.emergencyContextKey!==plan?.emergencyContextKey)) {
+    if (next.currentAlert.triggerKey) next.handledTriggerKeys.push(next.currentAlert.triggerKey);
+    next.currentAlert=null;
+  }
   if (plan?.mode === 'departure-deadline' && next.currentAlert &&
+      !emergency &&
       (next.currentAlert.notificationSpec?.departureAt !== plan.departureAt ||
        currentNow.getTime() > Date.parse(plan.departureAt) - 2*60_000)) {
     if (next.currentAlert.triggerKey) next.handledTriggerKeys.push(next.currentAlert.triggerKey);

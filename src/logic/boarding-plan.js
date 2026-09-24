@@ -3,6 +3,28 @@ import { koreanServiceDate } from './bus-headway.js';
 
 export const DEPARTURE_REMINDER_MINUTES = [20, 10, 5, 3];
 
+export function departurePrediction(plan, now) {
+  const row=plan?.risk?.targetResult;
+  if (!plan?.risk?.departure || !row || row.level==='UNKNOWN' || row.deltaMinutes<0) return null;
+  return {boardingAt:addMinutes(now,row.arrivalMinutes).toISOString(),
+    leaveAt:plan.risk.departure.leaveAt.toISOString(),estimated:Boolean(row.estimated)};
+}
+
+export function detectEarlyDeparture(plan, previous, now, fetchedAt) {
+  const row=plan?.risk?.targetResult;
+  const prediction=departurePrediction(plan,now);
+  const age=now-Date.parse(fetchedAt || '');
+  if (!prediction || !previous || !Number.isFinite(Date.parse(previous.boardingAt)) || row.estimated || row.arrivalMinutes<=0 ||
+      !(age>=0 && age<=90_000) || !(plan.risk.followingResult?.deltaMinutes<0) ||
+      plan.risk.departure.remainingMin>3 ||
+      koreanServiceDate(previous.boardingAt)!==koreanServiceDate(now)) return null;
+  const advancedMin=(Date.parse(previous.boardingAt)-Date.parse(prediction.boardingAt))/60000;
+  if (!(advancedMin>=1)) return null;
+  return {...prediction,advancedMin,arrivalAtWork:row.arriveWorkAt.toISOString(),
+    title:'긴급 · 도착시간이 앞당겨졌어요',
+    body:`실시간 정보가 갱신되어 차량 도착이 ${Math.floor(advancedMin)}분 앞당겨졌습니다. 지금 바로 출발하세요. ${formatClock(new Date(prediction.boardingAt))} 탑승, ${formatClock(row.arriveWorkAt)} 목적지 도착 예상입니다. 이 차를 놓치면 다음 차는 지각 예상입니다.${!row.catchable ? ' 평소 이동시간으로는 탑승이 빠듯하며 탑승을 보장할 수 없습니다.' : ''} 주변을 살피며 안전하게 이동하세요.`};
+}
+
 export function departurePlanningEnabled(state) {
   const live = state?.live;
   return Boolean(live?.provider && live.provider !== 'none' && live.routeNumber &&
@@ -66,7 +88,10 @@ export function buildBoardingPlan({ now, requiredArrivalTime, route, arrivalsMin
   const rows = evaluated.results.filter(row=>Number.isFinite(row.arrivalMinutes))
     .map((row,index)=>({...row,estimated:planned[index].estimated}));
   const reachable = rows.filter(row=>row.level !== 'UNKNOWN' && row.catchable);
-  const target = reachable.filter(row=>row.deltaMinutes>=0).at(-1) || reachable[0] || null;
+  const lastOnTime = rows.filter(row=>row.level!=='UNKNOWN' && row.deltaMinutes>=0 && row.arrivalMinutes>0).at(-1);
+  const urgentBoarding = Boolean(lastOnTime && !lastOnTime.estimated && !lastOnTime.catchable &&
+    rows[lastOnTime.index+1]?.deltaMinutes<0 && Number.isFinite(route.boardingAccessMin));
+  const target = (urgentBoarding ? lastOnTime : null) || reachable.filter(row=>row.deltaMinutes>=0).at(-1) || reachable[0] || null;
   const following = target ? rows[target.index+1] : null;
   const confirmed = Boolean(target && !target.estimated && following && !following.estimated &&
     target.deltaMinutes>=0 && following.deltaMinutes<0);
@@ -76,7 +101,7 @@ export function buildBoardingPlan({ now, requiredArrivalTime, route, arrivalsMin
     ? '배차간격 기준 예상 도착시간입니다(실시간 아님). 운행 종료·결행은 반영되지 않을 수 있으며 실시간 정보가 확인되면 갱신합니다.'
     : evaluated.message
     : duration ? '지금 조회된 차는 이동시간상 탑승이 어렵거나 도착정보가 없습니다. 이후 교통편을 확인하고 있습니다.' : evaluated.message;
-  return { rows, interval, intervalSource, headwayInfo, latestBoardAt, estimatedLast,
+  return { rows, interval, intervalSource, headwayInfo, latestBoardAt, estimatedLast,urgentBoarding,
     anchorCheckedAt:recent ? snapshot.fetchedAt : null,
     hasEstimates:rows.some(row=>row.estimated),
     risk:{...evaluated,results:rows,targetResult:target || {...base.results[0],level:'UNKNOWN',arrivalMinutes:null},

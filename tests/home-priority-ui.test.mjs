@@ -134,3 +134,16 @@ test('loading without a prior prediction and a refresh stuck beyond two minutes 
   v.run('state.live.status="loading";homeDisplayPrediction.now=new Date(Date.now()-121000);');
   assert.match(v.html("model.dataSource='UNAVAILABLE';model.risk.departure=null;"), /home-countdown-value">—/);
 });
+
+test('urgent live change bypasses loading retention and shows the last on-time vehicle immediately', async () => {
+  const v=await view();
+  v.run('state.user.requiredArrivalTime="16:00";');
+  const setup="model.now=new Date('2026-09-23T15:00:00+09:00');model.homePlan=buildBoardingPlan({now:model.now,requiredArrivalTime:'16:00',route:{durationAvailable:true,onboardToDestinationMin:34,boardingAccessMin:5},arrivalsMin:[MINUTES],officialHeadwayMin:29,snapshot:{fetchedAt:model.now.toISOString(),arrivalsMin:[MINUTES]}});";
+  assert.match(v.html(setup.replaceAll('MINUTES','15')), /10<span>분 안에 출발/);
+  v.run('visibleTransitRefreshPending=true;');
+  const hero=v.html(setup.replaceAll('MINUTES','4')).split('</section>')[0];
+  assert.match(hero,/지금 바로 출발하세요/);
+  assert.match(hero,/15:38/);
+  assert.match(hero,/탑승이 빠듯/);
+  assert.doesNotMatch(hero,/이전 계산 유지|목적지 <strong>16:07/);
+});

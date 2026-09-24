@@ -12,7 +12,7 @@ import { isLiveConfigured, projectLiveArrivals, resolveCommuteLine, resolveCommu
 import { buildEscalationTimeline, getNotificationSpec } from "../logic/notification-engine.js";
 import { resolveJourneyDuration } from "../logic/transit-journey.js";
 import { transitQueryKey, transitQueryForState } from "../logic/transit-journey.js";
-import { buildBoardingPlan, buildDepartureReminder, departurePlanningEnabled, DEPARTURE_REMINDER_MINUTES } from "../logic/boarding-plan.js";
+import { buildBoardingPlan, buildDepartureReminder, departurePlanningEnabled, DEPARTURE_REMINDER_MINUTES, departurePrediction, detectEarlyDeparture } from "../logic/boarding-plan.js";
 import { selectBusHeadway } from "../logic/bus-headway.js";
 
 const MINUTE_MS = 60_000;
@@ -318,6 +318,18 @@ function buildDepartureAlarmPlan(state, today, options) {
   const valid = Boolean(departureAt && boarding.risk.targetResult.deltaMinutes >= 0);
   const goalAt = combineDateAndTime(today,state.user.requiredArrivalTime);
   const stageKey = JSON.stringify([binding,state.user.requiredArrivalTime]);
+  const emergency = scheduleState.firing && prior?.stageKey===stageKey
+    ? detectEarlyDeparture(boarding,prior.prediction,today,current?.fetchedAt) : null;
+  const emergencyKey = emergency ? `early:${stageKey}:${Math.floor(Date.parse(emergency.boardingAt)/60000)}` : null;
+  const emergencyTrigger = emergency ? {triggerAt:today.toISOString(),triggerKind:'early-arrival',
+    reminderKey:emergencyKey,triggerLabel:'실시간 도착 앞당김 긴급 알림',riskLevel:'RED',urgency:'HURRY',
+    source:'live-snapshot',arrivalsMin:[boarding.risk.targetResult.arrivalMinutes],
+    departureAt:emergency.leaveAt,departureEstimated:false,message:emergency.body,
+    notificationSpec:{...getNotificationSpec({riskLevel:'RED',urgency:'HURRY',routeNumber:line.number,
+      escalationEnabled:false,preferredSoundPresetId:state.notification.soundPresetId}),
+      title:emergency.title,body:emergency.body,spokenText:emergency.body,emergencyKey,
+      emergencyContextKey:stageKey,expiresAt:emergency.boardingAt,departureAt:emergency.leaveAt,
+      fullScreen:true,volumePercent:100,vibrationRepeats:5}} : null;
   const allTriggers = scheduleState.firing && valid ? DEPARTURE_REMINDER_MINUTES.map(lead => {
     const triggerAt = addMinutes(new Date(departureAt),-lead);
     const level = lead <= 3 ? 'RED' : lead <= 5 ? 'ORANGE' : lead <= 10 ? 'YELLOW' : 'GREEN';
@@ -342,10 +354,11 @@ function buildDepartureAlarmPlan(state, today, options) {
   const triggers = allTriggers.filter(t=>Date.parse(t.triggerAt)>=today.getTime());
   return {generatedAt:today.toISOString(),dateKey:dateOnlyKey(today),todayStatus:scheduleState,
     mode:'departure-deadline',departureAt:valid ? departureAt : null,
-    planningObservation:{binding,snapshot,headway,gap,gapAt},
+    planningObservation:{binding,snapshot,headway,gap,gapAt,stageKey,prediction:departurePrediction(boarding,today)},
+    emergencyTrigger,emergencyContextKey:stageKey,
     stop:{id:stop.id,name:state.live.stationName || stop.name,stopCode:stop.stopCode},
     route:{id:line.id,number:line.number,label:line.label,destination:line.destination},
-    window:{startAt:allTriggers[0]?.triggerAt || goalAt.toISOString(),endAt:departureAt || goalAt.toISOString(),repeatIntervalMin:null},
+    window:{startAt:allTriggers[0]?.triggerAt || goalAt.toISOString(),endAt:boarding.urgentBoarding ? addMinutes(today,boarding.risk.targetResult.arrivalMinutes).toISOString() : departureAt || goalAt.toISOString(),repeatIntervalMin:null},
     totalTriggers:allTriggers.length,baseTriggerCount:allTriggers.length,precheckTriggerCount:0,
     remainingTriggers:triggers.length,remainingPrecheckTriggers:0,nextTrigger:triggers[0] || null,
     stabilityWatch:{level:'none',precheckLeadMin:0,precheckTriggerAt:null},triggers,allTriggers};

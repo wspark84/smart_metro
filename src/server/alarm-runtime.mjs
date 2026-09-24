@@ -120,6 +120,17 @@ export function reconcileAlarmRuntime(
   }
 
   const nextUpcoming = plan.allTriggers.find((trigger) => new Date(trigger.triggerAt).getTime() > currentNow.getTime()) || null;
+  if (plan.emergencyTrigger) {
+    const trigger=plan.emergencyTrigger;
+    const key=buildTriggerKey(plan.dateKey,trigger.reminderKey);
+    if (!nextRuntime.firedTriggerKeys.includes(key)) {
+      nextRuntime.firedTriggerKeys.push(key);
+      const event=buildTriggeredEvent({plan,trigger,now:currentNow});
+      dueEvents.length=0; // The emergency supersedes a regular stage at this tick.
+      dueEvents.push(event);
+      nextRuntime.lastEvent=event;
+    }
+  }
 
   nextRuntime.status = plan.todayStatus.firing ? "running" : "paused";
   nextRuntime.dateKey = plan.dateKey;
