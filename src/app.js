@@ -1,5 +1,6 @@
 ﻿import {
   addMinutes,
+  buildDepartureGuidance,
   buildSchedulePreview,
   dateOnlyKey,
   describeScheduleState,
@@ -98,6 +99,7 @@ let state = loadState();
 let homeTripDraft = null;
 let homeTripSave = {status:"idle",message:"",key:""};
 let planningObservation = null;
+let homeDisplayPrediction = null;
 
 function planningRouteKey() {
   return JSON.stringify([state.live.provider,state.live.stationId || state.live.nodeId,state.live.routeId,state.live.order]);
@@ -413,6 +415,7 @@ function resetWorkspaceMeta() {
   homeTripDraft = null;
   homeTripSave = {status:"idle",message:"",key:""};
   planningObservation = null;
+  homeDisplayPrediction = null;
   busCitiesMeta.request++;
   busCitiesMeta.status = "idle";
   busCitiesMeta.cities = [];
@@ -2270,12 +2273,13 @@ function goTo(screen) {
 }
 
 async function refreshVisibleTransit() {
-  if (!isAuthenticated() || !isLiveConfigured(state) || visibleTransitRefreshPending ||
+  if (!isAuthenticated() || !isLiveConfigured(state) || visibleTransitRefreshPending || state.live.status === "loading" ||
       !busApiConfig.providers?.[state.live.provider]?.configured || !state.live.routeNumber) return;
   const binding = getLiveBinding();
   const key = JSON.stringify(binding);
   const userId = authMeta.user.id;
   visibleTransitRefreshPending = true;
+  render();
   try {
     const payload = await fetchLiveArrivals(binding);
     if (!isAuthenticated() || authMeta.user.id !== userId || JSON.stringify(getLiveBinding()) !== key) return;
@@ -5077,8 +5081,27 @@ function renderHomeStorageStatus() {
 }
 
 function renderHome(screen, model) {
-  const plan = model.homePlan;
+  let plan = model.homePlan;
   if (plan) model = {...model,risk:plan.risk,dataSource:plan.rows.length ? "LIVE" : "UNAVAILABLE"};
+  // Presentation only: do not publish partially refreshed data or change alarm calculations.
+  const displayKey = JSON.stringify([authMeta.user?.id,transitQueryKey(transitQueryForState(state)),
+    state.user.requiredArrivalTime,state.commute.boardingAccessMin,dateOnlyKey(model.now)]);
+  if (homeDisplayPrediction?.key !== displayKey) homeDisplayPrediction = null;
+  const refreshing = visibleTransitRefreshPending || state.live.status === "loading" || commuteEstimateMeta.status === "loading";
+  const elapsed = homeDisplayPrediction ? (model.now - homeDisplayPrediction.now) / 60000 : Infinity;
+  const retaining = refreshing && homeDisplayPrediction && elapsed >= 0 && elapsed <= 2;
+  if (retaining) {
+    const previous = homeDisplayPrediction;
+    const shift = row => row ? {...row,arrivalMinutes:Number.isFinite(row.arrivalMinutes) ? row.arrivalMinutes-elapsed : row.arrivalMinutes} : row;
+    const risk = {...previous.risk,results:previous.risk.results.map(shift),
+      targetResult:shift(previous.risk.targetResult),followingResult:shift(previous.risk.followingResult)};
+    risk.departure = buildDepartureGuidance(risk.targetResult.arrivalMinutes,previous.risk.departure.accessMin,model.now);
+    plan = previous.plan ? {...previous.plan,rows:previous.plan.rows.map(shift),risk} : null;
+    model = {...model,risk,homePlan:plan,dataSource:previous.dataSource};
+  } else if (!refreshing) {
+    homeDisplayPrediction = model.risk.departure && model.dataSource === "LIVE"
+      ? {key:displayKey,now:model.now,risk:model.risk,plan,dataSource:model.dataSource} : null;
+  }
   const tripDraft = getHomeTripDraft();
   const subwayDirection = state.live.provider === "subway" ? parseSubwayRouteId(state.live.routeId) : null;
   const lineLabel = state.live.routeNumber ? `${state.live.routeNumber}${state.live.provider === "subway" ? "" : "번"}${subwayDirection ? ` · ${subwayDirection.direction} · ${subwayDirection.nextStation} 방면` : ""}` : "";
@@ -5101,7 +5124,7 @@ function renderHome(screen, model) {
     : model.risk.message;
   return `<main class="screen screen-home">
     <section class="home-countdown ${urgent ? "is-urgent" : ""}" aria-labelledby="home-countdown-title">
-      <div class="home-countdown-heading"><h1 id="home-countdown-title">${title}</h1><span class="home-prediction-label" data-home-evidence>${tripDraft.dirty ? "미적용 · 이전 설정 기준" : departureStatus}</span></div>
+      <div class="home-countdown-heading"><h1 id="home-countdown-title">${title}</h1><span class="home-prediction-label" data-home-evidence>${tripDraft.dirty ? "미적용 · 이전 설정 기준" : retaining ? "갱신 중 · 이전 계산 유지" : departureStatus}</span></div>
       <div class="home-countdown-value">${departure ? departure.minutes : "—"}<span>${departure ? departure.remainingMin < 0 ? "출발 기한 지남" : departure.remainingMin < 1 ? "지금 출발" : "분 안에 출발" : "아직 계산할 수 없어요"}</span></div>
       ${departure ? `<p class="home-leave-by"><strong>${escapeHtml(formatClock(departure.leaveAt))}</strong>까지 집에서 출발<span>정류장·역까지 ${departure.accessMin}분 반영</span></p>` : ""}
       ${hasPrediction && target.arriveWorkAt ? `<p class="home-arrive-by">→ 목적지 <strong>${escapeHtml(formatClock(target.arriveWorkAt))}</strong> 도착 예상</p>` : ""}
@@ -6614,11 +6637,16 @@ app.addEventListener("click", (event) => {
     return render();
   }
   if (action === "sync-live-arrivals") {
+    if (state.live.status === "loading" || visibleTransitRefreshPending) return;
+    const requestBinding = getLiveBinding();
+    const requestKey = JSON.stringify(requestBinding);
+    const requestUserId = authMeta.user?.id;
     state.live.status = "loading";
     state.live.lastError = "";
     render();
-    fetchLiveArrivals(getLiveBinding())
+    fetchLiveArrivals(requestBinding)
       .then((payload) => {
+        if (authMeta.user?.id !== requestUserId || JSON.stringify(getLiveBinding()) !== requestKey) return;
         state.live.status = payload.liveStatus === 'unavailable' ? 'error' : 'ready';
         state.live.snapshot = payload;
         state.live.stationName = payload.stopName || state.live.stationName;
@@ -6643,6 +6671,7 @@ app.addEventListener("click", (event) => {
         render();
       })
       .catch((error) => {
+        if (authMeta.user?.id !== requestUserId || JSON.stringify(getLiveBinding()) !== requestKey) return;
         state.live.status = "error";
         state.live.snapshot = null;
         state.live.lastError = userErrorMessage(error, "실시간 정보 조회 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.");

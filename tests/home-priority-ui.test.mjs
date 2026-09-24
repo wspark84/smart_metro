@@ -107,3 +107,30 @@ test('an unsaved target change marks the hero as based on previous settings', as
   assert.match(html, /value="10:00" data-trip-field="target"/);
   assert.equal(v.run('state.user.requiredArrivalTime'), '09:00');
 });
+
+test('refresh keeps the displayed prediction until completion, but never across a changed trip', async () => {
+  const v = await view();
+  const setup = "model.dataSource='LIVE';model.risk=evaluateLateRisk({now:model.now,requiredArrivalTime:'23:59',route:{boardingAccessMin:5,onboardToDestinationMin:20},busArrivalsMin:[16]});";
+  assert.match(v.html(setup), /11<span>분 안에 출발/);
+  v.run('visibleTransitRefreshPending=true;');
+  const pending=v.html("model.dataSource='UNAVAILABLE';model.risk.departure=null;");
+  assert.match(pending, /1[01]<span>분 안에 출발/);
+  assert.match(pending, /갱신 중 · 이전 계산 유지/);
+  v.run('visibleTransitRefreshPending=false;');
+  const updated=v.html(setup.replace('busArrivalsMin:[16]', 'busArrivalsMin:[21]'));
+  assert.match(updated, /16<span>분 안에 출발/);
+  assert.doesNotMatch(updated, /갱신 중 · 이전 계산 유지/);
+  v.run('visibleTransitRefreshPending=true;');
+  v.run('state.user.requiredArrivalTime="18:00";');
+  assert.match(v.html("model.dataSource='UNAVAILABLE';model.risk.departure=null;"), /home-countdown-value">—/);
+});
+
+test('loading without a prior prediction and a refresh stuck beyond two minutes never invent a time', async () => {
+  const v=await view();
+  v.run('state.live.status="loading";');
+  assert.match(v.html("model.dataSource='UNAVAILABLE';model.risk.departure=null;"), /home-countdown-value">—/);
+  v.run('state.live.status="ready";');
+  v.html("model.dataSource='LIVE';model.risk=evaluateLateRisk({now:model.now,requiredArrivalTime:'23:59',route:{boardingAccessMin:5,onboardToDestinationMin:20},busArrivalsMin:[16]});");
+  v.run('state.live.status="loading";homeDisplayPrediction.now=new Date(Date.now()-121000);');
+  assert.match(v.html("model.dataSource='UNAVAILABLE';model.risk.departure=null;"), /home-countdown-value">—/);
+});
