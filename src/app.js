@@ -5104,6 +5104,8 @@ function renderHome(screen, model) {
       <div class="home-countdown-heading"><h1 id="home-countdown-title">${title}</h1><span class="home-prediction-label" data-home-evidence>${tripDraft.dirty ? "미적용 · 이전 설정 기준" : departureStatus}</span></div>
       <div class="home-countdown-value">${departure ? departure.minutes : "—"}<span>${departure ? departure.remainingMin < 0 ? "출발 기한 지남" : departure.remainingMin < 1 ? "지금 출발" : "분 안에 출발" : "아직 계산할 수 없어요"}</span></div>
       ${departure ? `<p class="home-leave-by"><strong>${escapeHtml(formatClock(departure.leaveAt))}</strong>까지 집에서 출발<span>정류장·역까지 ${departure.accessMin}분 반영</span></p>` : ""}
+      ${hasPrediction && target.arriveWorkAt ? `<p class="home-arrive-by">→ 목적지 <strong>${escapeHtml(formatClock(target.arriveWorkAt))}</strong> 도착 예상</p>` : ""}
+      ${hasPrediction && (confirmed || plan?.estimatedLast) && model.risk.followingResult?.deltaMinutes < 0 ? `<p class="home-last-warning">놓치면 다음 차는 지각 예상${model.risk.followingResult.arriveWorkAt ? ` · ${escapeHtml(formatClock(model.risk.followingResult.arriveWorkAt))} 도착` : ""}</p>` : ""}
       ${hasPrediction && target.deltaMinutes < 0 ? `<p class="home-verdict">현재 교통편에 타도 목표시간보다 늦을 것으로 예상됩니다.</p>` : ""}
     </section>
     <section class="home-trip" aria-labelledby="home-trip-title">

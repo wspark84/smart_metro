@@ -55,6 +55,18 @@ test('estimated and unconfirmed departure evidence remains explicitly labeled', 
   assert.match(v.html(setup + 'model.risk.targetResult.estimated=true;').split('</section>')[0], /배차간격으로 예상/);
 });
 
+test('hero shows destination arrival and only warns of missing the last trip with a late following trip', async () => {
+  const v = await view();
+  const setup = "model.dataSource='LIVE';model.risk=evaluateLateRisk({now:model.now,requiredArrivalTime:'23:59',route:{boardingAccessMin:5,onboardToDestinationMin:20},busArrivalsMin:[16]});";
+  const normal = v.html(setup).split('</section>')[0];
+  assert.match(normal, /목적지 <strong>\d{2}:\d{2}<\/strong> 도착 예상/);
+  assert.doesNotMatch(normal, /이 차를 놓치면 다음 차는/);
+  const last = v.html(setup + "model.risk.lastChanceConfirmed=true;model.risk.followingResult={deltaMinutes:-12};").split('</section>')[0];
+  assert.match(last, /다음 차는 지각 예상/);
+  const unknown = v.html("model.dataSource='UNAVAILABLE';").split('</section>')[0];
+  assert.doesNotMatch(unknown, /home-arrive-by|home-last-warning/);
+});
+
 test('core field buttons still expose inline editors and saving locks inputs', async () => {
   const v = await view();
   v.run('homeEditor="destination";homeTripSave.status="saving";');

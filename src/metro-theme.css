@@ -99,6 +99,9 @@ button:not(:disabled):active { filter: brightness(.90); }
 .home-countdown-value span { color: var(--surface-muted); font-size: 18px; font-weight: 700; letter-spacing: -.02em; }
 .home-countdown .home-leave-by { margin: 4px 0 0; font-size: 16px; }
 .home-leave-by strong { font-size: 22px; font-variant-numeric: tabular-nums; }
+.home-countdown .home-arrive-by { font-size: 14px; line-height: 1.4; margin: 2px 0 0; }
+.home-arrive-by strong { font-size: 18px; font-variant-numeric: tabular-nums; }
+.home-countdown .home-last-warning { font-size: 12px; line-height: 1.4; color: var(--primary); font-weight: 650; margin: 2px 0 0; }
 .home-leave-by > span { display: inline; color: var(--surface-muted); font-size: 11px; margin-left: 6px; }
 .home-countdown .home-setup-prompt { margin: 4px 0 0; font-size: 14px; color: var(--surface-muted); }
 .home-countdown .home-countdown-route { font-size: 15px; line-height: 1.5; margin: 8px 0; font-weight: 600; }
