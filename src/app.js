@@ -85,7 +85,7 @@ import { mountKakaoCommuteMap, mountKakaoBoardingMap } from "./services/kakao-ma
 import { parseSubwayRouteId, stationSelectionKey } from "./logic/station-search.js";
 import { loadState, resetState, sanitizeState, saveState } from "./state.js";
 import { createWorkspaceFetch } from "./services/workspace-fetch.js";
-import { buildBoardingPlan, validHeadway, buildDepartureReminder, departurePrediction, detectEarlyDeparture } from "./logic/boarding-plan.js";
+import { buildBoardingPlan, validHeadway, buildDepartureReminder, departurePrediction, detectEarlyDeparture, departurePlanningEnabled } from "./logic/boarding-plan.js";
 import { selectBusHeadway } from "./logic/bus-headway.js";
 
 if (typeof window.fetch === "function") {
@@ -119,8 +119,15 @@ function getHomeTripDraft() {
   return homeTripDraft;
 }
 
+function homeTripAlreadySaved() {
+  const draft = getHomeTripDraft();
+  return homeTripSave.status === "saved" && homeTripSave.key === tripInputKey() &&
+    normalizeBoardingAccessMin(draft.access) === state.commute.boardingAccessMin &&
+    draft.target === state.user.requiredArrivalTime;
+}
+
 async function submitHomeTrip() {
-  if (homeTripSave.status === "saving") return;
+  if (homeTripSave.status === "saving" || homeTripAlreadySaved()) return;
   const draft = getHomeTripDraft();
   const access = normalizeBoardingAccessMin(draft.access);
   if (access === null || !/^([01]\d|2[0-3]):[0-5]\d$/.test(draft.target)) {
@@ -599,6 +606,10 @@ async function hydrateAuthenticatedWorkspace() {
   await Promise.all([refreshBusApiConfig(), refreshPlaceApiConfig(), refreshCommuteApiConfig(), refreshHolidayApiConfig()]);
   await hydrateStateFromServer();
   await hydrateStateFromDomain();
+  if (persistenceMeta.saveStatus === "saved" && domainMeta.syncStatus === "synced" &&
+      departurePlanningEnabled(state) && normalizeBoardingAccessMin(state.commute.boardingAccessMin) !== null) {
+    homeTripSave = {status:"saved",key:tripInputKey(),message:"입력 완료 · 계정에 저장된 설정입니다."};
+  }
   await hydrateDeviceProfileFromServer();
   void loadBusCities();
   // The route and device settings are ready. Diagnostic history is not a
@@ -2295,7 +2306,7 @@ async function refreshVisibleTransit() {
     if (!isAuthenticated() || authMeta.user.id !== userId || JSON.stringify(getLiveBinding()) !== key) return;
     state.live.snapshot = payload;
     state.live.status = payload.liveStatus === 'unavailable' ? 'error' : 'ready';
-    state.live.lastError = payload.liveStatus === 'unavailable' ? '실시간 정보 없음 · 저장한 자료로 예상합니다.' : '';
+    state.live.lastError = payload.liveStatus === 'unavailable' ? payload.arrivalMessage || '실시간 도착정보를 확인하지 못했습니다.' : '';
     state.live.lastSyncedAt = payload.fetchedAt;
     announceEarlyArrival(previousPrediction);
     const age = Date.now() - Date.parse(state.commute.transitJourney?.fetchedAt || "");
@@ -2777,7 +2788,9 @@ function renderAuthScreen() {
 }
 
 function renderStatusCard(model) {
-  const snapshotState = describeLiveSnapshot(model.liveSnapshot);
+  const snapshotState = state.live.snapshot?.liveStatus === 'unavailable'
+    ? {label:'도착정보 없음',detail:state.live.snapshot.arrivalMessage || '실시간 도착정보가 없습니다. 저장한 예측 자료를 확인합니다.'}
+    : describeLiveSnapshot(model.liveSnapshot);
   const liveEtaGuard = model.liveEtaGuard || getLiveEtaGuard();
   const watchlistHighlight = getHeroWatchlistHighlight(model);
   const alarmPlan = alarmPlanMeta.plan || null;
@@ -3031,7 +3044,9 @@ function renderLiveSyncPanel(model) {
       : state.live.provider === recommendedProvider
         ? `${providerLabel}는 현재 이 노선의 추천 정보 제공처입니다.`
         : `${providerLabel}는 정확도를 비교할 수 있는 제공처입니다.`;
-  const snapshotState = describeLiveSnapshot(model.liveSnapshot);
+  const snapshotState = state.live.snapshot?.liveStatus === 'unavailable'
+    ? {label:'도착정보 없음',detail:state.live.snapshot.arrivalMessage || '실시간 도착정보가 없습니다. 저장한 예측 자료를 확인합니다.'}
+    : describeLiveSnapshot(model.liveSnapshot);
   const fetchedCopy =
     model.liveSnapshot?.fetchedAt && model.liveSnapshot.cacheStatus !== "live"
       ? `정보 조회 시각: ${escapeHtml(formatClock(new Date(model.liveSnapshot.fetchedAt)))}`
@@ -5151,6 +5166,12 @@ function renderHome(screen, model) {
   const hasPrediction = model.dataSource === "LIVE" && target.level !== "UNKNOWN" && Number.isFinite(target.arrivalMinutes);
   const confirmed = hasPrediction && model.risk.lastChanceConfirmed;
   const departure = hasPrediction ? model.risk.departure : null;
+  const calculationReason = departure ? "" : !state.live.routeNumber ? "탑승할 노선을 선택해 주세요."
+    : !resolveJourneyDuration(state, model.now).durationAvailable ? "목적지 경로를 확인해 주세요. 선택한 경로의 소요시간이 아직 확인되지 않았습니다."
+    : normalizeBoardingAccessMin(state.commute.boardingAccessMin) === null ? "첫 정류장까지 이동시간을 입력해 주세요."
+    : plan?.rows.length ? "현재 조회된 차량은 입력한 이동시간으로 탑승하기 어렵습니다. 다음 차량 정보를 확인 중입니다."
+    : plan?.interval && !plan.anchorCheckedAt ? `배차간격 ${plan.interval}분은 확인됐지만, 오늘의 기준 도착시각이 없어 버스 시간을 추정할 수 없습니다.`
+    : state.live.lastError || "실시간 도착정보와 오늘의 예측 기준을 확인 중입니다.";
   const urgent = hasPrediction && (model.risk.urgency === "HURRY" || (departure ? departure.remainingMin <= 5 : confirmed && target.arrivalMinutes <= 5));
   const title = plan?.urgentBoarding ? "지금 바로 출발하세요" : (confirmed || plan?.estimatedLast) && departure ? "늦지 않는 마지막 출발까지" : "집에서 출발까지 남은 시간";
   const earlyNotice = earlyArrivalNotice?.contextKey===emergencyContextKey() && model.scheduleState.firing &&
@@ -5170,6 +5191,7 @@ function renderHome(screen, model) {
     <section class="home-countdown ${urgent ? "is-urgent" : ""}" aria-labelledby="home-countdown-title">
       <div class="home-countdown-heading"><h1 id="home-countdown-title">${title}</h1><span class="home-prediction-label" data-home-evidence>${tripDraft.dirty ? "미적용 · 이전 설정 기준" : retaining ? "갱신 중 · 이전 계산 유지" : departureStatus}</span></div>
       <div class="home-countdown-value">${departure ? departure.minutes : "—"}<span>${plan?.urgentBoarding ? "지금 출발 · 탑승 미확정" : departure ? departure.remainingMin < 0 ? "출발 기한 지남" : departure.remainingMin < 1 ? "지금 출발" : "분 안에 출발" : "아직 계산할 수 없어요"}</span></div>
+      ${calculationReason ? `<p class="field-help" role="status">${escapeHtml(calculationReason)}</p>` : ""}
       ${earlyNotice ? `<p class="home-last-warning" role="alert">긴급 · 실시간 도착이 ${Math.floor(earlyNotice.advancedMin)}분 앞당겨졌어요. 지금 바로 출발하세요.</p>` : ''}
       ${plan?.urgentBoarding ? `<p class="home-last-warning">평소 이동시간으로는 탑승이 빠듯합니다. 탑승 여부를 확인하며 안전하게 이동하세요.</p>` : ''}
       ${plan?.urgentBoarding ? `<p class="home-leave-by"><strong>${escapeHtml(formatClock(addMinutes(model.now,target.arrivalMinutes)))}</strong> 차량 도착 예상<span>정류장·역까지 평소 ${departure.accessMin}분</span></p>` : departure ? `<p class="home-leave-by"><strong>${escapeHtml(formatClock(departure.leaveAt))}</strong>까지 집에서 출발<span>정류장·역까지 ${departure.accessMin}분 반영</span></p>` : ""}
@@ -5191,7 +5213,7 @@ function renderHome(screen, model) {
       </div>
       </fieldset>
       <p class="field-help" role="${homeTripSave.status === "error" ? "alert" : "status"}" data-trip-save-status>${escapeHtml(tripDraft.dirty && homeTripSave.status !== "saving" && homeTripSave.status !== "error" ? "아직 적용되지 않았습니다. 완료 버튼을 눌러 주세요." : homeTripSave.status === "saved" && homeTripSave.key !== tripInputKey() ? "변경된 설정을 다시 적용해 주세요." : homeTripSave.message || "")}</p>
-      <button class="soft-button wide home-trip-submit" data-action="complete-home-trip" ${homeTripSave.status === "saving" ? "disabled" : ""}>${homeTripSave.status === "saving" ? "저장 중…" : "정보 입력 완료"}</button>
+      <button class="soft-button wide home-trip-submit" data-action="complete-home-trip" ${homeTripSave.status === "saving" || homeTripAlreadySaved() ? "disabled" : ""}>${homeTripSave.status === "saving" ? "저장 중…" : homeTripAlreadySaved() ? "입력 완료 · 저장됨" : "정보 입력 완료"}</button>
     </section>
     <section class="home-alarm-actions" aria-label="오늘 알림">
       <div class="home-alarm-toggle" role="group" aria-label="오늘 알람 설정">
@@ -5216,6 +5238,7 @@ function renderHome(screen, model) {
       ${plan?.headwayInfo?.checkedAt ? `<p class="home-evidence-note">배차간격 하루 1회 확인 · 최근 확인 ${escapeHtml(new Date(plan.headwayInfo.checkedAt).toLocaleString('ko-KR',{timeZone:'Asia/Seoul'}))}${plan.headwayInfo.stale ? ' · 오늘 조회 실패로 이전에 저장한 간격 사용' : ''}</p>` : ""}
       ${plan && !plan.interval ? `<p class="home-evidence-note">공식 배차간격을 확인하지 못해 이후 차량의 시간을 추정하지 않습니다. 조회된 실시간 도착정보만 표시합니다.</p>` : ""}
       ${state.live.snapshot?.headway?.status === 'unavailable' ? `<p class="home-evidence-note" role="status">${escapeHtml(state.live.snapshot.headway.message || '배차간격을 다시 확인하고 있습니다.')}</p>` : ''}
+      ${state.live.snapshot?.arrivalMessage ? `<p class="home-evidence-note">${escapeHtml(state.live.snapshot.arrivalMessage)}</p>` : ''}
       ${hasPrediction && !confirmed && !target.estimated ? `<p class="home-evidence-note">조회된 교통편 기준이며, 마지막 탑승편으로 확정되지 않았습니다.</p>` : ""}
       <p class="field-help" role="status">${plan?.headwayInfo ? `배차간격 자동 조회 · ${escapeHtml(plan.headwayInfo.text)} · ${escapeHtml(plan.headwayInfo.source)}. ${plan.headwayInfo.min !== plan.headwayInfo.max ? `배차간격 중간값 ${plan.headwayInfo.minutes}분 기준 예상입니다. 실제 운행 기록의 평균은 아닙니다. ` : ""}실제 운행 시각은 실시간 정보로 갱신합니다.` : "배차간격은 선택한 노선의 공식 API에서 자동으로 조회합니다. 직접 입력할 필요가 없습니다."}</p>
     </section>
@@ -6700,7 +6723,7 @@ app.addEventListener("click", (event) => {
         state.live.stationName = payload.stopName || state.live.stationName;
         state.live.lastSyncedAt = payload.servedAt || payload.fetchedAt || new Date().toISOString();
         state.live.lastError =
-          payload.liveStatus === 'unavailable' ? '실시간 정보 없음 · 저장한 자료로 예상합니다.' : payload.cacheStatus === "stale-fallback"
+          payload.liveStatus === 'unavailable' ? payload.arrivalMessage || '실시간 도착정보를 확인하지 못했습니다.' : payload.cacheStatus === "stale-fallback"
             ? payload.fallbackError || "최근 실시간 조회에 실패해 마지막으로 확인한 정보를 표시합니다."
             : "";
         syncLiveBindingState();
@@ -6812,11 +6835,14 @@ app.addEventListener("input", (event) => {
     if (!["access","target"].includes(target.dataset.tripField)) return;
     draft[target.dataset.tripField] = target.value;
     draft.dirty = true;
-    homeTripSave = {status:"idle",message:"",key:""};
+    if (homeTripSave.status === "error") homeTripSave = {status:"idle",message:"",key:""};
+    draft.dirty = normalizeBoardingAccessMin(draft.access) !== state.commute.boardingAccessMin || draft.target !== state.user.requiredArrivalTime;
+    const submit = app.querySelector('[data-action="complete-home-trip"]');
+    if (submit) { submit.disabled = homeTripAlreadySaved(); submit.textContent = submit.disabled ? "입력 완료 · 저장됨" : "정보 입력 완료"; }
     const status = app.querySelector("[data-trip-save-status]");
-    if (status) status.textContent = "입력 중 · 아직 적용되지 않았습니다. 정보 입력 완료를 눌러 주세요.";
+    if (status) status.textContent = draft.dirty ? "입력 중 · 아직 적용되지 않았습니다. 정보 입력 완료를 눌러 주세요." : homeTripSave.message;
     const evidence = app.querySelector("[data-home-evidence]");
-    if (evidence) evidence.textContent = "미적용 · 이전 설정 기준";
+    if (evidence && draft.dirty) evidence.textContent = "미적용 · 이전 설정 기준";
     return;
   }
   if (target.hasAttribute("data-boarding-area-keyword")) {

@@ -73,3 +73,13 @@ test('storage failure propagates instead of falsely claiming a saved daily check
   await assert.rejects(loadStoredTransit(binding,{now:start,loadArrival:async()=>null,
     loadHeadway:async()=>profile,saveCache:async()=>{throw new Error('write conflict');}}),/write conflict/);
 });
+
+test('no-vehicle responses and timeouts are distinguished without leaking upstream credentials',async()=>{
+  const f=fixture();f.arrival=new Error('Gyeonggi API returned no arrival rows.');
+  assert.match((await f.run()).value.arrivalMessage,/도착 예정 차량을 반환하지 않았습니다/);
+  f.arrival=Object.assign(new Error('secret URL'),{code:'UPSTREAM_TIMEOUT'});
+  const timeout=await f.run();assert.match(timeout.value.arrivalMessage,/응답 시간이 초과/);
+  assert.doesNotMatch(JSON.stringify(timeout),/secret URL/);
+  f.arrival=new Error('Gyeonggi API request failed with 403.');
+  assert.match((await f.run()).value.arrivalMessage,/응답 403/);
+});

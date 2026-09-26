@@ -81,6 +81,31 @@ test('core field buttons still expose inline editors and saving locks inputs', a
   assert.match(html, /data-action="complete-home-trip" disabled>저장 중/);
 });
 
+test('saved trip stays disabled until input or destination changes, and reverting disables again', async () => {
+  const v=await view();
+  v.run('state.commute.boardingAccessMin=5;homeTripSave={status:"saved",key:tripInputKey(),message:"저장 완료"};');
+  assert.match(v.html(),/data-action="complete-home-trip" disabled>입력 완료 · 저장됨/);
+  v.run('getHomeTripDraft().access="6";homeTripDraft.dirty=true;');
+  assert.doesNotMatch(v.html(),/data-action="complete-home-trip" disabled/);
+  v.run('getHomeTripDraft().access="5";');
+  assert.match(v.html(),/data-action="complete-home-trip" disabled/);
+  v.run('state.user.workLocation={lat:37.4,lng:127.1};');
+  assert.doesNotMatch(v.html(),/data-action="complete-home-trip" disabled/);
+});
+
+test('a failed save remains retryable even when values have not changed',async()=>{
+  const v=await view();v.run('homeTripSave={status:"error",key:tripInputKey(),message:"실패"};');
+  assert.doesNotMatch(v.html(),/data-action="complete-home-trip" disabled/);
+});
+
+test('headway without a same-day arrival anchor explains why saved inputs cannot produce a bus time',async()=>{
+  const v=await view();
+  v.run('state.live.routeNumber="1";state.commute.boardingAccessMin=5;');
+  const html=v.html('model.homePlan={rows:[],interval:34,anchorCheckedAt:null,risk:model.risk};model.risk.departure=null;model.risk.targetResult={level:"UNKNOWN"};');
+  assert.match(html.split('</section>')[0],/배차간격 34분은 확인됐지만, 오늘의 기준 도착시각이 없어/);
+  assert.doesNotMatch(html.split('</section>')[0],/까지 집에서 출발/);
+});
+
 test('departure action no longer overlays the core input workspace', async () => {
   const css = await readFile(new URL('../src/metro-theme.css', import.meta.url), 'utf8');
   const rule = css.match(/\.home-alarm-actions \.primary-cta\s*\{([^}]+)\}/)[1];

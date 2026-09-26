@@ -9,6 +9,17 @@ const validMinutes = value => Array.isArray(value) ? value.filter(v=>typeof v===
 const signature = p => JSON.stringify(['source','weekday','saturday','sunday','holiday','allDays'].map(key=>p?.[key] || null));
 const replace = (entries,entry) => [...entries.filter(item=>item.key!==entry.key),entry].slice(-MAX_ENTRIES);
 
+function arrivalFailure(error) {
+  const message=String(error?.message || '');
+  if (['Gyeonggi API returned no arrival rows.','Gyeonggi API returned no arrivals for the selected route.'].includes(message))
+    return '공식 API에서 선택한 노선의 도착 예정 차량을 반환하지 않았습니다. 운행 종료를 의미하는 것은 아닙니다.';
+  if (error?.code==='UPSTREAM_TIMEOUT' || ['AbortError','TimeoutError'].includes(error?.name))
+    return '공식 도착정보 API 응답 시간이 초과되었습니다. 자동으로 다시 조회합니다.';
+  const status=message.match(/^Gyeonggi API request failed with (\d{3})\.$/)?.[1];
+  return status ? `공식 도착정보 API 요청에 실패했습니다(응답 ${status}).`
+    : '공식 도착정보를 정상적으로 받지 못했습니다. 자동으로 다시 조회합니다.';
+}
+
 // Cache belongs to the authenticated account's existing alarm-runtime document.
 // It is durable across requests/deploys and never accepts a client-supplied anchor.
 export async function loadStoredTransit(binding,{cache={},loadArrival,loadHeadway,saveCache,now=new Date()}) {
@@ -24,7 +35,7 @@ export async function loadStoredTransit(binding,{cache={},loadArrival,loadHeadwa
   let dirty = false;
   // Start the independent real-time request immediately. Its failure must not
   // prevent today's metadata check or erase either durable last-known value.
-  const arrivalTask = Promise.resolve().then(loadArrival).then(value=>({value}),()=>({value:null}));
+  const arrivalTask = Promise.resolve().then(loadArrival).then(value=>({value}),error=>({value:null,error:arrivalFailure(error)}));
   const failedRetryDue = stored?.refreshFailed && (stored.retryPolicy !== 5 ||
     now.getTime() - Date.parse(stored.checkedAt || '') >= FAILED_RETRY_MS);
   if (!stored || stored.checkedDate !== today || failedRetryDue) {
@@ -39,7 +50,7 @@ export async function loadStoredTransit(binding,{cache={},loadArrival,loadHeadwa
     next.headways = replace(next.headways,stored);
     dirty = true;
   }
-  const {value:result} = await arrivalTask;
+  const {value:result,error:arrivalError} = await arrivalTask;
   const payload = result?.value;
   const fetchedAt = result?.fetchedAt;
   const age = now.getTime() - Date.parse(fetchedAt || '');
@@ -66,6 +77,7 @@ export async function loadStoredTransit(binding,{cache={},loadArrival,loadHeadwa
     lineNumber:real ? payload.lineNumber || binding.routeNumber : binding.routeNumber,
     stopName:real ? payload.stopName || binding.stationName : binding.stationName,
     arrivalsMin:real ? minutes : [],liveStatus:real ? 'ready' : 'unavailable',headway,
+    arrivalMessage:real ? '' : arrivalError || '공식 API에서 현재 사용할 수 있는 도착 예정 차량 정보를 확인하지 못했습니다.',
     lastObservation:observation,
     messages:real ? payload.messages || [] : ['실시간 정보 없음 · 저장한 도착시각과 배차간격으로 예상합니다.']};
   return {...(real ? result : {}),value,cacheStatus:real ? result.cacheStatus : 'unavailable',
