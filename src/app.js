@@ -5236,6 +5236,7 @@ function renderHome(screen, model) {
       ${plan?.interval ? `<p class="home-evidence-note">${escapeHtml(plan.intervalSource)} ${Math.round(plan.interval*10)/10}분으로 이후 차량을 추정합니다. 실시간·예상 시간을 구분해 확인하세요.</p>` : ""}
       ${plan?.hasEstimates && plan.anchorCheckedAt ? `<p class="home-evidence-note">${escapeHtml(formatClock(new Date(plan.anchorCheckedAt)))}에 확인한 도착정보 기준 · 운행 종료·결행은 예상에 반영되지 않을 수 있습니다.</p>` : ""}
       ${plan?.headwayInfo?.checkedAt ? `<p class="home-evidence-note">배차간격 하루 1회 확인 · 최근 확인 ${escapeHtml(new Date(plan.headwayInfo.checkedAt).toLocaleString('ko-KR',{timeZone:'Asia/Seoul'}))}${plan.headwayInfo.stale ? ' · 오늘 조회 실패로 이전에 저장한 간격 사용' : ''}</p>` : ""}
+      ${plan && !plan.anchorCheckedAt && planningObservation?.snapshot?.fetchedAt ? `<p class="home-evidence-note">마지막 도착 기준 기록: ${escapeHtml(new Date(planningObservation.snapshot.fetchedAt).toLocaleString('ko-KR',{timeZone:'Asia/Seoul'}))}. 다른 날짜의 기록은 오늘 운행 예측에 사용하지 않습니다.</p>` : ''}
       ${plan && !plan.interval ? `<p class="home-evidence-note">공식 배차간격을 확인하지 못해 이후 차량의 시간을 추정하지 않습니다. 조회된 실시간 도착정보만 표시합니다.</p>` : ""}
       ${state.live.snapshot?.headway?.status === 'unavailable' ? `<p class="home-evidence-note" role="status">${escapeHtml(state.live.snapshot.headway.message || '배차간격을 다시 확인하고 있습니다.')}</p>` : ''}
       ${state.live.snapshot?.arrivalMessage ? `<p class="home-evidence-note">${escapeHtml(state.live.snapshot.arrivalMessage)}</p>` : ''}
