@@ -4997,7 +4997,7 @@ async function findNearbyBoardingStops() {
 function renderBoardingAreaSearch() {
   if (state.live.provider === "subway" || !busApiConfig.providers?.tago?.configured) return "";
   return `<section class="field-stack" data-boarding-area-search aria-label="지도 위치로 정류장 찾기"><h3>지도 위치로 찾기</h3>
-    <p class="field-help">정류장이 검색되지 않으면 근처 아파트·건물 이름으로 지도 위치를 찾으세요. 장소 선택은 출발지 저장이 아닙니다.</p>
+    <p class="field-help">주소·건물·정류장 이름으로 위치를 찾은 뒤, 지도에서 출발 정류장의 번호 핀을 눌러 주세요.</p>
     <div class="holiday-form"><input class="text-field-input" aria-label="지도에서 찾을 장소" placeholder="예: 더샵광교레이크시티" data-boarding-area-keyword value="${escapeHtml(boardingArea.keyword)}" />
     <button class="mini-button" data-action="search-boarding-area" ${boardingArea.status === "loading" ? "disabled" : ""}>${boardingArea.status === "loading" ? "검색 중…" : "장소 검색"}</button></div>
     ${boardingArea.error ? `<p role="alert">${escapeHtml(boardingArea.error)}</p>` : ""}
@@ -5041,9 +5041,10 @@ function renderBoardingPreview() {
   const stopOnly = !subway && !route && (status === "error" || (status === "ready" && !routes.length));
   const nearbySupported = !subway && busApiConfig.providers?.tago?.configured;
   return `${renderBoardingAreaSearch()}${state.ui.liveSearchResults.length || nearbySupported ? `<div class="boarding-map-shell ${nearbySupported ? "has-search-center" : ""}"><div id="boarding-map" class="boarding-map" aria-label="검색된 정류장·역 위치 지도">지도를 불러오는 중…</div></div>
-    ${nearbySupported ? `<button class="soft-button wide" data-action="search-nearby-stops" ${state.ui.liveSearchStatus === "loading" ? "disabled" : ""}>${state.ui.liveSearchStatus === "loading" && boardingArea.mode === "nearby" ? "주변 정류장 조회 중…" : "이 위치 주변 정류장 찾기 · 500m"}</button><p class="field-help">지도 중앙의 +를 원하는 위치에 맞추고 조회하세요. 도시 선택과 관계없이 해당 위치 주변을 찾습니다. 처음 지도는 저장된 위치 또는 서울시청 부근입니다.</p>` : ""}
-    <p class="field-help">선택할 수 있는 정류장은 번호가 붙은 핀과 아래 목록입니다. 지도 배경의 작은 버스 아이콘은 직접 선택되지 않습니다.${nearbySupported && boardingArea.mode === "nearby" ? " 결과는 마지막으로 조회한 위치 기준입니다. 지도를 옮겼다면 다시 조회하세요." : ""}</p>` : ""}
+    ${nearbySupported ? `<button class="soft-button wide" data-action="search-nearby-stops" ${state.ui.liveSearchStatus === "loading" ? "disabled" : ""}>${state.ui.liveSearchStatus === "loading" && boardingArea.mode === "nearby" ? "주변 정류장 조회 중…" : "이 위치 주변 정류장 찾기 · 500m"}</button><p class="field-help">지도 중앙의 +를 원하는 위치에 맞추고 조회하세요. 처음 지도는 저장된 위치 또는 서울시청 부근입니다.</p>` : ""}
+    <p class="field-help">${subway ? "번호 핀 또는 아래 목록에서 역을 선택하세요." : "지도에서 번호가 붙은 정류장 핀을 선택하세요. 지도 배경의 작은 버스 아이콘은 직접 선택되지 않습니다."}${nearbySupported && boardingArea.mode === "nearby" ? " 지도를 옮겼다면 주변 정류장을 다시 조회하세요." : ""}</p>` : ""}
     ${candidate ? `<section class="boarding-confirm"><h3>${escapeHtml(candidate.displayName || candidate.stationName)}</h3>
+      <p class="field-help">선택한 ${subway ? "역" : "정류장"} · ${escapeHtml(candidate.stationNumber || candidate.arsId || candidate.stationId)}</p>
       <p class="field-help" role="status">아직 출발지로 저장되지 않았습니다. 아래에서 확인 후 저장해 주세요.</p>
       <p class="field-help">${subway ? "역 위치만으로 승강장 방향을 알 수 없습니다. 노선·상하행·다음 역·종착역을 확인하세요." : "같은 이름의 반대편 정류장과 혼동하지 않도록 지도에서 도로의 어느 쪽인지 확인하세요."}</p>
       ${status === "loading" ? `<p role="status">노선과 방면을 확인하고 있습니다…</p>` : ""}
@@ -5054,7 +5055,7 @@ function renderBoardingPreview() {
       ${!subway ? `<p class="field-help">기점·종점만으로 현재 운행 방향은 확정되지 않습니다. 선택 후 목적지 경로의 다음 정류장도 확인해 주세요.</p>` : ""}
       <button class="soft-button wide" data-action="confirm-boarding" ${(!route && !stopOnly) || !isValidLocation({lat:candidate.posY ?? candidate.lat,lng:candidate.posX ?? candidate.lng}) ? "disabled" : ""}>${stopOnly ? "이 정류장을 출발지로 저장 (노선 미연결)" : subway ? "지도·노선·방향 확인 후 선택" : "이 정류장·노선으로 출발지 저장"}</button>
     </section>` : ""}
-    <div class="home-search-results">${state.ui.liveSearchResults.map((item,index) => `<button class="home-search-result ${stationSelectionKey(candidate) === stationSelectionKey(item) ? "selected" : ""}" data-action="preview-boarding-stop" data-station-id="${escapeHtml(stationSelectionKey(item))}" aria-pressed="${stationSelectionKey(candidate) === stationSelectionKey(item)}"><strong>${index+1}. ${escapeHtml(item.displayName || item.stationName)}</strong><span>${escapeHtml([item.address,item.stationNumber || item.arsId || item.stationId,item.providerLabel].filter(Boolean).join(" · "))}</span><span>지도에서 위치 확인 · 아직 저장 안 됨</span></button>`).join("")}</div>`;
+    ${subway ? `<div class="home-search-results">${state.ui.liveSearchResults.map((item,index) => `<button class="home-search-result ${stationSelectionKey(candidate) === stationSelectionKey(item) ? "selected" : ""}" data-action="preview-boarding-stop" data-station-id="${escapeHtml(stationSelectionKey(item))}" aria-pressed="${stationSelectionKey(candidate) === stationSelectionKey(item)}"><strong>${index+1}. ${escapeHtml(item.displayName || item.stationName)}</strong><span>${escapeHtml([item.address,item.stationNumber || item.arsId || item.stationId,item.providerLabel].filter(Boolean).join(" · "))}</span><span>지도에서 위치 확인 · 아직 저장 안 됨</span></button>`).join("")}</div>` : ""}`;
 }
 
 function renderCitySearchResults() {
@@ -5073,19 +5074,15 @@ function renderHomeDepartureEditor() {
   const provider = state.live.provider;
   const subway = provider === "subway";
   const searching = state.ui.liveSearchStatus === "loading";
-  const city = busCitiesMeta.cities.find(item=>item.id===state.ui.busCityId);
   return `<div class="home-editor field-stack" id="home-departure-editor">
     <div class="boarding-modes" role="group" aria-label="교통수단 선택"><button data-action="set-boarding-mode" data-mode="bus" aria-pressed="${!subway}">버스</button><button data-action="set-boarding-mode" data-mode="subway" aria-pressed="${subway}">지하철</button></div>
-    ${!subway ? `<label class="field-block"><span>도시 검색</span><input class="text-field-input" type="search" maxlength="60" autocomplete="off" aria-label="도시를 검색하세요" aria-controls="bus-city-results" placeholder="도시를 검색하세요" data-field="ui.busCityQuery" value="${escapeHtml(state.ui.busCityQuery || (city ? cityDisplayName(city) : ""))}" /></label>
-      <div id="bus-city-results" aria-live="polite">${renderCitySearchResults()}</div>
-      ${busCitiesMeta.error ? `<p role="alert">${escapeHtml(busCitiesMeta.error)}</p><button class="mini-button" data-action="reload-bus-cities">도시 목록 다시 시도</button>` : ""}
-      <p class="field-help">도시를 선택하면 연결된 버스 정보를 통합 검색합니다.</p>` : `<p class="field-help">역명 일부로 검색할 수 있습니다. 실시간 도착정보와 방면은 서울시 API 제공 역에 한해 확인됩니다.</p>`}
-    <div class="holiday-form"><input class="text-field-input" aria-label="${subway ? "지하철역 검색" : "출발 정류장 검색"}" placeholder="${subway ? "역 이름 일부 (예: 광교)" : "정류장 이름 일부 또는 번호"}" data-field="ui.liveSearchKeyword" value="${escapeHtml(state.ui.liveSearchKeyword)}" />
-      <button class="mini-button" data-action="search-live-stops" ${searching || (!subway && !city?.available) ? "disabled" : ""}>${searching ? "검색 중…" : "검색"}</button></div>
+    ${subway ? `<p class="field-help">역명 일부로 검색할 수 있습니다. 실시간 도착정보와 방면은 서울시 API 제공 역에 한해 확인됩니다.</p>
+    <div class="holiday-form"><input class="text-field-input" aria-label="지하철역 검색" placeholder="역 이름 일부 (예: 광교)" data-field="ui.liveSearchKeyword" value="${escapeHtml(state.ui.liveSearchKeyword)}" />
+      <button class="mini-button" data-action="search-live-stops" ${searching ? "disabled" : ""}>${searching ? "검색 중…" : "검색"}</button></div>` : ""}
       ${state.ui.liveSearchError ? `<p role="alert">${escapeHtml(state.ui.liveSearchError)}</p>` : ""}
-      ${state.ui.liveSearchStatus === "ready" && !state.ui.liveSearchResults.length ? `<p class="field-help">${boardingArea.mode === "nearby" ? "이 위치 주변에서 TAGO가 제공하는 정류장을 찾지 못했습니다. 지도를 옮겨 다시 조회하세요. 지도에 표시된 모든 정류장이 TAGO에서 제공되는 것은 아닙니다." : "이름·번호 검색 결과가 없습니다. 도시를 확인하거나 아래 지도 위치 검색을 이용하세요."}</p>` : ""}
+      ${state.ui.liveSearchStatus === "ready" && !state.ui.liveSearchResults.length ? `<p class="field-help">${subway ? "검색된 역이 없습니다. 역 이름을 다시 확인해 주세요." : "이 위치 주변에서 제공되는 정류장을 찾지 못했습니다. 지도를 옮겨 다시 조회하세요."}</p>` : ""}
       <div data-boarding-search-content>${renderBoardingPreview()}</div>
-    <button class="ghost-link" data-action="goto" data-screen="onboarding">경로 상세 설정</button>
+    ${subway ? `<button class="ghost-link" data-action="goto" data-screen="onboarding">경로 상세 설정</button>` : ""}
   </div>`;
 }
 

@@ -73,16 +73,32 @@ test('city loading is automatic, single flight, restores stored official city, a
   assert.doesNotMatch(workspace,/await loadBusCities\(\)/,'city lookup must not block login');
 });
 
-test('home editor exposes city search with no long dropdown or provider selector',()=>{
+test('bus editor uses map-only selection while subway keeps station search',()=>{
   const c=vm.createContext({state:{live:{provider:'tago'},ui:{busCityId:'gg:수원시',liveSearchResults:[],liveSearchKeyword:'',liveSearchStatus:'idle'}},
     busCitiesMeta:{status:'ready',error:'',cities:[{id:'gg:수원시',cityName:'경기 수원시',available:true},{id:'seoul',cityName:'서울특별시',available:false}]},
-    cityDisplayName,searchCityCandidates,escapeHtml:String,renderBoardingPreview:()=>'',boardingArea:{mode:'name'}});
+    cityDisplayName,searchCityCandidates,escapeHtml:String,renderBoardingPreview:()=>'<section>지도 위치로 찾기</section>',boardingArea:{mode:'name'}});
   vm.runInContext(source.slice(source.indexOf('function renderCitySearchResults()'),source.indexOf('function renderHomeDestinationEditor()')),c);
   const html=vm.runInContext('renderHomeDepartureEditor()',c);
-  assert.match(html,/placeholder="도시를 검색하세요"/);
-  assert.match(html,/value="경기도 수원시"/);
+  assert.match(html,/지도 위치로 찾기/);
+  assert.doesNotMatch(html,/도시 검색|도시를 검색하세요|ui.busCityQuery|ui.liveSearchKeyword|search-live-stops|정류장 이름 일부 또는 번호/);
   assert.doesNotMatch(html,/<select|서울특별시/);
   assert.doesNotMatch(html,/data-field="live.provider"|버스 정보 지역|load-tago-cities/);
+  c.state.live.provider='subway';
+  assert.match(vm.runInContext('renderHomeDepartureEditor()',c),/지하철역 검색/);
+});
+
+test('bus map keeps selected stop and routes without a duplicate station list',()=>{
+  const candidate={stationId:'S',stationName:'선택 정류장',posX:127,posY:37};
+  const c=vm.createContext({boardingPreview:{candidate,route:null,routes:[{routeId:'R',routeNumber:'1'}],status:'ready',error:''},
+    state:{live:{provider:'tago'},ui:{liveSearchResults:[candidate,{stationId:'OTHER',stationName:'반대편 정류장'}]}},busApiConfig:{providers:{}},boardingArea:{mode:'nearby'},
+    renderBoardingAreaSearch:()=>'',stationSelectionKey,isValidLocation,escapeHtml:String});
+  vm.runInContext(source.slice(source.indexOf('function renderBoardingPreview()'),source.indexOf('function renderCitySearchResults()')),c);
+  const html=vm.runInContext('renderBoardingPreview()',c);
+  assert.match(html,/id="boarding-map"|선택 정류장/);
+  assert.match(html,/data-action="preview-boarding-route"/);
+  assert.doesNotMatch(html,/>2\. 반대편 정류장<|data-action="preview-boarding-stop"|아래 목록/);
+  c.boardingPreview.candidate=null;
+  assert.doesNotMatch(vm.runInContext('renderBoardingPreview()',c),/data-action="preview-boarding-stop"/);
 });
 
 test('preview selects provider-specific identity while saved provider stays unchanged',async()=>{

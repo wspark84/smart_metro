@@ -72,9 +72,10 @@ test('home keeps trip controls and countdown while diagnostics retain operationa
   for (const excluded of ['서버 알람 처리 상태','오늘의 알람 계획','도착시간 정확도 확인','알림 전송 대기열']) assert.ok(!app.innerHTML.includes(excluded), excluded);
   vm.runInContext('homeEditor="destination";render()', context);
   assert.match(app.innerHTML, /data-action="search-work-address"/);
-  vm.runInContext('homeEditor="departure";state.live.provider="tago";render()', context);
-  assert.match(app.innerHTML, /data-action="search-live-stops"/);
-  assert.match(app.innerHTML, /placeholder="도시를 검색하세요"/);
+  vm.runInContext('homeEditor="departure";state.live.provider="tago";busApiConfig.providers={tago:{configured:true}};render()', context);
+  assert.match(app.innerHTML, /data-action="search-boarding-area"/);
+  assert.match(app.innerHTML, /data-action="search-nearby-stops"/);
+  assert.doesNotMatch(app.innerHTML, /data-action="search-live-stops"|placeholder="도시를 검색하세요"/);
   assert.doesNotMatch(app.innerHTML, /버스 정보 지역|data-action="load-tago-cities"/);
   vm.runInContext('window.location.hash="#/diagnostics";alarmRuntimeMeta.status="loading";alarmPlanMeta.status="loading";render()', context);
   assert.match(app.innerHTML, /서버 알람 처리 상태/);
