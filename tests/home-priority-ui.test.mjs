@@ -67,7 +67,8 @@ test('hero shows destination arrival and only warns of missing the last trip wit
   assert.doesNotMatch(normal, /이 차를 놓치면 다음 차는/);
   const last = v.html(setup + "model.risk.lastChanceConfirmed=true;model.risk.followingResult={deltaMinutes:-12};").split('</section>')[0];
   assert.match(last, /다음 차는 지각 예상/);
-  const unknown = v.html("model.dataSource='UNAVAILABLE';").split('</section>')[0];
+  const fresh = await view();
+  const unknown = fresh.html("model.dataSource='UNAVAILABLE';").split('</section>')[0];
   assert.doesNotMatch(unknown, /home-arrive-by|home-last-warning/);
 });
 
@@ -150,14 +151,36 @@ test('refresh keeps the displayed prediction until completion, but never across 
   assert.match(v.html("model.dataSource='UNAVAILABLE';model.risk.departure=null;"), /home-countdown-value">—/);
 });
 
-test('loading without a prior prediction and a refresh stuck beyond two minutes never invent a time', async () => {
+test('loading without a prior prediction stays empty; an existing prediction survives beyond two minutes', async () => {
   const v=await view();
   v.run('state.live.status="loading";');
   assert.match(v.html("model.dataSource='UNAVAILABLE';model.risk.departure=null;"), /home-countdown-value">—/);
   v.run('state.live.status="ready";');
   v.html("model.dataSource='LIVE';model.risk=evaluateLateRisk({now:model.now,requiredArrivalTime:'23:59',route:{boardingAccessMin:5,onboardToDestinationMin:20},busArrivalsMin:[16]});");
   v.run('state.live.status="loading";homeDisplayPrediction.now=new Date(Date.now()-121000);');
-  assert.match(v.html("model.dataSource='UNAVAILABLE';model.risk.departure=null;"), /home-countdown-value">—/);
+  const retained=v.html("model.dataSource='UNAVAILABLE';model.risk.departure=null;");
+  assert.doesNotMatch(retained,/home-countdown-value">—/);
+  assert.match(retained,/이전 계산 유지/);
+});
+
+test('empty and failed refreshes retain the exact departure time, then valid data replaces it while loading',async()=>{
+  const v=await view();
+  const setup="model.now=new Date('2026-09-26T12:30:00+09:00');model.dataSource='LIVE';model.risk=evaluateLateRisk({now:model.now,requiredArrivalTime:'14:00',route:{boardingAccessMin:5,onboardToDestinationMin:34},busArrivalsMin:[38,72]});";
+  const initial=v.html(setup);
+  const leave=initial.match(/<strong>(\d{2}:\d{2})<\/strong>까지 집에서 출발/)[1];
+  v.run('state.live.status="error";visibleTransitRefreshPending=false;');
+  const empty="model.now=new Date('2026-09-26T12:35:00+09:00');model.dataSource='UNAVAILABLE';model.risk.departure=null;model.homePlan={rows:[],risk:model.risk};";
+  const retained=v.html(empty);
+  assert.ok(retained.includes(`<strong>${leave}</strong>까지 집에서 출발`));
+  assert.match(retained,/이전 정보 · 새 정보 확인 중/);
+  assert.match(retained,/당시 실시간 기준/);
+  assert.doesNotMatch(v.html(empty),/home-countdown-value">—/);
+  v.run('visibleTransitRefreshPending=true;');
+  const next=v.html(setup.replace('busArrivalsMin:[38,72]','busArrivalsMin:[30,64]'));
+  assert.doesNotMatch(next,/이전 정보 · 새 정보 확인 중|갱신 중 · 이전 계산 유지/);
+  assert.notEqual(next.match(/<strong>(\d{2}:\d{2})<\/strong>까지 집에서 출발/)[1],leave);
+  const tomorrow=v.html(empty.replace('2026-09-26','2026-09-27'));
+  assert.match(tomorrow,/home-countdown-value">—/);
 });
 
 test('urgent live change bypasses loading retention and shows the last on-time vehicle immediately', async () => {

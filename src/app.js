@@ -5112,7 +5112,7 @@ function renderHomeTimetable(model, lineLabel, direction) {
         const late = known && item.deltaMinutes < 0;
         const cut = known && model.risk.lastChanceConfirmed && item.index === model.risk.targetResult.index;
         return `<tr class="${known ? late || !item.catchable ? "is-late" : "is-ontime" : "is-unknown"} ${cut ? "is-cut" : ""}">
-          <td class="timetable-time">${escapeHtml(formatClock(addMinutes(model.now, item.arrivalMinutes)))}<small style="display:block;font-size:11px;font-weight:400">${item.estimated ? "배차간격 기준 예상 · 실시간 아님" : "실시간"}</small></td>
+          <td class="timetable-time">${escapeHtml(formatClock(addMinutes(model.now, item.arrivalMinutes)))}<small style="display:block;font-size:11px;font-weight:400">${model.retainedPrediction ? "이전 정보 · " : ""}${item.estimated ? "배차간격 기준 예상 · 실시간 아님" : model.retainedPrediction ? "당시 실시간 기준" : "실시간"}</small></td>
           <td class="timetable-line"><strong>${escapeHtml(lineLabel || "선택한 노선")}</strong><span>${escapeHtml(direction || model.stop.name)}</span></td>
           <td class="timetable-arrival">${known ? escapeHtml(formatClock(item.arriveWorkAt)) : "—"}</td>
           <td class="timetable-verdict">${known && !item.catchable ? "탑승 어려움" : known ? late ? `지각${item.estimated ? " 예상" : ""}<br><small>+${Math.abs(item.deltaMinutes)}분</small>` : item.deltaMinutes > 0 ? `${item.deltaMinutes}분 여유${item.estimated ? " 예상" : ""}` : item.estimated ? "정시 예상" : "정시" : "미확인"}</td>
@@ -5144,20 +5144,22 @@ function renderHome(screen, model) {
   if (homeDisplayPrediction?.key !== displayKey) homeDisplayPrediction = null;
   const refreshing = visibleTransitRefreshPending || state.live.status === "loading" || commuteEstimateMeta.status === "loading";
   const elapsed = homeDisplayPrediction ? (model.now - homeDisplayPrediction.now) / 60000 : Infinity;
-  const emergencyUpdate = plan?.urgentBoarding || (earlyArrivalNotice?.contextKey===emergencyContextKey() &&
-    Date.parse(earlyArrivalNotice.boardingAt)>model.now.getTime());
-  const retaining = !emergencyUpdate && refreshing && homeDisplayPrediction && elapsed >= 0 && elapsed <= 2;
+  const replacementReady = model.dataSource === "LIVE" && model.risk.targetResult?.level !== "UNKNOWN" &&
+    Number.isFinite(model.risk.targetResult?.arrivalMinutes) &&
+    Number.isFinite(model.risk.departure?.leaveAt?.getTime());
+  // Empty/error responses are not replacements. Keep the last calculation for
+  // this exact trip/day, but never feed presentation fallback into alarm logic.
+  const retaining = !replacementReady && homeDisplayPrediction && elapsed >= 0;
   if (retaining) {
     const previous = homeDisplayPrediction;
     const shift = row => row ? {...row,arrivalMinutes:Number.isFinite(row.arrivalMinutes) ? row.arrivalMinutes-elapsed : row.arrivalMinutes} : row;
     const risk = {...previous.risk,results:previous.risk.results.map(shift),
       targetResult:shift(previous.risk.targetResult),followingResult:shift(previous.risk.followingResult)};
     risk.departure = buildDepartureGuidance(risk.targetResult.arrivalMinutes,previous.risk.departure.accessMin,model.now);
-    plan = previous.plan ? {...previous.plan,rows:previous.plan.rows.map(shift),risk} : null;
-    model = {...model,risk,homePlan:plan,dataSource:previous.dataSource};
-  } else if (!refreshing) {
-    homeDisplayPrediction = model.risk.departure && model.dataSource === "LIVE"
-      ? {key:displayKey,now:model.now,risk:model.risk,plan,dataSource:model.dataSource} : null;
+    plan = previous.plan ? {...previous.plan,urgentBoarding:false,rows:previous.plan.rows.map(shift),risk} : null;
+    model = {...model,risk,homePlan:plan,dataSource:previous.dataSource,retainedPrediction:true};
+  } else if (replacementReady) {
+    homeDisplayPrediction = {key:displayKey,now:model.now,risk:model.risk,plan,dataSource:model.dataSource};
   }
   const tripDraft = getHomeTripDraft();
   const subwayDirection = state.live.provider === "subway" ? parseSubwayRouteId(state.live.routeId) : null;
@@ -5189,9 +5191,10 @@ function renderHome(screen, model) {
     : model.risk.message;
   return `<main class="screen screen-home">
     <section class="home-countdown ${urgent ? "is-urgent" : ""}" aria-labelledby="home-countdown-title">
-      <div class="home-countdown-heading"><h1 id="home-countdown-title">${title}</h1><span class="home-prediction-label" data-home-evidence>${tripDraft.dirty ? "미적용 · 이전 설정 기준" : retaining ? "갱신 중 · 이전 계산 유지" : departureStatus}</span></div>
+      <div class="home-countdown-heading"><h1 id="home-countdown-title">${title}</h1><span class="home-prediction-label" data-home-evidence>${tripDraft.dirty ? "미적용 · 이전 설정 기준" : retaining ? refreshing ? "갱신 중 · 이전 계산 유지" : "이전 정보 · 새 정보 확인 중" : departureStatus}</span></div>
       <div class="home-countdown-value">${departure ? departure.minutes : "—"}<span>${plan?.urgentBoarding ? "지금 출발 · 탑승 미확정" : departure ? departure.remainingMin < 0 ? "출발 기한 지남" : departure.remainingMin < 1 ? "지금 출발" : "분 안에 출발" : "아직 계산할 수 없어요"}</span></div>
       ${calculationReason ? `<p class="field-help" role="status">${escapeHtml(calculationReason)}</p>` : ""}
+      ${retaining ? `<p class="field-help" role="status">새 도착정보를 확인할 때까지 이전 계산을 표시합니다. 현재 운행과 다를 수 있습니다.</p>` : ""}
       ${earlyNotice ? `<p class="home-last-warning" role="alert">긴급 · 실시간 도착이 ${Math.floor(earlyNotice.advancedMin)}분 앞당겨졌어요. 지금 바로 출발하세요.</p>` : ''}
       ${plan?.urgentBoarding ? `<p class="home-last-warning">평소 이동시간으로는 탑승이 빠듯합니다. 탑승 여부를 확인하며 안전하게 이동하세요.</p>` : ''}
       ${plan?.urgentBoarding ? `<p class="home-leave-by"><strong>${escapeHtml(formatClock(addMinutes(model.now,target.arrivalMinutes)))}</strong> 차량 도착 예상<span>정류장·역까지 평소 ${departure.accessMin}분</span></p>` : departure ? `<p class="home-leave-by"><strong>${escapeHtml(formatClock(departure.leaveAt))}</strong>까지 집에서 출발<span>정류장·역까지 ${departure.accessMin}분 반영</span></p>` : ""}
