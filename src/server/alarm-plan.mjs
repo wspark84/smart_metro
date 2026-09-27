@@ -14,6 +14,7 @@ import { resolveJourneyDuration } from "../logic/transit-journey.js";
 import { transitQueryKey, transitQueryForState } from "../logic/transit-journey.js";
 import { buildBoardingPlan, buildDepartureReminder, departurePlanningEnabled, DEPARTURE_REMINDER_MINUTES, departurePrediction, detectEarlyDeparture } from "../logic/boarding-plan.js";
 import { selectBusHeadway } from "../logic/bus-headway.js";
+import {buildJourneyOptionsPlan} from '../logic/journey-options.js';
 
 const MINUTE_MS = 60_000;
 
@@ -308,18 +309,23 @@ function buildDepartureAlarmPlan(state, today, options) {
   const gapAt = arrivalsMin.length >= 2 ? Date.parse(current.fetchedAt) : prior?.gapAt;
   const guard = buildAccuracyLiveEtaGuard(options.accuracyRuntime);
   const headwayInfo = selectBusHeadway(headway,today,getHolidayDates(state));
-  const boarding = buildBoardingPlan({now:today,requiredArrivalTime:state.user.requiredArrivalTime,
+  const boarding = state.commute.routingMode==='all-routes' ? buildJourneyOptionsPlan({now:today,
+    incomplete:Boolean(state.commute.automaticOptions?.unverifiedCount),
+    requiredArrivalTime:state.user.requiredArrivalTime,boardingAccessMin:state.commute.boardingAccessMin,
+    options:state.commute.automaticOptions?.queryKey===binding ? state.commute.automaticOptions.options : [],holidays:getHolidayDates(state)}) : buildBoardingPlan({now:today,requiredArrivalTime:state.user.requiredArrivalTime,
     route:{...resolveJourneyDuration(state,today),etaRiskBufferMin:guard.recommendedRiskBufferMin},
     arrivalsMin,snapshot,officialHeadwayMin:headwayInfo?.minutes,headwayInfo,
     allowObservedHeadway:state.live.provider === 'subway',
     observedHeadwayMin:today.getTime()-gapAt <= 30*MINUTE_MS ? gap : null});
+  if(state.commute.routingMode==='all-routes') line.number=boarding.risk.targetResult.routeNumber || '';
   const reminder = buildDepartureReminder(boarding,today,line.number);
   const departureAt = reminder?.departureAt;
   const valid = Boolean(departureAt && boarding.risk.targetResult.deltaMinutes >= 0);
   const goalAt = combineDateAndTime(today,state.user.requiredArrivalTime);
   const stageKey = JSON.stringify([binding,state.user.requiredArrivalTime]);
+  const selectedSnapshot=state.commute.routingMode==='all-routes' ? state.commute.automaticOptions?.options.find(o=>o.id===boarding.risk.targetResult.optionId)?.snapshot : current;
   const emergency = scheduleState.firing && prior?.stageKey===stageKey
-    ? detectEarlyDeparture(boarding,prior.prediction,today,current?.fetchedAt) : null;
+    ? detectEarlyDeparture(boarding,prior.prediction,today,selectedSnapshot?.fetchedAt) : null;
   const emergencyKey = emergency ? `early:${stageKey}:${Math.floor(Date.parse(emergency.boardingAt)/60000)}` : null;
   const emergencyTrigger = emergency ? {triggerAt:today.toISOString(),triggerKind:'early-arrival',
     reminderKey:emergencyKey,triggerLabel:'실시간 도착 앞당김 긴급 알림',riskLevel:'RED',urgency:'HURRY',

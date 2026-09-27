@@ -19,13 +19,13 @@ test('home does not claim server save succeeded while pending or failed',()=>{
   assert.match(vm.runInContext('renderHomeStorageStatus()',c),/계정에 설정 저장 완료/);
 });
 
-test('saving a stop without routes clears previous route and ETA without starting live calculations',()=>{
+test('saving a stop clears the fixed route and enables automatic destination comparison',()=>{
   let saved=0;
   const c=vm.createContext({state:{live:{provider:'tago',routeId:'old',routeNumber:'99',snapshot:{arrivalsMin:[5]}},ui:{},commute:{transitJourney:{old:true}}},
     boardingPreview:{status:'ready',routes:[],route:null,candidate:{provider:'tago',stationId:'GGB203000426',nodeId:'GGB203000426',cityCode:'31010',stationName:'더샵광교레이크시티.광교호반베르디움',posX:'127.06',posY:'37.28'}},
     document:{querySelector:()=>({dataset:{mapStatus:'ready'}})},isValidLocation,switchLiveProvider,
     busCitiesMeta:{cities:[]},cityDisplayName,commuteEstimateMeta:{snapshot:{old:true}},render(){},persist(){saved++;},resetBoardingPreview(){},
-    refreshCommuteEstimate(){throw Error('must not request a route without a bus');},refreshVisibleTransit(){throw Error('must not use old arrivals');}});
+    refreshCommuteEstimate(){throw Error('must not request the old fixed route');},refreshVisibleTransit(){}});
   c.syncLiveBindingState=()=>syncActiveLiveBinding(c.state.live);
   const start=source.indexOf('  if (action === "confirm-boarding")');
   const end=source.indexOf('  if (action === "goto")',start);
@@ -35,21 +35,22 @@ test('saving a stop without routes clears previous route and ETA without startin
   assert.equal(c.state.live.routeId,'');assert.equal(c.state.live.routeNumber,'');
   assert.equal(c.state.live.snapshot,null);assert.equal(c.state.commute.transitJourney,null);
   assert.equal(c.state.live.bindings.tago.routeId,'');
+  assert.equal(c.state.commute.routingMode,'all-routes');
 });
 
-test('empty route preview offers stop-only save above the result list, but loading and subway do not',()=>{
+test('map-confirmed boarding place can be saved without requiring a specific bus or subway line',()=>{
   const c=vm.createContext({boardingPreview:{candidate:{stationId:'S',stationName:'정류장',posX:127,posY:37},route:null,routes:[],status:'ready',error:''},
     state:{live:{provider:'tago'},ui:{liveSearchResults:[]}},busApiConfig:{providers:{}},boardingArea:{mode:'name'},
     renderBoardingAreaSearch:()=>'',stationSelectionKey,isValidLocation,escapeHtml:String});
   vm.runInContext(source.slice(source.indexOf('function renderBoardingPreview()'),source.indexOf('function renderCitySearchResults()')),c);
   let html=vm.runInContext('renderBoardingPreview()',c);
-  assert.match(html,/이 정류장을 출발지로 저장 \(노선 미연결\)/);
+  assert.match(html,/이 정류장을 출발지로 저장/);
   assert.doesNotMatch(html,/data-action="confirm-boarding" disabled/);
-  assert.match(html,/실시간 도착시간·출발 알림을 제공하지 않습니다/);
+  assert.match(html,/특정 노선을 선택하지 않습니다/);
   c.boardingPreview.status='loading';
-  assert.match(vm.runInContext('renderBoardingPreview()',c),/data-action="confirm-boarding" disabled/);
+  assert.doesNotMatch(vm.runInContext('renderBoardingPreview()',c),/data-action="confirm-boarding" disabled/);
   c.boardingPreview.status='ready';c.state.live.provider='subway';
-  assert.match(vm.runInContext('renderBoardingPreview()',c),/data-action="confirm-boarding" disabled/);
+  assert.match(vm.runInContext('renderBoardingPreview()',c),/이 역을 출발지로 저장/);
 });
 
 test('city loading is automatic, single flight, restores stored official city, and ignores signed-out responses',async()=>{
@@ -95,7 +96,7 @@ test('bus map keeps selected stop and routes without a duplicate station list',(
   vm.runInContext(source.slice(source.indexOf('function renderBoardingPreview()'),source.indexOf('function renderCitySearchResults()')),c);
   const html=vm.runInContext('renderBoardingPreview()',c);
   assert.match(html,/id="boarding-map"|선택 정류장/);
-  assert.match(html,/data-action="preview-boarding-route"/);
+  assert.doesNotMatch(html,/data-action="preview-boarding-route"/);
   assert.doesNotMatch(html,/>2\. 반대편 정류장<|data-action="preview-boarding-stop"|아래 목록/);
   c.boardingPreview.candidate=null;
   assert.doesNotMatch(vm.runInContext('renderBoardingPreview()',c),/data-action="preview-boarding-stop"/);
@@ -126,7 +127,8 @@ test('confirmation switches provider once and persists exact regional station an
   const end=source.indexOf('  if (action === "goto")',start);
   vm.runInContext(`(function(action){${source.slice(start,end)}})("confirm-boarding")`,c);
   assert.equal(saved,1);assert.equal(c.state.live.provider,'gyeonggi');
-  assert.equal(c.state.live.stationId,'123');assert.equal(c.state.live.routeId,'regional-route');assert.equal(c.state.live.nodeId,'');
+  assert.equal(c.state.live.stationId,'123');assert.equal(c.state.live.routeId,'');assert.equal(c.state.live.nodeId,'');
+  assert.equal(c.state.commute.routingMode,'all-routes');
   assert.equal(c.state.ui.busCityId,'gg:수원시');
 });
 

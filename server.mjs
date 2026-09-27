@@ -79,6 +79,8 @@ import { getPlaceApiConfig, searchAddressPlaces } from "./src/server/place-provi
 import { loadWithCache } from "./src/server/request-cache.mjs";
 import { estimateCommuteRoute, getRouteApiConfig } from "./src/server/route-providers.mjs";
 import { fetchTransitRoutes, refreshTransitJourney } from "./src/server/transit-providers.mjs";
+import {refreshJourneyOptions} from './src/server/automatic-journeys.mjs';
+import {transitQueryForState} from './src/logic/transit-journey.js';
 import { buildTestPushPreview } from "./src/server/test-push.mjs";
 import { buildUserDataFilePath } from "./src/server/user-storage.mjs";
 import { isAssetPath, resolvePublicStaticFile } from "./src/server/static-assets.mjs";
@@ -982,12 +984,20 @@ async function tickAlarmRuntime(now = new Date()) {
     };
   }
 
-  if (isAlarmRefreshWindow(state, now)) state = await refreshTransitJourney(state, now, async (query) => {
+  if(state.commute?.routingMode==='all-routes' && isAlarmRefreshWindow(state,now)) {
+    try {
+      const automaticOptions=await refreshJourneyOptions(transitQueryForState(state),{
+        loadArrival:loadSavedTransit,previous:alarmRuntimeState.automaticOptions,now});
+      alarmRuntimeState={...alarmRuntimeState,automaticOptions};
+      state={...state,commute:{...state.commute,automaticOptions}};
+    } catch {state={...state,commute:{...state.commute,automaticOptions:null}};}
+  }
+  if (state.commute?.routingMode!=='all-routes' && isAlarmRefreshWindow(state, now)) state = await refreshTransitJourney(state, now, async (query) => {
     const cached = await loadWithCache({ key: ['transit-route', query], ttlMs: 5 * 60_000,
       loader: () => fetchTransitRoutes(query, process.env) });
     return cached.value;
   });
-  state = await refreshAlarmArrivals(state, now, (live) => {
+  if(state.commute?.routingMode!=='all-routes') state = await refreshAlarmArrivals(state, now, (live) => {
     const binding = Object.fromEntries(
       ['provider', 'stationId', 'stationName', 'arsId', 'routeId', 'order', 'cityCode', 'nodeId', 'routeNumber']
         .map((key) => [key, live[key] || '']),
@@ -1215,7 +1225,8 @@ async function safeTickAlarmRuntime(user = activeUserContext?.user, now = new Da
     if (!isBackgroundAlarmWorker()) {
       const scheduler=await getAlarmSchedulerStatus();
       if (scheduler.enabled) {
-        const current=await readEffectiveAppState();
+        let current=await readEffectiveAppState();
+        if(current?.commute?.routingMode==='all-routes') current={...current,commute:{...current.commute,automaticOptions:alarmRuntimeState.automaticOptions || null}};
         return {runtime:alarmRuntimeState,dueEvents:[],scheduler,
           plan:current ? buildAlarmPlan(current,now,{accuracyRuntime:busAccuracyRuntimeState,
             planningObservation:alarmRuntimeState.planningObservation}) : null,
@@ -1384,7 +1395,7 @@ async function handleRequest(request, response) {
     try {
       const payload = await readJsonBody(request);
       const saved = await writeAppState(payload, getActiveFiles().appState);
-      await safeTickAlarmRuntime(activeUserContext.user, now);
+      if(payload?.commute?.routingMode!=='all-routes') await safeTickAlarmRuntime(activeUserContext.user, now);
 
       response.writeHead(200, {
         "Content-Type": "application/json; charset=utf-8",
@@ -1514,7 +1525,7 @@ async function handleRequest(request, response) {
       const payload = await readJsonBody(request);
       const snapshot = projectDomainSnapshot(payload?.state || {});
       const saved = await persistDomainSnapshot(snapshot);
-      await safeTickAlarmRuntime();
+      if(payload?.state?.commute?.routingMode!=='all-routes') await safeTickAlarmRuntime();
 
       response.writeHead(200, {
         "Content-Type": "application/json; charset=utf-8",
@@ -2595,6 +2606,20 @@ async function handleRequest(request, response) {
     return;
   }
 
+  if (requestUrl.pathname === '/api/commute/options' && request.method === 'POST') {
+    try {
+      const query=await readJsonBody(request);
+      const result=await refreshJourneyOptions(query,{loadArrival:loadSavedTransit,previous:alarmRuntimeState.automaticOptions});
+      alarmRuntimeState={...alarmRuntimeState,automaticOptions:result};
+      await writeAlarmRuntimeState(alarmRuntimeState,getActiveFiles().alarmRuntime);
+      response.writeHead(200,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});
+      response.end(JSON.stringify(result));
+    } catch(error) {
+      response.writeHead(400,{'Content-Type':'application/json; charset=utf-8'});
+      response.end(JSON.stringify({error:error.message || '자동 경로 비교에 실패했습니다.'}));
+    }
+    return;
+  }
   if (requestUrl.pathname === "/api/commute/transit" && request.method === "POST") {
     try {
       const payload = await readJsonBody(request);

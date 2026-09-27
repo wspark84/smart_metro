@@ -111,7 +111,7 @@ test('boarding UI offers subway, map preview, and confirmation without committin
   assert.match(app.innerHTML,/data-action="preview-boarding-stop"/);
   assert.doesNotMatch(app.innerHTML,/지하철 실시간 연결은 아직 지원되지/);
   vm.runInContext(`boardingPreview.candidate=state.ui.liveSearchResults[0];boardingPreview.status='ready';boardingPreview.routes=[{routeId:'route',routeNumber:'신분당선',label:'상행 · 성복 방면 · 신사행 · 일반'}];boardingPreview.route=boardingPreview.routes[0];render();`,context);
-  assert.match(app.innerHTML,/상행 · 성복 방면 · 신사행 · 일반/);
-  assert.match(app.innerHTML,/지도·노선·방향 확인 후 선택/);
+  assert.match(app.innerHTML,/특정 노선을 선택하지 않습니다/);
+  assert.match(app.innerHTML,/이 역을 출발지로 저장/);
   assert.equal(vm.runInContext('state.live.routeId',context),'');
 });

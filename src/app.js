@@ -16,6 +16,7 @@ import { buildConservativeReliabilityReport, buildConservativeWatchlistHighlight
 import { buildDeliveryIntensityReport } from "./logic/delivery-intensity-report.js";
 import { buildLiveEtaGuard } from "./logic/live-eta-guard.js";
 import { resolveJourneyDuration, transitQueryForState, transitQueryKey } from "./logic/transit-journey.js";
+import { buildJourneyOptionsPlan } from "./logic/journey-options.js";
 import { cityDisplayName, searchCityCandidates } from "./logic/city-search.js";
 import { isLiveConfigured, projectLiveArrivals, resolveCommuteLine, resolveCommuteStop } from "./logic/live-arrivals.js";
 import { buildEscalationTimeline, getNotificationSpec } from "./logic/notification-engine.js";
@@ -102,6 +103,7 @@ let planningObservation = null;
 let homeDisplayPrediction = null;
 let earlyArrivalNotice = null;
 let playedEarlyArrivalKey = '';
+let automaticOptions = null;
 
 function planningRouteKey() {
   return JSON.stringify([state.live.provider,state.live.stationId || state.live.nodeId,state.live.routeId,state.live.order]);
@@ -141,6 +143,7 @@ async function submitHomeTrip() {
   snapshot.commute.planningHeadwayMin = null;
   snapshot.commute.planningBindingKey = planningRouteKey();
   snapshot.user.requiredArrivalTime = draft.target;
+  snapshot.commute.routingMode = 'all-routes';
   for (const timer of [remoteSaveTimer,domainSyncTimer]) if (timer) window.clearTimeout(timer);
   remoteSaveToken++; domainSyncToken++;
   homeTripSave = {status:"saving",message:"입력한 정보를 계정에 저장하고 있습니다…",key:""};
@@ -154,6 +157,7 @@ async function submitHomeTrip() {
     state.commute.planningHeadwayMin = null;
     state.commute.planningBindingKey = snapshot.commute.planningBindingKey;
     state.user.requiredArrivalTime = draft.target;
+    state.commute.routingMode = 'all-routes';
     saveState(state);
     draft.dirty = false;
     persistenceMeta.saveStatus = "saved"; domainMeta.syncStatus = "synced";
@@ -421,6 +425,7 @@ function applyPushGatewaySummary(summary, loadedAt = new Date().toISOString()) {
 }
 
 function resetWorkspaceMeta() {
+  automaticOptions = null;
   homeTripDraft = null;
   homeTripSave = {status:"idle",message:"",key:""};
   planningObservation = null;
@@ -606,6 +611,10 @@ async function hydrateAuthenticatedWorkspace() {
   await Promise.all([refreshBusApiConfig(), refreshPlaceApiConfig(), refreshCommuteApiConfig(), refreshHolidayApiConfig()]);
   await hydrateStateFromServer();
   await hydrateStateFromDomain();
+  if(state.live.provider!=='none' && state.live.stationName && state.commute.routingMode!=='all-routes') {
+    state.commute.routingMode='all-routes';
+    persist();
+  }
   if (persistenceMeta.saveStatus === "saved" && domainMeta.syncStatus === "synced" &&
       departurePlanningEnabled(state) && normalizeBoardingAccessMin(state.commute.boardingAccessMin) !== null) {
     homeTripSave = {status:"saved",key:tripInputKey(),message:"입력 완료 · 계정에 저장된 설정입니다."};
@@ -2231,6 +2240,7 @@ function buildCommuteEstimatePayload() {
 }
 
 async function refreshCommuteEstimate() {
+  if(state.commute.routingMode==='all-routes') {void refreshVisibleTransit();return;}
   const payload = buildCommuteEstimatePayload();
   if (!payload) {
     commuteEstimateMeta.status = "blocked";
@@ -2292,6 +2302,23 @@ function goTo(screen) {
 }
 
 async function refreshVisibleTransit() {
+  if(state.commute.routingMode==='all-routes') {
+    if(!isAuthenticated() || visibleTransitRefreshPending || !buildCommuteEstimatePayload()) return;
+    const query=transitQueryForState(state),key=transitQueryKey(query),userId=authMeta.user.id;
+    const previousModel=getDashboardModel(),previous=departurePrediction(previousModel.homePlan,previousModel.now);
+    visibleTransitRefreshPending=true;render();
+    try {
+      const response=await fetch('/api/commute/options',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(query)});
+      const result=await response.json();
+      if(!response.ok) throw new Error(result.error || '자동 경로 조회 실패');
+      if(authMeta.user?.id!==userId || transitQueryKey(transitQueryForState(state))!==key) return;
+      automaticOptions=result;state.live.lastError=result.options?.length ? '' : '목적지 경로와 공식 탑승 방향이 일치하는 교통편을 아직 확인하지 못했습니다.';
+      announceEarlyArrival(previous);
+    } catch(error) {
+      if(authMeta.user?.id===userId) state.live.lastError=userErrorMessage(error,'자동 경로를 확인하지 못했습니다.');
+    } finally {visibleTransitRefreshPending=false;render();}
+    return;
+  }
   if (!isAuthenticated() || !isLiveConfigured(state) || visibleTransitRefreshPending || state.live.status === "loading" ||
       !busApiConfig.providers?.[state.live.provider]?.configured || !state.live.routeNumber) return;
   const binding = getLiveBinding();
@@ -2332,7 +2359,8 @@ function emergencyContextKey() {
 function announceEarlyArrival(previous) {
   const model=getDashboardModel();
   if (!model.scheduleState.firing) return;
-  const notice=detectEarlyDeparture(model.homePlan,previous,model.now,state.live.snapshot?.fetchedAt);
+  const selectedSnapshot=state.commute.routingMode==='all-routes' ? automaticOptions?.options.find(o=>o.id===model.homePlan?.risk.targetResult.optionId)?.snapshot : state.live.snapshot;
+  const notice=detectEarlyDeparture(model.homePlan,previous,model.now,selectedSnapshot?.fetchedAt);
   if (!notice) return;
   const contextKey=emergencyContextKey();
   const emergencyKey=`early:${contextKey}:${Math.floor(Date.parse(notice.boardingAt)/60000)}`;
@@ -2606,7 +2634,13 @@ function getDashboardModel() {
     preferredSpeechRate: state.notification.ttsSpeed,
     vibrationStrength: state.notification.vibrationStrength,
   };
-  const departureReminder = buildDepartureReminder(homePlan,now,state.live.routeNumber);
+  if(state.commute.routingMode==='all-routes') {
+    homePlan=buildJourneyOptionsPlan({now,requiredArrivalTime:state.user.requiredArrivalTime,
+      incomplete:Boolean(automaticOptions?.unverifiedCount),
+      boardingAccessMin:state.commute.boardingAccessMin,holidays:effectiveHolidayDates,
+      options:automaticOptions?.queryKey===transitQueryKey(transitQueryForState(state)) ? automaticOptions.options : []});
+  }
+  const departureReminder = buildDepartureReminder(homePlan,now,homePlan?.risk.targetResult.routeNumber || state.live.routeNumber);
   if (departureReminder) Object.assign(notificationContext,{riskLevel:departureReminder.riskLevel,
     urgency:'DEPARTURE',riskMessage:departureReminder.body,escalationEnabled:false});
 
@@ -2616,11 +2650,12 @@ function getDashboardModel() {
     primaryLine,
     routeEstimate,
     arrivalsMin,
-    risk,
+    risk:state.commute.routingMode==='all-routes' ? homePlan.risk : risk,
     homePlan,
     liveEtaGuard,
     liveSnapshot,
-    dataSource: liveSnapshot && arrivalsMin.length ? "LIVE" : isLiveConfigured(state) || liveSnapshot ? "UNAVAILABLE" : "DEMO",
+    dataSource: state.commute.routingMode==='all-routes' ? (homePlan.rows.length ? "LIVE" : "UNAVAILABLE") : liveSnapshot && arrivalsMin.length ? "LIVE" : isLiveConfigured(state) || liveSnapshot ? "UNAVAILABLE" : "DEMO",
+    automaticRouting: state.commute.routingMode==='all-routes',
     liveProviderConfigured: Boolean(busApiConfig.providers?.[state.live.provider]?.configured),
     holidayApiConfigured: Boolean(holidayApiConfig.configured),
     placeApiConfigured: Boolean(placeApiConfig.providers?.kakao?.configured),
@@ -2628,7 +2663,7 @@ function getDashboardModel() {
     notificationSpec: {...getNotificationSpec(notificationContext),...(departureReminder || {})},
     notificationTimeline: buildEscalationTimeline(notificationContext).map(item=>({...item,...(departureReminder || {})})),
     scheduleState: describeScheduleState(state.schedule, now, effectiveHolidayDates),
-    targetBoardingAt: risk.targetResult.arrivalMinutes === null ? null : addMinutes(now, risk.targetResult.arrivalMinutes),
+    targetBoardingAt: (homePlan?.risk || risk).targetResult.arrivalMinutes === null ? null : addMinutes(now, (homePlan?.risk || risk).targetResult.arrivalMinutes),
     forecast: buildSchedulePreview(state.schedule, now, effectiveHolidayDates, 7),
     upcomingOfficialHolidays: state.officialHolidays.filter((holiday) => holiday.date >= dateOnlyKey(now)).slice(0, 6),
   };
@@ -2975,6 +3010,15 @@ function renderCommuteSummary(model) {
 }
 
 function renderCommuteEstimatePanel() {
+  if(state.commute.routingMode==='all-routes') {
+    const options=automaticOptions?.queryKey===transitQueryKey(transitQueryForState(state)) ? automaticOptions.options : [];
+    return `<section class="stack-panel"><h3>목적지까지 자동 비교 중인 경로</h3>
+      <p class="field-help">버스를 따로 저장하지 않습니다. 출발 위치에서 목적지까지 연결되는 직행·환승 경로를 비교합니다. 환승 대기와 운행 지연은 예상과 다를 수 있습니다.</p>
+      <button class="soft-button wide" data-action="refresh-commute-estimate" ${visibleTransitRefreshPending ? 'disabled' : ''}>경로·도착정보 다시 확인</button>
+      ${state.live.lastError ? `<p role="alert">${escapeHtml(state.live.lastError)}</p>` : ''}
+      ${options.map(o=>`<article class="history-item"><div><strong>${escapeHtml(o.binding.routeNumber)} · ${escapeHtml(o.direction)}</strong><p>탑승 후 약 ${Math.ceil(o.onboardDurationSec/60)}분 · 환승 ${o.transfers}회</p><p>${escapeHtml(o.steps.map(s=>s.guidance).filter(Boolean).join(' → '))}</p></div></article>`).join('')}
+      <p class="field-help">${automaticOptions?.unverifiedCount ? '위치·방향을 확인하지 못한 후보는 계산에서 제외했습니다. 전체 교통편의 마지막 차로 확정하지 않습니다.' : '공식 위치·방향과 도착정보를 확인할 수 있는 후보 기준입니다.'}</p></section>`;
+  }
   const queryKey = transitQueryKey(transitQueryForState(state));
   const routes = commuteEstimateMeta.snapshot?.queryKey === queryKey ? commuteEstimateMeta.snapshot.routes || [] : [];
   const selected = state.commute.transitJourney;
@@ -5055,10 +5099,10 @@ function renderBoardingPreview() {
       ${status === "loading" ? `<p role="status">노선과 방면을 확인하고 있습니다…</p>` : ""}
       ${error ? `<p role="alert">${escapeHtml(error)}</p><button class="mini-button" data-action="preview-boarding-stop" data-station-id="${escapeHtml(stationSelectionKey(candidate))}">다시 조회</button>` : ""}
       ${status === "ready" && !routes.length ? `<p class="field-help">공식 정보에서 선택 가능한 노선을 찾지 못했습니다. 운행하지 않는 정류장이라는 뜻은 아닙니다.</p><button class="mini-button" data-action="preview-boarding-stop" data-station-id="${escapeHtml(stationSelectionKey(candidate))}">노선 다시 조회</button>` : ""}
-      ${stopOnly ? `<p class="field-help">정류장만 먼저 저장할 수 있습니다. 버스 노선을 연결하기 전에는 실시간 도착시간·출발 알림을 제공하지 않습니다.</p>` : ""}
-      <div class="home-search-results">${routes.map((item,index) => `<button class="home-search-result ${route?.routeId === item.routeId ? "selected" : ""}" data-action="preview-boarding-route" data-index="${index}" aria-pressed="${route?.routeId === item.routeId}"><strong>${escapeHtml(item.routeNumber)}${subway ? "" : "번"}</strong><span>${escapeHtml(item.label || item.direction || [item.startStationName,item.destinationName].filter(Boolean).join(" → ") || "방향 정보 없음")}</span></button>`).join("")}</div>
+      ${stopOnly ? `<p class="field-help">출발 위치는 저장할 수 있습니다. 경로 정보가 연결되면 자동 비교를 다시 진행합니다.</p>` : ""}
+      <p class="field-help">특정 노선을 선택하지 않습니다. 목적지까지 연결되는 버스·지하철과 환승 경로를 자동 비교합니다.</p>
       ${!subway ? `<p class="field-help">기점·종점만으로 현재 운행 방향은 확정되지 않습니다. 선택 후 목적지 경로의 다음 정류장도 확인해 주세요.</p>` : ""}
-      <button class="soft-button wide" data-action="confirm-boarding" ${(!route && !stopOnly) || !isValidLocation({lat:candidate.posY ?? candidate.lat,lng:candidate.posX ?? candidate.lng}) ? "disabled" : ""}>${stopOnly ? "이 정류장을 출발지로 저장 (노선 미연결)" : subway ? "지도·노선·방향 확인 후 선택" : "이 정류장·노선으로 출발지 저장"}</button>
+      <button class="soft-button wide" data-action="confirm-boarding" ${!isValidLocation({lat:candidate.posY ?? candidate.lat,lng:candidate.posX ?? candidate.lng}) ? "disabled" : ""}>이 ${subway ? "역" : "정류장"}을 출발지로 저장</button>
     </section>` : ""}
     ${subway ? `<div class="home-search-results">${state.ui.liveSearchResults.map((item,index) => `<button class="home-search-result ${stationSelectionKey(candidate) === stationSelectionKey(item) ? "selected" : ""}" data-action="preview-boarding-stop" data-station-id="${escapeHtml(stationSelectionKey(item))}" aria-pressed="${stationSelectionKey(candidate) === stationSelectionKey(item)}"><strong>${index+1}. ${escapeHtml(item.displayName || item.stationName)}</strong><span>${escapeHtml([item.address,item.stationNumber || item.arsId || item.stationId,item.providerLabel].filter(Boolean).join(" · "))}</span><span>지도에서 위치 확인 · 아직 저장 안 됨</span></button>`).join("")}</div>` : ""}`;
 }
@@ -5107,7 +5151,7 @@ function renderHomeTimetable(model, lineLabel, direction) {
   return `<section class="home-timetable" aria-label="선택한 노선의 실시간 탑승 시간표">
     ${rows.length>5 ? `<p class="field-help">시간표 안을 스크롤하면 목표 시간 전후의 예상편까지 확인할 수 있습니다.</p>` : ""}
     <div style="max-height:360px;overflow:auto">
-    <table><caption>선택한 노선 · 실시간 / 배차간격 예상</caption>
+    <table><caption>${model.automaticRouting ? '목적지까지 가능한 경로 자동 비교' : '선택한 노선'} · 실시간 / 배차간격 예상</caption>
       <thead><tr><th scope="col">탑승 예상</th><th scope="col">노선 / 방면</th><th scope="col">목적지</th><th scope="col">판정</th></tr></thead>
       <tbody>${rows.length ? rows.map(item => {
         const known = item.level !== "UNKNOWN" && Number.isFinite(item.deltaMinutes) && item.arriveWorkAt;
@@ -5115,7 +5159,7 @@ function renderHomeTimetable(model, lineLabel, direction) {
         const cut = known && model.risk.lastChanceConfirmed && item.index === model.risk.targetResult.index;
         return `<tr class="${known ? late || !item.catchable ? "is-late" : "is-ontime" : "is-unknown"} ${cut ? "is-cut" : ""}">
           <td class="timetable-time">${escapeHtml(formatClock(addMinutes(model.now, item.arrivalMinutes)))}<small style="display:block;font-size:11px;font-weight:400">${model.retainedPrediction ? "이전 정보 · " : ""}${item.estimated ? "배차간격 기준 예상 · 실시간 아님" : model.retainedPrediction ? "당시 실시간 기준" : "실시간"}</small></td>
-          <td class="timetable-line"><strong>${escapeHtml(lineLabel || "선택한 노선")}</strong><span>${escapeHtml(direction || model.stop.name)}</span></td>
+          <td class="timetable-line"><strong>${escapeHtml(item.routeNumber || lineLabel || "선택한 노선")}</strong><span>${escapeHtml(item.direction || direction || model.stop.name)}</span>${item.onboardDurationSec ? `<small>목적지까지 약 ${Math.ceil(item.onboardDurationSec/60)}분 · 환승 ${item.transfers || 0}회</small>` : ""}</td>
           <td class="timetable-arrival">${known ? escapeHtml(formatClock(item.arriveWorkAt)) : "—"}</td>
           <td class="timetable-verdict">${known && !item.catchable ? "탑승 어려움" : known ? late ? `지각${item.estimated ? " 예상" : ""}<br><small>+${Math.abs(item.deltaMinutes)}분</small>` : item.deltaMinutes > 0 ? `${item.deltaMinutes}분 여유${item.estimated ? " 예상" : ""}` : item.estimated ? "정시 예상" : "정시" : "미확인"}</td>
         </tr>${cut ? `<tr class="timetable-cut-label"><td colspan="4">지각선 · 이 차를 놓치면 다음 차는 지각 예상</td></tr>` : ""}`;
@@ -5170,19 +5214,19 @@ function renderHome(screen, model) {
   const hasPrediction = model.dataSource === "LIVE" && target.level !== "UNKNOWN" && Number.isFinite(target.arrivalMinutes);
   const confirmed = hasPrediction && model.risk.lastChanceConfirmed;
   const departure = hasPrediction ? model.risk.departure : null;
-  const calculationReason = departure ? "" : !state.live.routeNumber ? "탑승할 노선을 선택해 주세요."
+  const calculationReason = departure ? "" : state.commute.routingMode==='all-routes' ? state.live.lastError || '목적지까지 가능한 버스·지하철 및 환승 경로를 비교하고 있습니다.' : !state.live.routeNumber ? "탑승할 노선을 선택해 주세요."
     : !resolveJourneyDuration(state, model.now).durationAvailable ? "목적지 경로를 확인해 주세요. 선택한 경로의 소요시간이 아직 확인되지 않았습니다."
     : normalizeBoardingAccessMin(state.commute.boardingAccessMin) === null ? "첫 정류장까지 이동시간을 입력해 주세요."
     : plan?.rows.length ? "현재 조회된 차량은 입력한 이동시간으로 탑승하기 어렵습니다. 다음 차량 정보를 확인 중입니다."
     : plan?.interval && !plan.anchorCheckedAt ? `배차간격 ${plan.interval}분은 확인됐지만, 오늘의 기준 도착시각이 없어 버스 시간을 추정할 수 없습니다.`
     : state.live.lastError || "실시간 도착정보와 오늘의 예측 기준을 확인 중입니다.";
   const urgent = hasPrediction && (model.risk.urgency === "HURRY" || (departure ? departure.remainingMin <= 5 : confirmed && target.arrivalMinutes <= 5));
-  const title = plan?.urgentBoarding ? "지금 바로 출발하세요" : (confirmed || plan?.estimatedLast) && departure ? "늦지 않는 마지막 출발까지" : "집에서 출발까지 남은 시간";
+  const title = plan?.urgentBoarding ? "지금 바로 출발하세요" : (confirmed || plan?.estimatedLast) && departure ? state.commute.routingMode==='all-routes' ? "확인된 경로 중 마지막 출발까지" : "늦지 않는 마지막 출발까지" : "집에서 출발까지 남은 시간";
   const earlyNotice = earlyArrivalNotice?.contextKey===emergencyContextKey() && model.scheduleState.firing &&
     Date.parse(earlyArrivalNotice.boardingAt)>model.now.getTime() ? earlyArrivalNotice : null;
   const departureStatus = !departure ? "정보 확인 필요 · 마지막 탑승편 확인 대기" : target.estimated ? "배차간격으로 예상" : confirmed ? "실시간 정보로 예상" : "실시간 정보로 예상 · 마지막 편 미확정";
   const paused = state.schedule.snoozeDate === dateOnlyKey(model.now);
-  const verdict = state.live.provider !== "none" && state.live.stationName && !state.live.routeNumber
+  const verdict = state.commute.routingMode==='all-routes' ? model.risk.message : state.live.provider !== "none" && state.live.stationName && !state.live.routeNumber
     ? "출발지가 선택됐습니다. 노선 미연결 상태라 실시간 도착시간·출발 알림은 아직 사용할 수 없습니다."
     : model.dataSource === "DEMO" ? "출발지와 노선을 연결해 주세요."
     : target.estimated ? `${departure?.message || ""} 배차간격 기준 예상입니다. 실제 도착정보가 확인되면 갱신합니다. 운행 종료·결행은 반영하지 못하므로 출발 전에 다시 확인하세요.`
@@ -5201,6 +5245,7 @@ function renderHome(screen, model) {
       ${plan?.urgentBoarding ? `<p class="home-last-warning">평소 이동시간으로는 탑승이 빠듯합니다. 탑승 여부를 확인하며 안전하게 이동하세요.</p>` : ''}
       ${plan?.urgentBoarding ? `<p class="home-leave-by"><strong>${escapeHtml(formatClock(addMinutes(model.now,target.arrivalMinutes)))}</strong> 차량 도착 예상<span>정류장·역까지 평소 ${departure.accessMin}분</span></p>` : departure ? `<p class="home-leave-by"><strong>${escapeHtml(formatClock(departure.leaveAt))}</strong>까지 집에서 출발<span>정류장·역까지 ${departure.accessMin}분 반영</span></p>` : ""}
       ${hasPrediction && target.arriveWorkAt ? `<p class="home-arrive-by">→ ${plan?.urgentBoarding ? '탑승 시 ' : ''}목적지 <strong>${escapeHtml(formatClock(target.arriveWorkAt))}</strong> 도착 예상</p>` : ""}
+      ${hasPrediction && target.routeNumber ? `<p class="field-help">추천 ${escapeHtml(target.routeNumber)} · ${escapeHtml(formatClock(addMinutes(model.now,target.arrivalMinutes)))} 탑승 · 환승 ${target.transfers || 0}회</p>` : ""}
       ${hasPrediction && (confirmed || plan?.estimatedLast) && model.risk.followingResult?.deltaMinutes < 0 ? `<p class="home-last-warning">놓치면 다음 차는 지각 예상${model.risk.followingResult.arriveWorkAt ? ` · ${escapeHtml(formatClock(model.risk.followingResult.arriveWorkAt))} 도착` : ""}</p>` : ""}
       ${hasPrediction && target.deltaMinutes < 0 ? `<p class="home-verdict">현재 교통편에 타도 목표시간보다 늦을 것으로 예상됩니다.</p>` : ""}
     </section>
@@ -5209,7 +5254,7 @@ function renderHome(screen, model) {
       <fieldset style="border:0;padding:0;margin:0;min-width:0" ${homeTripSave.status === "saving" ? "disabled" : ""}>
       <button class="home-trip-field" data-action="edit-home-trip" data-editor="departure" aria-expanded="${homeEditor === "departure"}" aria-controls="home-departure-editor"><span>출발지 · 탑승 정류장 / 역</span><strong>${escapeHtml(model.stop.name || "출발지를 선택하세요")}</strong><small>${homeEditor === "departure" ? "닫기" : "검색·변경 ›"}</small></button>
       ${homeEditor === "departure" ? renderHomeDepartureEditor() : ""}
-      ${state.live.provider !== "none" && state.live.provider !== "subway" && state.live.stationName && !state.live.routeNumber ? `<p class="field-help" role="status">정류장 선택 완료 · 버스 노선 미연결</p><button class="soft-button wide" data-action="retry-saved-boarding">선택한 정류장 노선 다시 조회</button>` : ""}
+      ${state.commute.routingMode==='all-routes' ? `<p class="field-help">출발 위치 저장됨 · 목적지까지 모든 확인 가능한 경로 자동 비교 · 환승 포함</p>` : state.live.provider !== "none" && state.live.provider !== "subway" && state.live.stationName && !state.live.routeNumber ? `<p class="field-help" role="status">정류장 선택 완료 · 버스 노선 미연결</p><button class="soft-button wide" data-action="retry-saved-boarding">선택한 정류장 노선 다시 조회</button>` : ""}
       <button class="home-trip-field" data-action="edit-home-trip" data-editor="destination" aria-expanded="${homeEditor === "destination"}" aria-controls="home-destination-editor"><span>도착지</span><strong>${escapeHtml(state.user.workAddress || "도착지를 선택하세요")}</strong><small>${homeEditor === "destination" ? "닫기" : "검색·변경 ›"}</small></button>
       ${homeEditor === "destination" ? renderHomeDestinationEditor() : ""}
       <div class="home-time-fields">
@@ -6304,9 +6349,10 @@ app.addEventListener("click", (event) => {
     return render();
   }
   if (action === "confirm-boarding") {
-    const {candidate,route} = boardingPreview;
-    const stopOnly = state.live.provider !== "subway" && !route && (boardingPreview.status === "error" || (boardingPreview.status === "ready" && !boardingPreview.routes.length));
-    if (!candidate || (!route && !stopOnly)) return;
+    const {candidate} = boardingPreview;
+    const route = null;
+    const stopOnly = true;
+    if (!candidate) return;
     if (document.querySelector("#boarding-map")?.dataset.mapStatus !== "ready") {
       boardingPreview.error = "지도 표시가 완료된 뒤 위치를 확인해 주세요. 지도를 불러오지 못하면 연결 설정을 확인해 주세요.";
       return render();
@@ -6320,7 +6366,9 @@ app.addEventListener("click", (event) => {
     state.commute.planningOfficialHeadwayMin = route?.term || null;
     state.commute.transitJourney = null;
     commuteEstimateMeta.snapshot = null;
-    Object.assign(state.live,{stationId:state.live.provider === "subway" ? route.stationId : candidate.stationId,
+    state.commute.routingMode = 'all-routes';
+    automaticOptions = null;
+    Object.assign(state.live,{stationId:candidate.stationId,
       stationName:route?.stationName || candidate.stationName,arsId:candidate.arsId || "",routeId:route?.routeId || "",
       routeNumber:route?.routeNumber || "",order:route?.order || "",cityCode:candidate.cityCode || "",nodeId:candidate.nodeId || "",snapshot:null,lastError:"",status:"idle",lastSyncedAt:""});
     state.commute.planningBindingKey = JSON.stringify([state.live.provider,state.live.stationId || state.live.nodeId,state.live.routeId,state.live.order]);
@@ -6334,10 +6382,7 @@ app.addEventListener("click", (event) => {
     syncLiveBindingState(); persist();
     homeEditor = stopOnly ? "" : "route";
     resetBoardingPreview();
-    if (!stopOnly) {
-      void refreshCommuteEstimate();
-      void refreshVisibleTransit();
-    }
+    void refreshVisibleTransit();
     return render();
   }
   if (action === "goto") return goTo(target.dataset.screen);

@@ -9,6 +9,10 @@ export function isAlarmRefreshWindow(state, now) {
   const holidays = mergeHolidayDates(state.holidayDates,
     (state.officialHolidays || []).filter((item) => item.isHoliday).map((item) => item.date));
   if (!shouldFireToday(state.schedule, now, holidays)) return false;
+  if(state.commute?.routingMode==='all-routes') {
+    const goal=combineDateAndTime(now,state.user.requiredArrivalTime);
+    return now<=addMinutes(goal,1.5);
+  }
   if (departurePlanningEnabled(state)) {
     const journey = state.commute.transitJourney;
     if (!journey?.boardingConfirmed || journey.queryKey !== transitQueryKey(transitQueryForState(state))) return false;

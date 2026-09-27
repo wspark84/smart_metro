@@ -3,15 +3,16 @@ import { isValidLocation, normalizeBoardingAccessMin } from "./commute.js";
 export const TRANSIT_ROUTE_MAX_AGE_MS = 15 * 60_000;
 
 export function transitQueryForState(state) {
+  const automatic=state?.commute?.routingMode==='all-routes';
   return {
     stopLocation: state?.commute?.stopLocation,
     workLocation: state?.user?.workLocation,
     stationName: String(state?.live?.stationName || "").trim(),
-    routeNumber: String(state?.live?.routeNumber || "").trim(),
+    routeNumber: automatic ? '' : String(state?.live?.routeNumber || "").trim(),
     provider: String(state?.live?.provider || "none"),
     stationId: String(state?.live?.stationId || state?.live?.nodeId || ""),
-    routeId: String(state?.live?.routeId || ""),
-    order: String(state?.live?.order || ""),
+    routeId: automatic ? '' : String(state?.live?.routeId || ""),
+    order: automatic ? '' : String(state?.live?.order || ""),
     cityCode: String(state?.live?.cityCode || ""),
     nodeId: String(state?.live?.nodeId || ""),
     arsId: String(state?.live?.arsId || ""),

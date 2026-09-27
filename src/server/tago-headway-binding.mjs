@@ -18,7 +18,7 @@ function sameLocationAndName(source,candidate) {
   return meters<=60 && name(source.stationName)===name(candidate.stationName);
 }
 
-async function routeRows(operation,params,{env,fetchImpl}) {
+export async function routeRows(operation,params,{env,fetchImpl}) {
   try {
   const rows=[];
   let total;

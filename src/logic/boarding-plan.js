@@ -27,6 +27,7 @@ export function detectEarlyDeparture(plan, previous, now, fetchedAt) {
 
 export function departurePlanningEnabled(state) {
   const live = state?.live;
+  if(state?.commute?.routingMode==='all-routes') return Boolean(live?.provider && live.provider!=='none' && live.stationName);
   return Boolean(live?.provider && live.provider !== 'none' && live.routeNumber &&
     state?.commute?.planningBindingKey === JSON.stringify([live.provider,live.stationId || live.nodeId,live.routeId,live.order]));
 }
