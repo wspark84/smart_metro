@@ -5023,8 +5023,13 @@ async function previewBoardingStop(stationId) {
   render();
   try {
     const result = await searchLiveStationRoutes({provider,stationName:candidate.stationName,stationId:candidate.stationId,
-      arsId:candidate.arsId || "",cityCode:candidate.cityCode || state.live.cityCode,nodeId:candidate.nodeId || candidate.stationId});
+      arsId:candidate.arsId || "",cityCode:candidate.cityCode || state.live.cityCode,nodeId:candidate.nodeId || candidate.stationId,
+      posX:candidate.posX ?? candidate.lng,posY:candidate.posY ?? candidate.lat});
     if (request !== boardingPreview.request || activeProvider !== state.live.provider || authMeta.user?.id !== userId) return;
+    if (result.verifiedStation) {
+      boardingPreview.candidate = result.verifiedStation;
+      state.ui.liveSearchResults = state.ui.liveSearchResults.map(item => item === candidate ? result.verifiedStation : item);
+    }
     boardingPreview.routes = result.routes || [];
     boardingPreview.status = "ready";
   } catch(error) {

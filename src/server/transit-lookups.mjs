@@ -2,6 +2,7 @@ import { fetchTagoCities, getBusApiConfig, searchLiveStations, searchLiveStation
 import { getPlaceApiConfig, searchAddressPlaces } from "./place-providers.mjs";
 import { searchTagoNearbyStations } from "./tago-api.mjs";
 import { fetchUnifiedBusCities, searchUnifiedBusStations } from "./unified-bus.mjs";
+import {lookupBoardingRoutes} from './boarding-routes.mjs';
 
 export const TRANSIT_LOOKUP_PATHS = new Set(["/api/bus/stations","/api/bus/nearby-stations","/api/bus/station-routes","/api/bus/cities","/api/places/search","/api/bus/config","/api/places/config"]);
 export async function transitLookup(url) {
@@ -15,7 +16,7 @@ export async function transitLookup(url) {
       return { provider: "tago", stations: await searchTagoNearbyStations({ serviceKey: process.env.TAGO_SERVICE_KEY, lat: input.lat, lng: input.lng }),
         radiusMeters: 500, source: "live", fetchedAt: new Date().toISOString() };
     }
-    case "/api/bus/station-routes": return {...await searchLiveStationRoutes(input),source:"live",fetchedAt:new Date().toISOString()};
+    case "/api/bus/station-routes": return {...await lookupBoardingRoutes(input),source:"live",fetchedAt:new Date().toISOString()};
     case "/api/places/search": return {query:input.query || "",results:await searchAddressPlaces(input.query || "",process.env),fetchedAt:new Date().toISOString()};
     case "/api/bus/cities": {
       if (input.provider === "auto") return fetchUnifiedBusCities();
