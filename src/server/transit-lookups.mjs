@@ -1,6 +1,6 @@
 import { fetchTagoCities, getBusApiConfig, searchLiveStations, searchLiveStationRoutes } from "./bus-providers.mjs";
 import { getPlaceApiConfig, searchAddressPlaces } from "./place-providers.mjs";
-import { searchTagoNearbyStations } from "./tago-api.mjs";
+import { searchNearbyBoardingStations } from "./nearby-stations.mjs";
 import { fetchUnifiedBusCities, searchUnifiedBusStations } from "./unified-bus.mjs";
 import {lookupBoardingRoutes} from './boarding-routes.mjs';
 
@@ -13,7 +13,7 @@ export async function transitLookup(url) {
     case "/api/bus/stations": return {...await (input.provider === "auto" ? searchUnifiedBusStations(input) : searchLiveStations(input)),source:"live",fetchedAt:new Date().toISOString()};
     case "/api/bus/nearby-stations": {
       if (input.provider !== "tago") throw new Error("지도 주변 정류장 검색은 전국 버스에서 지원합니다.");
-      return { provider: "tago", stations: await searchTagoNearbyStations({ serviceKey: process.env.TAGO_SERVICE_KEY, lat: input.lat, lng: input.lng }),
+      return { ...await searchNearbyBoardingStations({lat:input.lat,lng:input.lng}),
         radiusMeters: 500, source: "live", fetchedAt: new Date().toISOString() };
     }
     case "/api/bus/station-routes": return {...await lookupBoardingRoutes(input),source:"live",fetchedAt:new Date().toISOString()};

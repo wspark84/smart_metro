@@ -5034,7 +5034,7 @@ async function findNearbyBoardingStops() {
   try {
     const payload = await searchNearbyStations(center);
     if (request !== liveStationRequest || state.live.provider === "subway" || authMeta.user?.id !== userId) return;
-    state.ui.liveSearchResults = (payload.stations || []).map(item=>({...item,provider:"tago",providerLabel:"전국 버스",selectionId:`tago:${item.stationId}`}));
+    state.ui.liveSearchResults = (payload.stations || []).map(item=>{const provider=item.provider || payload.provider || 'tago';return {...item,provider,providerLabel:item.providerLabel || (provider==='gyeonggi' ? '경기도 버스' : '전국 버스'),selectionId:`${provider}:${item.stationId}`};});
     state.ui.liveSearchStatus = "ready";
   } catch (error) {
     if (request !== liveStationRequest || state.live.provider === "subway" || authMeta.user?.id !== userId) return;
