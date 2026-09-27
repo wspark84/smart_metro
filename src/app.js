@@ -2645,6 +2645,8 @@ function getDashboardModel() {
       incomplete:Boolean(automaticOptions?.unverifiedCount),
       boardingAccessMin:state.commute.boardingAccessMin,holidays:effectiveHolidayDates,
       options:automaticOptions?.queryKey===transitQueryKey(transitQueryForState(state)) ? automaticOptions.options : []});
+    Object.assign(notificationContext,{routeNumber:homePlan.risk.targetResult.routeNumber || '',
+      riskLevel:homePlan.risk.targetResult.level,riskMessage:homePlan.risk.message,arrivalsMin:[],escalationEnabled:false});
   }
   const departureReminder = buildDepartureReminder(homePlan,now,homePlan?.risk.targetResult.routeNumber || state.live.routeNumber);
   if (departureReminder) Object.assign(notificationContext,{riskLevel:departureReminder.riskLevel,

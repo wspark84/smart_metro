@@ -8,9 +8,12 @@ export const observationBindingKey = b => JSON.stringify([b.provider,b.cityCode 
 const validMinutes = value => Array.isArray(value) ? value.filter(v=>typeof v==='number' && Number.isFinite(v) && v>=0) : [];
 const signature = p => JSON.stringify(['source','weekday','saturday','sunday','holiday','allDays'].map(key=>p?.[key] || null));
 const replace = (entries,entry) => [...entries.filter(item=>item.key!==entry.key),entry].slice(-MAX_ENTRIES);
+const retryDelay = error => Number.isFinite(Number(error?.retryAfterMs))
+  ? Math.max(FAILED_RETRY_MS,Number(error.retryAfterMs)) : FAILED_RETRY_MS;
 
 function arrivalFailure(error) {
   const message=String(error?.message || '');
+  if(error?.statusCode===429 || /request failed with 429/.test(message)) return '공식 도착정보 API가 요청을 제한했습니다(429). 반복 호출을 잠시 중지하고 재조회 대기 중입니다.';
   if (['Gyeonggi API returned no arrival rows.','Gyeonggi API returned no arrivals for the selected route.'].includes(message))
     return '공식 API에서 선택한 노선의 도착 예정 차량을 반환하지 않았습니다. 운행 종료를 의미하는 것은 아닙니다.';
   if (error?.code==='UPSTREAM_TIMEOUT' || ['AbortError','TimeoutError'].includes(error?.name))
@@ -27,6 +30,7 @@ export async function loadStoredTransit(binding,{cache={},loadArrival,loadHeadwa
   const next = {
     headways:Array.isArray(cache.headways) ? structuredClone(cache.headways).slice(-MAX_ENTRIES) : [],
     observations:Array.isArray(cache.observations) ? structuredClone(cache.observations).slice(-MAX_ENTRIES) : [],
+    arrivalCooldowns:Array.isArray(cache.arrivalCooldowns) ? structuredClone(cache.arrivalCooldowns).slice(-MAX_ENTRIES) : [],
   };
   const routeKey = headwayBindingKey(binding);
   const stopKey = observationBindingKey(binding);
@@ -35,7 +39,13 @@ export async function loadStoredTransit(binding,{cache={},loadArrival,loadHeadwa
   let dirty = false;
   // Start the independent real-time request immediately. Its failure must not
   // prevent today's metadata check or erase either durable last-known value.
-  const arrivalTask = Promise.resolve().then(loadArrival).then(value=>({value}),error=>({value:null,error:arrivalFailure(error)}));
+  const cooldownKey=binding.provider;
+  const cooldown=next.arrivalCooldowns.find(item=>item.key===cooldownKey);
+  const arrivalTask = Date.parse(cooldown?.retryAt || '')>now.getTime()
+    ? Promise.resolve({value:null,error:arrivalFailure({statusCode:429}),retryAt:cooldown.retryAt})
+    : Promise.resolve().then(loadArrival).then(value=>({value}),error=>({value:null,error:arrivalFailure(error),
+      retryAt:error?.statusCode===429 || /request failed with 429/.test(String(error?.message))
+        ? new Date(now.getTime()+retryDelay(error)).toISOString() : null}));
   const failedRetryDue = stored?.refreshFailed && (stored.retryPolicy !== 5 ||
     now.getTime() - Date.parse(stored.checkedAt || '') >= FAILED_RETRY_MS);
   if (!stored || stored.checkedDate !== today || failedRetryDue) {
@@ -50,7 +60,10 @@ export async function loadStoredTransit(binding,{cache={},loadArrival,loadHeadwa
     next.headways = replace(next.headways,stored);
     dirty = true;
   }
-  const {value:result,error:arrivalError} = await arrivalTask;
+  const {value:result,error:arrivalError,retryAt} = await arrivalTask;
+  if(retryAt && cooldown?.retryAt!==retryAt) {
+    next.arrivalCooldowns=replace(next.arrivalCooldowns,{key:cooldownKey,retryAt});dirty=true;
+  }
   const payload = result?.value;
   const fetchedAt = result?.fetchedAt;
   const age = now.getTime() - Date.parse(fetchedAt || '');
@@ -78,6 +91,7 @@ export async function loadStoredTransit(binding,{cache={},loadArrival,loadHeadwa
     stopName:real ? payload.stopName || binding.stationName : binding.stationName,
     arrivalsMin:real ? minutes : [],liveStatus:real ? 'ready' : 'unavailable',headway,
     arrivalMessage:real ? '' : arrivalError || '공식 API에서 현재 사용할 수 있는 도착 예정 차량 정보를 확인하지 못했습니다.',
+    retryAt:retryAt || null,
     lastObservation:observation,
     messages:real ? payload.messages || [] : ['실시간 정보 없음 · 저장한 도착시각과 배차간격으로 예상합니다.']};
   return {...(real ? result : {}),value,cacheStatus:real ? result.cacheStatus : 'unavailable',

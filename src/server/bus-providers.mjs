@@ -1,4 +1,6 @@
 import { fetchWithTimeout } from "./upstream-fetch.mjs";
+import {loadWithCache,createRequestCache} from './request-cache.mjs';
+const gyeonggiArrivalCaches=new WeakMap();
 import { fetchSubwayArrival, fetchSubwayRows, searchSubwayStations, subwayDirections } from "./subway-providers.mjs";
 import { stationSearchQueries, rankStationCandidates } from "../logic/station-search.js";
 import { normalizeGyeonggiCity } from "../logic/gyeonggi-cities.js";
@@ -458,13 +460,22 @@ export async function fetchGyeonggiArrival({ serviceKey, stationId, routeId, rou
   url.searchParams.set("stationId", stationId);
   url.searchParams.set("format", "json");
 
-  const response = await fetchWithTimeout(url, {}, { fetchImpl });
-  if (!response.ok) {
-    throw new Error(`Gyeonggi API request failed with ${response.status}.`);
-  }
-
-  const payload = await response.json();
-  return normalizeGyeonggiArrival(payload, { routeId, routeNumber });
+  if(!gyeonggiArrivalCaches.has(fetchImpl)) gyeonggiArrivalCaches.set(fetchImpl,createRequestCache());
+  // This endpoint already returns every route at the stop. Share that response
+  // across route candidates instead of requesting it once for each bus number.
+  const result=await loadWithCache({cache:gyeonggiArrivalCaches.get(fetchImpl),key:String(url),ttlMs:15000,allowStaleOnError:false,loader:async()=>{
+    const response=await fetchWithTimeout(url,{}, {fetchImpl});
+    if(!response.ok) {
+      const retry=response.headers?.get?.('retry-after');
+      const seconds=retry && /^\d+$/.test(retry) ? Number(retry)*1000 : Date.parse(retry || '')-Date.now();
+      throw Object.assign(new Error(`Gyeonggi API request failed with ${response.status}.`),{
+        statusCode:response.status,retryAfterMs:Number.isFinite(seconds) && seconds>0 ? seconds : 300000});
+    }
+    return response.json();
+  }});
+  const normalized=normalizeGyeonggiArrival(result.value,{routeId,routeNumber});
+  const elapsed=Math.max(0,(Date.now()-Date.parse(result.fetchedAt))/60000);
+  return {...normalized,arrivalsMin:normalized.arrivalsMin.map(v=>v-elapsed).filter(v=>v>=0)};
 }
 
 export async function searchGyeonggiStations({ serviceKey, keyword, fetchImpl = fetch }) {

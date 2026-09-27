@@ -5,6 +5,20 @@ import {loadStoredTransit} from '../src/server/stored-transit.mjs';
 const binding={provider:'gyeonggi',routeId:'r1',stationId:'s1',order:'3',routeNumber:'1'};
 const start=new Date('2026-09-23T08:20:00+09:00');
 const profile={status:'ready',source:'official',weekday:{min:10,max:15}};
+test('429 cooldown survives persistence, covers other routes, and expires without losing anchors',async()=>{
+  let cache={},calls=0;
+  const run=(now,b=binding)=>loadStoredTransit(b,{now,cache:JSON.parse(JSON.stringify(cache)),
+    loadArrival:async()=>{calls++;throw Object.assign(new Error('rate limit'),{statusCode:429,retryAfterMs:600000});},
+    loadHeadway:async()=>profile,saveCache:async value=>{cache=value;}});
+  cache.observations=[{key:JSON.stringify(['gyeonggi','','s1','r1','3']),snapshot:{arrivalsMin:[2],fetchedAt:start.toISOString()}}];
+  const first=await run(start);
+  assert.equal(calls,1);assert.match(first.value.arrivalMessage,/429/);
+  assert.equal(first.value.lastObservation.arrivalsMin[0],2);
+  assert.equal(first.value.retryAt,new Date(start.getTime()+600000).toISOString());
+  await run(new Date(start.getTime()+300000),{...binding,routeId:'r2'});
+  assert.equal(calls,1);
+  await run(new Date(start.getTime()+600000));assert.equal(calls,2);
+});
 function fixture() {
   let cache={},checks=0,arrival={value:{arrivalsMin:[2,9],lineNumber:'1'},fetchedAt:start.toISOString(),cacheStatus:'live'};
   let metadata=profile;
