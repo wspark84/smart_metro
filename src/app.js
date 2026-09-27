@@ -2303,7 +2303,13 @@ function goTo(screen) {
 
 async function refreshVisibleTransit() {
   if(state.commute.routingMode==='all-routes') {
-    if(!isAuthenticated() || visibleTransitRefreshPending || !buildCommuteEstimatePayload()) return;
+    if(!isAuthenticated() || visibleTransitRefreshPending) return;
+    if(!buildCommuteEstimatePayload()) {
+      state.live.lastError=!isValidLocation(state.commute.stopLocation)
+        ? '출발 정류장 이름은 저장돼 있지만 지도 위치가 없습니다. 출발지 검색·변경에서 지도 핀을 선택하고 저장해 주세요.'
+        : '목적지 이름은 저장돼 있지만 지도 위치가 없습니다. 도착지 검색·변경에서 주소 검색 결과를 선택해 주세요.';
+      render();return;
+    }
     const query=transitQueryForState(state),key=transitQueryKey(query),userId=authMeta.user.id;
     const previousModel=getDashboardModel(),previous=departurePrediction(previousModel.homePlan,previousModel.now);
     visibleTransitRefreshPending=true;render();
@@ -6757,6 +6763,7 @@ app.addEventListener("click", (event) => {
     return render();
   }
   if (action === "sync-live-arrivals") {
+    if(state.commute.routingMode==='all-routes') {void refreshVisibleTransit();return;}
     if (state.live.status === "loading" || visibleTransitRefreshPending) return;
     const requestBinding = getLiveBinding();
     const requestKey = JSON.stringify(requestBinding);
