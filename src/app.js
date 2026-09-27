@@ -3022,7 +3022,7 @@ function renderCommuteEstimatePanel() {
       <p class="field-help">버스를 따로 저장하지 않습니다. 출발 위치에서 목적지까지 연결되는 직행·환승 경로를 비교합니다. 환승 대기와 운행 지연은 예상과 다를 수 있습니다.</p>
       <button class="soft-button wide" data-action="refresh-commute-estimate" ${visibleTransitRefreshPending ? 'disabled' : ''}>경로·도착정보 다시 확인</button>
       ${state.live.lastError ? `<p role="alert">${escapeHtml(state.live.lastError)}</p>` : ''}
-      ${options.map(o=>`<article class="history-item"><div><strong>${escapeHtml(o.binding.routeNumber)} · ${escapeHtml(o.direction)}</strong><p>탑승 후 약 ${Math.ceil(o.onboardDurationSec/60)}분 · 환승 ${o.transfers}회</p><p>${escapeHtml(o.steps.map(s=>s.guidance).filter(Boolean).join(' → '))}</p></div></article>`).join('')}
+      ${options.map(o=>`<article class="history-item"><div><strong>${escapeHtml(o.binding.routeNumber)} · ${escapeHtml(o.direction)}</strong><p>탑승 후 약 ${Math.ceil(o.onboardDurationSec/60)}분 · 환승 ${o.transfers}회</p><p>${escapeHtml(o.steps.map(s=>s.guidance).filter(Boolean).join(' → '))}</p><p class="field-help">${escapeHtml(o.snapshot?.arrivalMessage || (o.snapshot?.arrivalsMin?.length ? `현재 도착정보: ${o.snapshot.arrivalsMin.join(', ')}분 (조회 시점 기준)` : '차량 도착정보 확인 중'))}</p></div></article>`).join('')}
       <p class="field-help">${automaticOptions?.unverifiedCount ? '위치·방향을 확인하지 못한 후보는 계산에서 제외했습니다. 전체 교통편의 마지막 차로 확정하지 않습니다.' : '공식 위치·방향과 도착정보를 확인할 수 있는 후보 기준입니다.'}</p></section>`;
   }
   const queryKey = transitQueryKey(transitQueryForState(state));
@@ -5220,7 +5220,7 @@ function renderHome(screen, model) {
   const hasPrediction = model.dataSource === "LIVE" && target.level !== "UNKNOWN" && Number.isFinite(target.arrivalMinutes);
   const confirmed = hasPrediction && model.risk.lastChanceConfirmed;
   const departure = hasPrediction ? model.risk.departure : null;
-  const calculationReason = departure ? "" : state.commute.routingMode==='all-routes' ? state.live.lastError || '목적지까지 가능한 버스·지하철 및 환승 경로를 비교하고 있습니다.' : !state.live.routeNumber ? "탑승할 노선을 선택해 주세요."
+  const calculationReason = departure ? "" : state.commute.routingMode==='all-routes' ? state.live.lastError || (plan?.optionsCount ? `${plan.optionsCount}개 경로가 연결됐습니다. 차량 도착정보와 오늘의 예측 기준을 확인 중입니다. 아래 목적지 경로 확인에서 노선별 조회 상태를 볼 수 있습니다.` : '목적지까지 가능한 버스·지하철 및 환승 경로를 비교하고 있습니다.') : !state.live.routeNumber ? "탑승할 노선을 선택해 주세요."
     : !resolveJourneyDuration(state, model.now).durationAvailable ? "목적지 경로를 확인해 주세요. 선택한 경로의 소요시간이 아직 확인되지 않았습니다."
     : normalizeBoardingAccessMin(state.commute.boardingAccessMin) === null ? "첫 정류장까지 이동시간을 입력해 주세요."
     : plan?.rows.length ? "현재 조회된 차량은 입력한 이동시간으로 탑승하기 어렵습니다. 다음 차량 정보를 확인 중입니다."
