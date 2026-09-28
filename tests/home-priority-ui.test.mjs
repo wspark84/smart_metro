@@ -10,7 +10,7 @@ async function view() {
     const module = await import(new URL('../src/' + match[2].replace(/^\.\//, ''), import.meta.url));
     for (const name of match[1].split(',').map(v => v.trim()).filter(Boolean)) bindings[name] = module[name];
   }
-  const app = {innerHTML:'', addEventListener(){}, querySelector(){return null;}, querySelectorAll(){return [];}};
+  const app = {innerHTML:'', addEventListener(){}, contains(element){return element?.inApp===true;}, querySelector(){return null;}, querySelectorAll(){return [];}};
   const context = vm.createContext({...bindings, URL, Intl, Date, console, setTimeout(){}, clearTimeout(){},
     document:{querySelector(){return app;}, querySelectorAll(){return [];}, visibilityState:'visible'},
     window:{location:{hash:'#/home'}, addEventListener(){}, setInterval(){}, setTimeout(){}, clearTimeout(){}, requestAnimationFrame(){}}});
@@ -18,8 +18,23 @@ async function view() {
   vm.runInContext(source, context);
   const run = code => vm.runInContext(code, context);
   run('authMeta.status="authenticated";authMeta.user={id:"ui-test",providers:["google"]};');
-  return {run, html: setup => run(`(() => {const model=getDashboardModel();model.homePlan=null;${setup || ''};return renderHome('home',model);})()`) };
+  return {run, app, html: setup => run(`(() => {const model=getDashboardModel();model.homePlan=null;${setup || ''};return renderHome('home',model);})()`) };
 }
+
+test('background rendering never replaces a focused native time picker',async()=>{
+ const v=await view();v.run('render();');
+ v.app.innerHTML='existing input node and open picker';
+ v.run('document.activeElement={inApp:true,type:"time",hasAttribute(){return false;},dataset:{field:"user.requiredArrivalTime"},value:"14:00",selectionStart:null,selectionEnd:null};render();');
+ assert.equal(v.app.innerHTML,'existing input node and open picker');
+ v.run('document.activeElement=null;render();');
+ assert.match(v.app.innerHTML,/data-trip-field="target"/);
+});
+test('time picker does not block navigation or session expiry',async()=>{
+ const v=await view();v.run('render();document.activeElement={inApp:true,type:"time"};window.location.hash="#/schedule";render();');
+ assert.match(v.app.innerHTML,/data-field="schedule.startTime"/);
+ v.run('authMeta.status="anonymous";authMeta.user=null;render();');
+ assert.doesNotMatch(v.app.innerHTML,/data-field="schedule.startTime"/);
+});
 
 test('home prioritizes countdown, core inputs, submit, and only then transit detail', async () => {
   const v = await view();

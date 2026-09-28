@@ -6117,8 +6117,12 @@ function renderSettings(screen, model) {
 }
 
 let citySearchComposing = false;
+let renderedScreen = null;
+let timePickerRenderPending = false;
 function render() {
   if (!isAuthenticated()) {
+    renderedScreen = null;
+    timePickerRenderPending = false;
     app.innerHTML = renderAuthScreen();
     return;
   }
@@ -6126,6 +6130,15 @@ function render() {
   if (citySearchComposing) return;
 
   const screen = routeToScreen(window.location.hash);
+  // Replacing an input (even if focus is restored) closes its native time picker.
+  // Keep its entire ancestor tree attached while editing. Data refreshes continue.
+  // Explicit navigation and session expiry must still be allowed to replace it.
+  if (screen === renderedScreen && document.activeElement?.type === "time" && app.contains(document.activeElement)) {
+    timePickerRenderPending = true;
+    return;
+  }
+  timePickerRenderPending = false;
+  renderedScreen = screen;
   const previousMap = screen === "home" ? document.querySelector("#boarding-map") : null;
   const boardingMapKey = JSON.stringify([state.live.provider,boardingArea.revision,stationSelectionKey(boardingPreview.candidate),state.ui.liveSearchResults,placeApiConfig.maps?.kakao?.javascriptKey]);
   const activeField = screen === "home" ? document.activeElement?.dataset?.field : null;
@@ -7142,6 +7155,11 @@ app.addEventListener("change", (event) => {
 });
 
 window.addEventListener("hashchange", render);
+// Flush after the user's click/key action, not during blur/mousedown: replacing a
+// button between pointerdown and click can swallow the save action.
+for (const eventName of ["click", "keyup"]) window.addEventListener(eventName, () => {
+  if (timePickerRenderPending && document.activeElement?.type !== "time") render();
+});
 window.addEventListener("storage", event => {
   if (event.key === window.smartMetroTheme?.storageKey || event.key === null) render();
 });
