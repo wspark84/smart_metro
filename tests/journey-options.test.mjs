@@ -8,6 +8,14 @@ import {reconcileAlarmRuntime} from '../src/server/alarm-runtime.mjs';
 import {isAlarmRefreshWindow} from '../src/server/alarm-arrival-refresh.mjs';
 const now=new Date('2026-09-27T08:00:00+09:00');
 const option=(id,duration,arrivals)=>({id,verified:true,fetchedAt:now.toISOString(),onboardDurationSec:duration*60,binding:{provider:'gyeonggi',routeNumber:id},snapshot:{fetchedAt:now.toISOString(),arrivalsMin:arrivals}});
+test('daily verified duration remains usable today but not on the next Korean date',()=>{
+ const cached={...option('A',20,[30]),fetchedAt:'2026-09-27T00:00:00+09:00',dailyMetadataDate:'2026-09-27'};
+ const args={now,requiredArrivalTime:'09:00',boardingAccessMin:5,options:[cached]};
+ assert.notEqual(buildJourneyOptionsPlan(args).risk.targetResult.level,'UNKNOWN');
+ const tomorrow=new Date('2026-09-28T08:00:00+09:00');
+ cached.snapshot.fetchedAt=tomorrow.toISOString();
+ assert.equal(buildJourneyOptionsPlan({...args,now:tomorrow}).risk.targetResult.level,'UNKNOWN');
+});
 test('compares route-specific durations and selects the latest feasible departure across routes',()=>{
  const plan=buildJourneyOptionsPlan({now,requiredArrivalTime:'09:00',boardingAccessMin:5,
   options:[option('A',45,[10,25]),option('B',20,[15,35,50])]});

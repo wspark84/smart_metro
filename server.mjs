@@ -744,6 +744,8 @@ function getAccuracyTimeSliceOptions(appState, now = new Date()) {
 
 async function runAutoBusAccuracyProbe(now = new Date()) {
   const appState = await readEffectiveAppState();
+  if(appState?.commute?.routingMode==='all-routes') return {
+    ok:true,skipped:true,reason:'자동 경로 조회 결과를 사용합니다. 별도 정확도 조회는 실행하지 않습니다.',comparisons:[]};
   const accuracyTimeSlice = getAccuracyTimeSliceOptions(appState, now);
   if (!appState) {
     return {
@@ -987,7 +989,8 @@ async function tickAlarmRuntime(now = new Date()) {
   if(state.commute?.routingMode==='all-routes' && isAlarmRefreshWindow(state,now)) {
     try {
       const automaticOptions=await refreshJourneyOptions(transitQueryForState(state),{
-        loadArrival:loadSavedTransit,previous:alarmRuntimeState.automaticOptions,now});
+        loadArrival:loadSavedTransit,previous:alarmRuntimeState.automaticOptions,now,
+        planning:{requiredArrivalTime:state.user.requiredArrivalTime,boardingAccessMin:state.commute.boardingAccessMin}});
       alarmRuntimeState={...alarmRuntimeState,automaticOptions};
       state={...state,commute:{...state.commute,automaticOptions}};
     } catch {state={...state,commute:{...state.commute,automaticOptions:null}};}
@@ -2609,7 +2612,9 @@ async function handleRequest(request, response) {
   if (requestUrl.pathname === '/api/commute/options' && request.method === 'POST') {
     try {
       const query=await readJsonBody(request);
-      const result=await refreshJourneyOptions(query,{loadArrival:loadSavedTransit,previous:alarmRuntimeState.automaticOptions});
+      const saved=await readEffectiveAppState();
+      const result=await refreshJourneyOptions(query,{loadArrival:loadSavedTransit,previous:alarmRuntimeState.automaticOptions,
+        planning:{requiredArrivalTime:saved.user.requiredArrivalTime,boardingAccessMin:saved.commute.boardingAccessMin}});
       alarmRuntimeState={...alarmRuntimeState,automaticOptions:result};
       await writeAlarmRuntimeState(alarmRuntimeState,getActiveFiles().alarmRuntime);
       response.writeHead(200,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});

@@ -1944,7 +1944,7 @@ async function recordCurrentBusArrival() {
 }
 
 async function runAutoBusAccuracyProbeCycle() {
-  if (!isAuthenticated() || accuracyMeta.autoProbeStatus === "loading") {
+  if (!isAuthenticated() || state.commute.routingMode==='all-routes' || accuracyMeta.autoProbeStatus === "loading") {
     return null;
   }
 
@@ -2311,6 +2311,9 @@ async function refreshVisibleTransit() {
       render();return;
     }
     const query=transitQueryForState(state),key=transitQueryKey(query),userId=authMeta.user.id;
+    const planningKey=JSON.stringify([state.user.requiredArrivalTime,state.commute.boardingAccessMin]);
+    if(automaticOptions?.queryKey===key && automaticOptions.planningKey===planningKey &&
+      Date.parse(automaticOptions.nextRefreshAt)>Date.now()) return;
     const previousModel=getDashboardModel(),previous=departurePrediction(previousModel.homePlan,previousModel.now);
     visibleTransitRefreshPending=true;render();
     try {
@@ -7170,7 +7173,7 @@ window.setInterval(() => {
   void runAutoBusAccuracyProbeCycle();
   if (routeToScreen(window.location.hash) === "home") render();
   if (routeToScreen(window.location.hash) === "home") void refreshVisibleTransit();
-}, 15_000);
+}, 30_000);
 window.addEventListener("keydown", (event) => {
   void primeAlarmPlayback();
   if (event.key.toLowerCase() === "r" && event.altKey) {

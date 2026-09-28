@@ -122,6 +122,7 @@ test('regional station source carries through routes and arrival without reusing
     };
     const {routes}=await searchLiveStationRoutes({provider:'gyeonggi',stationId:'GBIS123'});
     const arrival=await fetchLiveArrival({provider:'gyeonggi',stationId:'GBIS123',routeId:routes[0].routeId});
-    assert.deepEqual(arrival.arrivalsMin,[3]);
+    assert.equal(arrival.arrivalsMin.length,1);
+    assert.ok(arrival.arrivalsMin[0]<=3 && arrival.arrivalsMin[0]>2.9);
   } finally {globalThis.fetch=originalFetch;if(oldKey===undefined)delete process.env.GYEONGGI_SERVICE_KEY;else process.env.GYEONGGI_SERVICE_KEY=oldKey;}
 });

@@ -4,6 +4,9 @@ import {fetchWithTimeout} from './upstream-fetch.mjs';
 import {parseSubwayRouteId} from '../logic/station-search.js';
 import {transitQueryKey} from '../logic/transit-journey.js';
 import {routeRows} from './tago-headway-binding.mjs';
+import {koreanServiceDate} from '../logic/bus-headway.js';
+import {buildJourneyOptionsPlan} from '../logic/journey-options.js';
+import {nextTransitRefreshAt} from '../logic/transit-refresh.js';
 
 const name=v=>String(v || '').replace(/[\s.,·]/g,'');
 const same=(a,b)=>Boolean(name(a)) && name(a)===name(b);
@@ -79,10 +82,17 @@ export async function discoverJourneyOptions(query,{lookup=lookupBoardingRoutes,
     warning:'조회 제공처가 반환하고 탑승 위치·방향을 확인한 경로를 비교합니다. 환승 대기 및 운행 지연은 예상과 다를 수 있습니다.'};
 }
 
-export async function refreshJourneyOptions(query,{loadArrival,discover=discoverJourneyOptions,previous=null,now=new Date()}={}) {
+export async function refreshJourneyOptions(query,{loadArrival,discover=discoverJourneyOptions,previous=null,now=new Date(),planning=null}={}) {
   const key=transitQueryKey(query);
   const age=now-Date.parse(previous?.fetchedAt || '');
-  const metadata=previous?.queryKey===key && age>=0 && age<5*60_000 ? previous : await discover(query);
+  const planningKey=planning ? JSON.stringify([planning.requiredArrivalTime,planning.boardingAccessMin]) : null;
+  const sameDay=age>=0 && koreanServiceDate(previous?.fetchedAt)===koreanServiceDate(now);
+  if(planning && previous?.queryKey===key && previous.planningKey===planningKey && sameDay &&
+    Date.parse(previous.nextRefreshAt)>now.getTime()) return previous;
+  const reused=previous?.queryKey===key && sameDay && previous.options?.length;
+  const metadata=reused ? previous : await discover(query);
+  metadata.options=metadata.options.map(option=>({...option,
+    dailyMetadataDate:koreanServiceDate(metadata.fetchedAt || now)}));
   const snapshots=new Map(),options=[];
   // Sequential durable-cache writes avoid losing another route's observation.
   for(const option of metadata.options) {
@@ -93,5 +103,11 @@ export async function refreshJourneyOptions(query,{loadArrival,discover=discover
     }
     options.push({...option,snapshot:snapshots.get(id)});
   }
-  return {...metadata,options,updatedAt:now.toISOString()};
+  let departureAt=null;
+  if(planning) {
+    const plan=buildJourneyOptionsPlan({...planning,options,now,incomplete:Boolean(metadata.unverifiedCount)});
+    departureAt=plan.risk.departure?.leaveAt?.toISOString() || null;
+  }
+  return {...metadata,options,updatedAt:now.toISOString(),planningKey,
+    nextRefreshAt:planning ? nextTransitRefreshAt(now.toISOString(),departureAt) : null};
 }

@@ -1,6 +1,6 @@
 import {buildBoardingPlan} from './boarding-plan.js';
 import {projectLiveArrivals} from './live-arrivals.js';
-import {selectBusHeadway} from './bus-headway.js';
+import {selectBusHeadway,koreanServiceDate} from './bus-headway.js';
 import {buildDepartureGuidance} from './commute.js';
 import {TRANSIT_ROUTE_MAX_AGE_MS} from './transit-journey.js';
 
@@ -8,7 +8,10 @@ export function buildJourneyOptionsPlan({options=[],now,requiredArrivalTime,boar
   const plans=options.map(option=>{
     const snapshot=option.snapshot;
     const age=now-Date.parse(option.fetchedAt || '');
-    const durationValid=option.verified===true && age>=0 && age<=TRANSIT_ROUTE_MAX_AGE_MS;
+    const dailyReference=option.dailyMetadataDate===koreanServiceDate(now) &&
+      option.dailyMetadataDate===koreanServiceDate(option.fetchedAt);
+    const durationValid=option.verified===true && age>=0 &&
+      (age<=TRANSIT_ROUTE_MAX_AGE_MS || dailyReference);
     const headwayInfo=selectBusHeadway(snapshot?.headway,now,holidays);
     const live=snapshot?.liveStatus!=='unavailable' && snapshot?.cacheStatus!=='stale-fallback' ? projectLiveArrivals(snapshot,now) : [];
     const plan=buildBoardingPlan({now,requiredArrivalTime,
