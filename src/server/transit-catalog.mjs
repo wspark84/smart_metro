@@ -3,17 +3,20 @@ import {getSupabaseConfig} from './supabase-gateway.mjs';
 import {fetchWithTimeout} from './upstream-fetch.mjs';
 import {readTagoResponse} from './tago-api.mjs';
 
-const services={stops:'BusSttnInfoInqireService',routes:'BusRouteInfoInqireService'};
-const allowed={stops:['getCtyCodeList','getSttnNoList'],routes:['getCtyCodeList','getRouteNoList','getRouteInfoIem','getRouteAcctoThrghSttnList']};
+const services={stops:'BusSttnInfoInqireService',routes:'BusRouteInfoInqireService',subway:'SubwayInfo'};
+const allowed={stops:['getCtyCodeList','getSttnNoList'],routes:['getCtyCodeList','getRouteNoList','getRouteInfoIem','getRouteAcctoThrghSttnList'],subway:['GetKwrdFndSubwaySttnList','GetSubwaySttnAcctoSchdulList']};
 export function catalogSpec(service,operation,params={}) {
   if(!allowed[service]?.includes(operation)) throw new Error('Unsupported catalog operation');
   const safe={};
-  for(const key of ['cityCode','routeId']) if(params[key]!==undefined) {
+  const keys=service==='subway'?['subwayStationId','dailyTypeCode','upDownTypeCode']:['cityCode','routeId'];
+  for(const key of keys) if(params[key]!==undefined) {
     const value=String(params[key]);
     if(!/^[A-Za-z0-9_-]{1,60}$/.test(value)) throw new Error('Invalid catalog identity');
     safe[key]=value;
   }
-  if(operation!=='getCtyCodeList' && !safe.cityCode) throw new Error('Missing city');
+  if(service!=='subway' && operation!=='getCtyCodeList' && !safe.cityCode) throw new Error('Missing city');
+  if(operation==='GetKwrdFndSubwaySttnList' && Object.keys(safe).length) throw new Error('Unexpected station list filters');
+  if(operation==='GetSubwaySttnAcctoSchdulList' && (!safe.subwayStationId || !['01','02','03'].includes(safe.dailyTypeCode) || !['U','D'].includes(safe.upDownTypeCode))) throw new Error('Invalid timetable identity');
   if(['getRouteInfoIem','getRouteAcctoThrghSttnList'].includes(operation) && !safe.routeId) throw new Error('Missing route');
   return {service,operation,params:safe};
 }
@@ -42,7 +45,11 @@ export async function fetchCatalogPage(task,{env=process.env,fetchImpl=fetch}={}
   const url=new URL(`https://apis.data.go.kr/1613000/${services[spec.service]}/${spec.operation}`);
   for(const [key,value] of Object.entries({...spec.params,serviceKey:env.TAGO_SERVICE_KEY,_type:'json',numOfRows:100,pageNo:page})) url.searchParams.set(key,value);
   const response=await fetchWithTimeout(url,{}, {fetchImpl,timeoutMs:6000});
-  const body=await readTagoResponse(response);
+  // Subway's current Swagger describes a root header/body envelope; bus APIs use response.
+  const body=await readTagoResponse(spec.service==='subway'?{ok:response.ok,status:response.status,text:async()=>{
+    const raw=await response.text();
+    try {const value=JSON.parse(raw);return value.header&&value.body ? JSON.stringify({response:value}) : raw;} catch {return raw;}
+  }}:response);
   const item=body.items?.item,rows=item==null||item===''?[]:Array.isArray(item)?item:[item];
   const city=spec.operation==='getCtyCodeList';
   const total=city ? rows.length : Number(body.totalCount);
@@ -56,6 +63,10 @@ export async function fetchCatalogPage(task,{env=process.env,fetchImpl=fetch}={}
   }
   if(spec.operation==='getRouteNoList') for(const row of rows) {
     for(const operation of ['getRouteInfoIem','getRouteAcctoThrghSttnList']) children.push(catalogSpec('routes',operation,{cityCode:spec.params.cityCode,routeId:row.routeid}));
+  }
+  if(spec.operation==='GetKwrdFndSubwaySttnList') for(const row of rows) {
+    for(const dailyTypeCode of ['01','02','03']) for(const upDownTypeCode of ['U','D'])
+      children.push(catalogSpec('subway','GetSubwaySttnAcctoSchdulList',{subwayStationId:row.subwayStationId,dailyTypeCode,upDownTypeCode}));
   }
   return {rows,total,done,children};
 }

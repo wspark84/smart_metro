@@ -3,6 +3,24 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {PGlite} from '@electric-sql/pglite';
 import {catalogSpec,fetchCatalogPage,runCatalogJob} from '../src/server/transit-catalog.mjs';
+import {matchSubwayIdentity} from '../src/server/subway-catalog.mjs';
+
+test('subway catalog uses official capitalized operations and queues six timetable scopes',async()=>{
+ let requested;
+ const result=await fetchCatalogPage({service:'subway',operation:'GetKwrdFndSubwaySttnList',params:{},page:1},
+ {env:{TAGO_SERVICE_KEY:'test'},fetchImpl:async url=>{requested=new URL(url);return {ok:true,text:async()=>JSON.stringify({header:{resultCode:'00'},body:{totalCount:1,pageNo:1,numOfRows:100,items:{item:{subwayStationId:'MTRS11133',subwayStationName:'서울역',subwayRouteName:'1호선'}}}})};}});
+ assert.equal(requested.pathname,'/1613000/SubwayInfo/GetKwrdFndSubwaySttnList');
+ assert.equal(requested.searchParams.has('subwayStationName'),false);
+ assert.equal(result.children.length,6);assert.equal(result.done,true);
+ assert.throws(()=>catalogSpec('subway','GetSubwaySttnAcctoSchdulList',{subwayStationId:'MTRS11133',dailyTypeCode:'04',upDownTypeCode:'U'}));
+});
+test('subway joins require unique station name and line, not just station name',()=>{
+ const a={subwayStationId:'one',subwayStationName:'서울역',subwayRouteName:'1호선'};
+ const b={...a,subwayStationId:'two',subwayRouteName:'4호선'};
+ assert.equal(matchSubwayIdentity([a,b],'서울','1호선')?.subwayStationId,'one');
+ assert.equal(matchSubwayIdentity([a,b],'서울',''),null);
+ assert.equal(matchSubwayIdentity([a,{...a,subwayStationId:'duplicate'}],'서울','1호선'),null);
+});
 
 test('catalog only accepts public metadata operations and official identities',()=>{
  assert.throws(()=>catalogSpec('arrivals','getSttnNoList',{}));
@@ -27,6 +45,8 @@ test('catalog schema protects writes, hides unfinished pages, and publishes atom
  try {
   await db.exec('create role anon; create role authenticated; create schema smart_metro_private;');
   await db.exec(await readFile(new URL('../supabase/migrations/202609280002_transit_catalog.sql',import.meta.url),'utf8'));
+  await db.exec(await readFile(new URL('../supabase/migrations/202609280003_subway_catalog.sql',import.meta.url),'utf8'));
+  assert.equal((await db.query("select count(*)::integer as count from smart_metro_private.catalog_scopes where spec->>'service'='subway'")).rows[0].count,1);
   const spec={service:'stops',operation:'getCtyCodeList',params:{}};
   const {rows:[scope]}=await db.query('select id,run_id from smart_metro_private.catalog_scopes where spec=$1',[spec]);
   await db.exec('update smart_metro_private.catalog_control set enabled=true');

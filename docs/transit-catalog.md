@@ -2,8 +2,10 @@
 
 The catalog worker fetches one TAGO page per invocation (100 rows), stages pages,
 and publishes only a completed scope. Supported data: TAGO bus cities, stops,
-routes, route details/headways, and ordered route stops. Subway timetable import
-is not part of this adapter; it requires a separately verified provider contract.
+routes, route details/headways, ordered route stops, and TAGO subway stations and
+weekday/Saturday/Sunday timetables in both directions. Subway uses the official
+`SubwayInfo/GetKwrdFndSubwaySttnList` and `GetSubwaySttnAcctoSchdulList` operations.
+Timetables are stored as schedules, never presented as real-time observations.
 
 Migration: `202609280002_transit_catalog.sql`. Initially disabled. After deploying
 `/api/catalog-worker`, enable the private catalog control and schedule
@@ -36,4 +38,12 @@ Migration applied; worker deployed as `2d61a88`. Cron
 stop-city response published 138 cities and queued their stop lists. This is
 initial population in progress, not a completed nationwide inventory. Production
 home returned HTTP 200; unauthorized worker POST returned HTTP 401. Final automated
-suite: 552 passed. National subway API approval and adapter remain outstanding.
+suite: 552 passed at bus rollout.
+
+Subway approval confirmed by the user on 2026-09-28. Migration
+`202609280003_subway_catalog.sql` extends only the public metadata allowlist and
+seeds station collection. Each station produces six timetable scopes (01/02/03
+and U/D). The station-list API has an optional keyword, omitted for full collection.
+Map search retains coordinates from Kakao and attaches a TAGO identity only when
+station name and line match uniquely. A timetable is not a guarantee of service
+and must not override live observations or infer a train's stopping pattern.

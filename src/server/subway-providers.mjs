@@ -1,6 +1,8 @@
 import { fetchWithTimeout } from "./upstream-fetch.mjs";
 import { isValidLocation } from "../logic/commute.js";
 import { rankStationCandidates, stationSearchQueries } from "../logic/station-search.js";
+import {readCatalogRows} from './transit-catalog.mjs';
+import {matchSubwayIdentity} from './subway-catalog.mjs';
 
 const LINES = {1001:"1호선",1002:"2호선",1003:"3호선",1004:"4호선",1005:"5호선",1006:"6호선",1007:"7호선",1008:"8호선",1009:"9호선",1063:"경의중앙선",1065:"공항철도",1067:"경춘선",1075:"수인분당선",1077:"신분당선",1092:"우이신설선",1032:"GTX-A"};
 const text = value => String(value ?? "").trim();
@@ -19,9 +21,16 @@ export async function searchSubwayStations(keyword, env = process.env, fetchImpl
       const stationName = name.replace(/역$/, "");
       return {stationId:`kakao:${text(item.id)}`, stationName, displayName:text(item.place_name),
         address:text(item.road_address_name || item.address_name), posX:text(item.x), posY:text(item.y),
-        stationNumber:"", category:text(item.category_name)};
+        stationNumber:"", category:text(item.category_name), lineName:text(item.place_name).slice(name.length).trim()};
     }).filter(item => item.stationId !== "kakao:" && item.stationName && isValidLocation({lat:item.posY,lng:item.posX}));
     if (stations.length) break;
+  }
+  if(fetchImpl===globalThis.fetch) {
+    const catalog=await readCatalogRows('subway','GetKwrdFndSubwaySttnList',{},env);
+    stations=stations.map(station=>{
+      const official=matchSubwayIdentity(catalog,station.stationName,station.lineName);
+      return official?{...station,tagoStationId:String(official.subwayStationId),tagoLineName:String(official.subwayRouteName)}:station;
+    });
   }
   return rankStationCandidates(stations, keyword);
 }
