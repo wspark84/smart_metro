@@ -3,9 +3,11 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' show SignOutScope;
 
 import '../storage/mobile_client_settings_store.dart';
 import '../storage/mobile_session_store.dart';
+import 'mobile_social_auth.dart';
 
 class MobileApiException implements Exception {
   MobileApiException({
@@ -23,7 +25,7 @@ class MobileApiException implements Exception {
 }
 
 class MobileApiClient {
-  static const String _defaultBaseUrl = 'http://127.0.0.1:4173';
+  static const String _defaultBaseUrl = MobileSocialAuth.origin;
   static const Duration _requestTimeout = Duration(seconds: 8);
 
   MobileApiClient({
@@ -69,6 +71,7 @@ class MobileApiClient {
   }
 
   Future<void> clearSession() async {
+    if (MobileSocialAuth.ready) await MobileSocialAuth.client.auth.signOut(scope: SignOutScope.local);
     _sessionCookie = null;
     await _clearPersistedSessionSilently();
   }
@@ -318,7 +321,13 @@ class MobileApiClient {
 
     try {
       final request = await client.openUrl(method, uri);
+      request.followRedirects = false;
       request.headers.set(HttpHeaders.acceptHeader, 'application/json');
+      if (MobileSocialAuth.ready) {
+        if (uri.origin != MobileSocialAuth.origin) throw StateError('로그인 정보는 운영 서버에만 전송할 수 있습니다.');
+        final token = await MobileSocialAuth.token();
+        if (token != null) request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $token');
+      }
       if (_sessionCookie != null && _sessionCookie!.isNotEmpty) {
         request.headers.set(HttpHeaders.cookieHeader, _sessionCookie!);
       }

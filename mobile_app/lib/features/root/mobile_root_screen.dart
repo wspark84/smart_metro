@@ -1,8 +1,11 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/network/mobile_api_client.dart';
 import '../../core/device/local_alarm_scheduler.dart';
-import '../auth/auth_workspace_screen.dart';
+import '../auth/social_login_screen.dart';
+import '../../core/network/mobile_social_auth.dart';
 import '../operations/mobile_operations_screen.dart';
 
 class MobileRootScreen extends StatefulWidget {
@@ -18,6 +21,13 @@ class _MobileRootScreenState extends State<MobileRootScreen> {
   Map<String, dynamic>? _sessionPayload;
   bool _checkingSession = true;
   String _sessionError = '';
+  StreamSubscription<AuthState>? _authSubscription;
+
+  @override
+  void dispose() {
+    _authSubscription?.cancel();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -27,14 +37,16 @@ class _MobileRootScreenState extends State<MobileRootScreen> {
 
   Future<void> _bootstrap() async {
     try {
-      await _apiClient.restorePersistedBaseUrl();
+      await MobileSocialAuth.initialize();
+      if (!mounted) return;
+      _authSubscription ??= MobileSocialAuth.client.auth.onAuthStateChange.listen((event) {
+        if (mounted && (event.event == AuthChangeEvent.signedIn || event.event == AuthChangeEvent.signedOut)) {
+          unawaited(_refreshSession());
+        }
+      }, onError: (_) { if (mounted) setState(() { _sessionError = '로그인 연결을 다시 확인해 주세요.'; }); });
     } catch (_) {
-      // Keep the default server URL when persisted mobile settings are unavailable.
-    }
-    try {
-      await _apiClient.restorePersistedSession();
-    } catch (_) {
-      // Keep sign-in available when secure storage is unavailable on a test host.
+      if (mounted) setState(() { _checkingSession = false; _sessionError = '로그인 서버에 연결하지 못했습니다. 다시 시도해 주세요.'; });
+      return;
     }
     await _refreshSession();
   }
@@ -48,7 +60,6 @@ class _MobileRootScreenState extends State<MobileRootScreen> {
     try {
       final payload = await _apiClient.fetchAuthSession();
       if (payload['authenticated'] != true) {
-        await _apiClient.clearSession();
         await LocalAlarmScheduler.instance.cancelLocalBackup();
       }
       if (!mounted) {
@@ -90,10 +101,9 @@ class _MobileRootScreenState extends State<MobileRootScreen> {
 
     final authenticated = _sessionPayload?['authenticated'] == true;
     if (!authenticated) {
-      return AuthWorkspaceScreen(
-        apiClient: _apiClient,
-        sessionError: _sessionError,
-        onAuthenticated: _refreshSession,
+      return SocialLoginScreen(
+        error: _sessionError,
+        onRetry: _bootstrap,
       );
     }
 

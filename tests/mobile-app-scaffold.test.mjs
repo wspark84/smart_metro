@@ -61,7 +61,8 @@ test("mobile Flutter workspace scaffold exists", async () => {
   assert.match(pushRuntime, /RawResourceAndroidNotificationSound\('mechanical_alarm'\)/);
   assert.match(pushRuntime, /mechanical_alarm\.wav/);
   assert.match(pushPayload, /buswakeup-critical/);
-  assert.match(firebaseOptions, /flutterfire configure/);
+  assert.match(firebaseOptions, /smart-metro-ed2ad/);
+  assert.match(firebaseOptions, /FirebaseOptions\(/);
   assert.match(webIndex, /BusWakeUp Mobile/);
   assert.match(localProperties, /flutter\.sdk=/);
   assert.match(localProperties, /sdk\.dir=/);
@@ -77,8 +78,8 @@ test("mobile Flutter workspace scaffold exists", async () => {
   assert.match(packageJson, /"mobile:build:apk:debug"/);
   assert.match(mainDart, /runApp\(const BusWakeUpApp\(\)\)/);
   assert.match(rootScreen, /_bootstrap\(\)/);
-  assert.match(rootScreen, /restorePersistedBaseUrl/);
-  assert.match(rootScreen, /restorePersistedSession/);
+  assert.match(rootScreen, /MobileSocialAuth.initialize/);
+  assert.match(rootScreen, /onAuthStateChange/);
   assert.match(authScreen, /updateBaseUrlAndPersist/);
   assert.match(authScreen, /fetchMobileHealth/);
   assert.match(authScreen, /Save and check server/);
@@ -95,7 +96,7 @@ test("mobile Flutter workspace scaffold exists", async () => {
   assert.match(authScreen, /You can enter 192\.168\.0\.10:4173 and the app will add http:\/\/ automatically/);
   assert.match(authScreen, /For a real phone, use a LAN or HTTPS host instead of localhost/);
   assert.doesNotMatch(authScreen, /\?�\?�님/);
-  assert.match(rootScreen, /AuthWorkspaceScreen/);
+  assert.match(rootScreen, /SocialLoginScreen/);
   assert.match(operationsScreen, /Commute setup/);
   assert.match(operationsScreen, /Save mobile setup/);
   assert.match(operationsScreen, /Search stations/);
@@ -121,7 +122,7 @@ test("mobile Flutter workspace scaffold exists", async () => {
   assert.match(operationsScreen, /_buildTransitChoices/);
   assert.match(operationsScreen, /Register device token/);
   assert.match(operationsScreen, /Phone notification runtime/);
-  assert.match(operationsScreen, /Enable and register this phone/);
+  assert.match(operationsScreen, /이 휴대폰 알림 켜기 · 서버에 등록/);
   assert.match(operationsScreen, /Server endpoint/);
   assert.match(operationsScreen, /API base URL/);
   assert.match(operationsScreen, /Apply server URL/);

@@ -2701,7 +2701,7 @@ class _MobileOperationsScreenState extends State<MobileOperationsScreen> {
                 child: Text(
                   _registeringDeviceToken
                       ? 'Registering phone...'
-                      : 'Enable and register this phone',
+                      : '이 휴대폰 알림 켜기 · 서버에 등록',
                 ),
               ),
             ],

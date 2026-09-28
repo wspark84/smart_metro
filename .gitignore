@@ -1,5 +1,6 @@
 # Local environment variables and credentials
 .env
+/google-services.json
 .env.*
 !.env.example
 *.pem

@@ -7,7 +7,7 @@
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
     <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
     <application
-        android:label="BusWakeUp Mobile"
+        android:label="이놓지"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <meta-data
@@ -54,6 +54,13 @@
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
                 <action android:name="android.intent.action.QUICKBOOT_POWERON" />
                 <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
+            </intent-filter>
+            <meta-data android:name="flutter_deeplinking_enabled" android:value="false" />
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="com.buswakeup.buswakeup_mobile" android:host="login-callback" />
             </intent-filter>
         </receiver>
     </application>

@@ -1,6 +1,7 @@
 import { createRequestAuth, getAuthOrigin, getSocialLoginConfig, isTrustedMutation, SOCIAL_PROVIDERS, toWorkspaceUser } from "./supabase-session.mjs";
 import { fetchNaverUserInfo } from "./naver-userinfo.mjs";
 import { sanitizeAuthUser } from "./auth-service.mjs";
+import { getSupabaseConfig } from "./supabase-gateway.mjs";
 
 const DISABLED = new Set([
   "/api/auth/register", "/api/auth/login", "/api/auth/email-status", "/api/auth/verify-email",
@@ -21,6 +22,12 @@ export async function handleSocialLoginRoute(request, response, readJsonBody, {
   const handled = path.startsWith("/api/auth/") || DISABLED.has(path) || path === "/api/account/profile";
   if (!handled) return false;
   try {
+    if (path === "/api/auth/mobile-config" && request.method === "GET") {
+      const config = getSupabaseConfig(env);
+      if (!config.configured) throw new Error("Auth not configured");
+      sendAuthJson(response, 200, { url: config.url, publishableKey: config.publishableKey });
+      return true;
+    }
     if (DISABLED.has(path)) {
       sendAuthJson(response, 410, { error: "이메일 가입과 비밀번호 로그인은 사용하지 않습니다. 구글·카카오·네이버 로그인을 이용해 주세요." });
       return true;

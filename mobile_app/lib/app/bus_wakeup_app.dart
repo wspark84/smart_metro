@@ -9,7 +9,7 @@ class BusWakeUpApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'BusWakeUp Mobile',
+      title: '이놓지',
       debugShowCheckedModeBanner: false,
       theme: buildBusWakeUpTheme(),
       home: const MobileRootScreen(),
