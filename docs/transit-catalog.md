@@ -28,3 +28,12 @@ Regional Seoul/Gyeonggi adapters retain their existing daily metadata caches.
 Operational checks: inspect scope `checked_at`, `page`, `last_error`, service usage
 and `blocked_until`, and the `smart-metro-catalog-worker` cron result. Never print
 job capabilities or provider credentials when checking operation.
+
+## Production rollout, 2026-09-28
+
+Migration applied; worker deployed as `2d61a88`. Cron
+`smart-metro-catalog-worker` enabled at 30-second intervals. First production
+stop-city response published 138 cities and queued their stop lists. This is
+initial population in progress, not a completed nationwide inventory. Production
+home returned HTTP 200; unauthorized worker POST returned HTTP 401. Final automated
+suite: 552 passed. National subway API approval and adapter remain outstanding.

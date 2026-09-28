@@ -18,6 +18,10 @@ test('one worker call fetches only one page and emits resumable child scopes',as
 test('invalid capability never reaches the database or external API',async()=>{
  let calls=0;await assert.rejects(runCatalogJob({token:'bad'},{rpc:async()=>{calls++;}}));assert.equal(calls,0);
 });
+test('a truncated page is not published as a complete city',async()=>{
+ await assert.rejects(fetchCatalogPage({service:'stops',operation:'getSttnNoList',params:{cityCode:'31'},page:1},
+ {env:{TAGO_SERVICE_KEY:'test'},fetchImpl:async()=>({ok:true,text:async()=>JSON.stringify({response:{header:{resultCode:'00'},body:{totalCount:100,pageNo:1,numOfRows:100,items:{item:[{nodeid:'one'}]}}}})})}),/Incomplete catalog page/);
+});
 test('catalog schema protects writes, hides unfinished pages, and publishes atomically',async()=>{
  const db=new PGlite();
  try {
