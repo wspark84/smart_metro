@@ -1,5 +1,6 @@
 import { fetchWithTimeout } from "./upstream-fetch.mjs";
 import { createHash, randomUUID } from "node:crypto";
+import {readCatalogRows} from './transit-catalog.mjs';
 
 // Bounded process-local metadata cache; live arrival rows never use it.
 const metadataCaches = new WeakMap();
@@ -206,8 +207,9 @@ async function fetchTagoPages({ serviceKey, operation, params, service = "arriva
 
 export async function fetchTagoCities({ serviceKey, service = "arrivals", fetchImpl = fetch }) {
   return cachedMetadata({ fetchImpl, serviceKey, scope: ["cities", service], ttlMs: 3600000, loader: async () => {
-    const body = await requestTago({ serviceKey, service, operation: "getCtyCodeList", fetchImpl });
-    return itemsFromBody(body).map((row) => {
+    const saved=service==='stops' && fetchImpl===globalThis.fetch ? await readCatalogRows('stops','getCtyCodeList') : null;
+    const body = saved ? null : await requestTago({ serviceKey, service, operation: "getCtyCodeList", fetchImpl });
+    return (saved || itemsFromBody(body)).map((row) => {
       const cityCode = String(row.citycode ?? "").trim();
       const cityName = String(row.cityname ?? "").trim();
       if (!cityCode || !cityName) throw new Error("TAGO API 도시코드 정보가 올바르지 않습니다.");
@@ -239,6 +241,10 @@ export async function searchTagoStations({ serviceKey, cityCode, keyword, fetchI
   const city = requiredText(cityCode, "도시코드");
   const query = requiredText(keyword, "정류장 이름 또는 번호");
   if (query.length > 100) throw new Error("정류장 검색어가 너무 깁니다.");
+  if(fetchImpl===globalThis.fetch) {
+    const saved=await readCatalogRows('stops','getSttnNoList',{cityCode:city});
+    if(saved) return saved.filter(row=>/^\d+$/.test(query) ? String(row.nodeno||'').includes(query) : String(row.nodenm||'').includes(query)).map(row=>normalizeTagoStation(row,city));
+  }
   const queryKind = /^\d+$/.test(query) ? "nodeNo" : "nodeNm";
   const params = { cityCode: city, [queryKind]: query };
   const searchId = randomUUID();

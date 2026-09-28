@@ -3,6 +3,7 @@ import {fetchWithTimeout} from './upstream-fetch.mjs';
 import {headwayRange,koreanServiceDate} from '../logic/bus-headway.js';
 import {parseTagoResponse,readTagoResponse,describeTagoError} from './tago-api.mjs';
 import {resolveTagoHeadwayBinding} from './tago-headway-binding.mjs';
+import {readCatalogRows} from './transit-catalog.mjs';
 
 const caches = new WeakMap();
 const xml = (text,key) => text.match(new RegExp(`<${key}>([\\s\\S]*?)</${key}>`))?.[1]?.trim() || '';
@@ -50,6 +51,13 @@ export async function fetchBusHeadway(binding,{env=process.env,fetchImpl=fetch,n
   const entry = {until:Date.now()+24*60*60*1000};
   entry.value = (async()=>{
     try {
+      if(binding.provider==='tago' && fetchImpl===globalThis.fetch) {
+        const saved=await readCatalogRows('routes','getRouteInfoIem',binding,env);
+        if(saved) {
+          const profile=tagoHeadwayFromBody({items:{item:saved}},binding.routeId);
+          if(['weekday','saturday','sunday','holiday','allDays'].some(day=>profile[day])) return {...profile,status:'ready',fetchedAt:now.toISOString(),metadataSource:'database'};
+        }
+      }
       const url = new URL(binding.provider === 'gyeonggi'
         ? 'https://apis.data.go.kr/6410000/busrouteservice/v2/getBusRouteInfoItemv2'
         : binding.provider === 'tago' ? 'https://apis.data.go.kr/1613000/BusRouteInfoInqireService/getRouteInfoIem'

@@ -2,6 +2,7 @@ import {searchTagoNearbyStations} from './tago-api.mjs';
 import {normalizeGyeonggiStations} from './bus-providers.mjs';
 import {fetchWithTimeout} from './upstream-fetch.mjs';
 import {haversineDistanceMeters} from '../logic/commute.js';
+import {nearbyCatalogStations} from './transit-catalog.mjs';
 
 // Official: https://www.gbis.go.kr/gbis2014/publicService.action?cmd=mBusStationSearcharound
 export async function searchNearbyBoardingStations({lat,lng},{env=process.env,fetchImpl=fetch,tago=searchTagoNearbyStations}={}) {
@@ -9,6 +10,10 @@ export async function searchNearbyBoardingStations({lat,lng},{env=process.env,fe
     !Number.isFinite(Number(lat)) || !Number.isFinite(Number(lng)) || Number(lat)<33 || Number(lat)>39 || Number(lng)<124 || Number(lng)>132)
     throw new Error('지도의 검색 위치가 올바르지 않습니다.');
   let originalError;
+  if(fetchImpl===globalThis.fetch) {
+    const saved=await nearbyCatalogStations(lat,lng);
+    if(saved?.length) return {provider:'tago',stations:saved,source:'database'};
+  }
   try {
     const stations=await tago({serviceKey:env.TAGO_SERVICE_KEY,lat,lng,fetchImpl});
     if(stations.length) return {provider:'tago',stations};

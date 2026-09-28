@@ -2,6 +2,7 @@ import {searchGyeonggiStations,searchGyeonggiStationRoutes} from './bus-provider
 import {searchTagoNearbyStations,searchTagoStationRoutes,searchTagoStations} from './tago-api.mjs';
 import {readTagoResponse} from './tago-api.mjs';
 import {fetchWithTimeout} from './upstream-fetch.mjs';
+import {readCatalogRows} from './transit-catalog.mjs';
 
 const number = value => /^\d+$/.test(String(value || '').trim()) ? String(value).trim().replace(/^0+/, '') : '';
 const name = value => String(value || '').replace(/[\s.,·]/g,'');
@@ -20,6 +21,10 @@ function sameLocationAndName(source,candidate) {
 
 export async function routeRows(operation,params,{env,fetchImpl}) {
   try {
+  if(!fetchImpl || fetchImpl===globalThis.fetch) {
+    const saved=await readCatalogRows('routes',operation,params,env);
+    if(saved) return params.routeNo ? saved.filter(row=>String(row.routeno)===String(params.routeNo)) : saved;
+  }
   const rows=[];
   let total;
   for(let pageNo=1;pageNo<=10;pageNo++) {

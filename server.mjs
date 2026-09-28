@@ -57,6 +57,7 @@ import { readFcmAuthStatus } from "./src/server/fcm-auth.mjs";
 import { fetchOfficialHolidays, getHolidayApiConfig } from "./src/server/holiday-providers.mjs";
 import { buildMobileHealthPayload } from "./src/server/mobile-health.mjs";
 import { createAsyncMutex } from "./src/server/async-mutex.mjs";
+import {runCatalogJob} from './src/server/transit-catalog.mjs';
 import { createAlarmRuntimeState, reconcileAlarmRuntime } from "./src/server/alarm-runtime.mjs";
 import { readAlarmRuntimeState, writeAlarmRuntimeState } from "./src/server/alarm-runtime-store.mjs";
 import { getPushGatewayConfig, runPushGatewayDispatch, buildPushGatewayPlan } from "./src/server/push-gateway.mjs";
@@ -3235,6 +3236,14 @@ function sendLivenessResponse(response) {
 
 const server = createServer((request, response) => {
   const requestUrl = parseRequestUrl(request);
+  if(requestUrl.pathname==='/api/catalog-worker') {
+    if(request.method!=='POST' || Number(request.headers['content-length']||0)>2048) {
+      sendAuthJson(response,405,{error:'Catalog job POST required'});return;
+    }
+    void readJsonBody(request).then(payload=>runCatalogJob(payload)).then(result=>sendAuthJson(response,200,result))
+      .catch(error=>sendAuthJson(response,error?.statusCode===401?401:503,{error:'Catalog job unavailable'}));
+    return;
+  }
   if (requestUrl.pathname === '/api/alarm-worker') {
     if (request.method !== 'POST' || Number(request.headers['content-length'] || 0)>2048) {
       sendAuthJson(response,405,{error:'Alarm worker accepts job POST requests only.'});return;
