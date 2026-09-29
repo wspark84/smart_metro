@@ -1,3 +1,7 @@
+self.addEventListener("install", (event) => {
+  event.waitUntil(self.skipWaiting());
+});
+
 self.addEventListener("push", (event) => {
   let payload = {};
   try {
@@ -12,6 +16,8 @@ self.addEventListener("push", (event) => {
     tag: String(payload.tag || "buswakeup-alarm"),
     renotify: Boolean(payload.renotify),
     requireInteraction: Boolean(payload.requireInteraction),
+    vibrate: (Array.isArray(payload.vibrate) ? payload.vibrate : [400, 200, 400])
+      .slice(0, 99).map((value) => Math.min(10000, Math.max(0, Number(value) || 0))),
     data: payload.data && typeof payload.data === "object" ? payload.data : { url: "/#/home" },
   };
   event.waitUntil(self.registration.showNotification(title, options));

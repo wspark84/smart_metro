@@ -260,15 +260,28 @@ function getWebPushSubscription(targetProfile) {
   };
 }
 
-function buildWebPushPayload(preview) {
+function buildWebPushPayload(preview, targetProfile) {
   const envelope = preview?.envelope || {};
   const message = envelope.message || {};
+  const interruption = message.interruption || {};
+  const pattern = (Array.isArray(interruption.vibrationPattern) ? interruption.vibrationPattern : [400, 200, 400])
+    .slice(0, 31).map((value) => Math.min(10000, Math.max(0, Number(value) || 0)));
+  const repeats = Math.min(5, Math.max(1, Math.floor(Number(interruption.vibrationRepeats) || 1)));
+  const vibrate = [];
+  if (targetProfile?.vibrationEnabled !== false) {
+    for (let index = 0; index < repeats; index += 1) {
+      // Odd-length patterns end with vibration, so separate repeats with a pause.
+      if (index > 0 && pattern.length % 2 === 1) vibrate.push(200);
+      vibrate.push(...pattern);
+    }
+  }
   return {
     title: String(message.title || preview?.title || "Commute alarm"),
     body: String(message.body || ""),
     tag: String(preview?.dispatchKey || "buswakeup-alarm"),
     requireInteraction: Boolean(envelope.platformHints?.requireInteraction),
     renotify: Boolean(envelope.platformHints?.renotify),
+    vibrate: vibrate.slice(0, 99),
     data: {
       ...(message.data && typeof message.data === "object" ? message.data : {}),
       url: "/#/home",
@@ -289,7 +302,7 @@ function buildWebPushRequest(preview, gatewayConfig, targetProfile, env = proces
   if (!subscription) {
     return null;
   }
-  const payload = buildWebPushPayload(preview);
+  const payload = buildWebPushPayload(preview, targetProfile);
   const vapidDetails = getWebPushVapidDetails(env);
   const details = webPush.generateRequestDetails(subscription, JSON.stringify(payload), {
     TTL: 120,
