@@ -39,6 +39,12 @@ test('one confirmed atomic save applies the target and immediately requests calc
  assert.equal(v.run('calculations'),1);
 });
 
+test('background persistence schedules just one atomic settings write',async()=>{
+ const v=await view();
+ v.run('globalThis.writes=0;saveState=()=>{};queueRemoteSave=()=>{writes++;};queueDomainSync=()=>{writes++;};queueDeviceSync=()=>{};queueAlarmPlanRefresh=()=>{};queueAlarmRuntimeRefresh=()=>{};persist();');
+ assert.equal(v.run('writes'),1);
+});
+
 test('mobile time inputs have fixed touch-friendly height instead of vertical flex growth',async()=>{
  const css=await readFile(new URL('../src/metro-theme.css',import.meta.url),'utf8');
  assert.doesNotMatch(css,/\.home-target input\s*\{[^}]*flex:\s*1 1 140px/);

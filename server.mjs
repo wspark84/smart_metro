@@ -3306,9 +3306,11 @@ const server = createServer((request, response) => {
   if ((request.method === 'POST' && ['/api/app-state','/api/domain-sync','/api/commute/options','/api/commute/transit'].includes(requestUrl.pathname)) ||
       (request.method === 'GET' && requestUrl.pathname === '/api/holidays')) {
     void (async()=>{
+      const startedAt = Date.now();
       if(request.method==='POST' && !isTrustedMutation(request)) {sendAuthJson(response,403,{error:'허용되지 않은 요청입니다.'});return;}
       if(requestUrl.pathname==='/api/holidays') {sendAuthJson(response,200,await loadOfficialHolidayYear(requestUrl.searchParams.get('year')));return;}
       const auth=await createRequestAuth(request,response).resolve();
+      const authenticatedAt = Date.now();
       if(!auth) {sendAuthJson(response,401,{error:'소셜 계정으로 로그인해 주세요.'});return;}
       const input=await readJsonBody(request),files=buildUserFileMap(auth.user.id);
       const result=await runWithDocumentStorage(auth,createSupabaseGateway(),async()=>{
@@ -3335,6 +3337,7 @@ const server = createServer((request, response) => {
           }),
         });
       });
+      response.setHeader?.('Server-Timing',`auth;dur=${authenticatedAt-startedAt},store_or_route;dur=${Date.now()-authenticatedAt},total;dur=${Date.now()-startedAt}`);
       sendAuthJson(response,200,result);
     })().catch(error=>sendAuthJson(response,error?.statusCode || 503,{error:error?.code==='DOCUMENT_CONFLICT'?error.message:'저장 또는 경로 조회에 실패했습니다. 잠시 후 다시 시도해 주세요.'}));
     return;

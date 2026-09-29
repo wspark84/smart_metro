@@ -150,8 +150,10 @@ async function submitHomeTrip() {
   remoteSaveToken++; domainSyncToken++;
   homeTripSave = {status:"saving",message:"입력한 정보를 계정에 저장하고 있습니다…",key:""};
   render();
+  const saveStartedAt = Date.now();
   try {
     await saveRemoteAppState(snapshot);
+    console.info('[trip-save]', JSON.stringify({status:'confirmed',durationMs:Date.now()-saveStartedAt}));
     if (authMeta.user?.id !== userId) return;
     if (authMeta.user?.id !== userId || transitQueryKey(transitQueryForState(state)) !== queryKey) return;
     state.commute.boardingAccessMin = access;
@@ -731,7 +733,6 @@ function persist() {
     return;
   }
   queueRemoteSave();
-  queueDomainSync();
   queueDeviceSync();
   queueAlarmPlanRefresh();
   queueAlarmRuntimeRefresh();
@@ -747,10 +748,12 @@ function queueRemoteSave() {
 
   const snapshot = JSON.parse(JSON.stringify(state));
   persistenceMeta.saveStatus = "pending";
+  domainMeta.syncStatus = "pending";
   remoteSaveTimer = window.setTimeout(() => {
     const currentToken = remoteSaveToken + 1;
     remoteSaveToken = currentToken;
     persistenceMeta.saveStatus = "saving";
+    domainMeta.syncStatus = "syncing";
     saveRemoteAppState(snapshot)
       .then((payload) => {
         if (currentToken !== remoteSaveToken) {
@@ -761,6 +764,10 @@ function queueRemoteSave() {
         persistenceMeta.saveStatus = "saved";
         persistenceMeta.lastSavedAt = payload.savedAt || new Date().toISOString();
         persistenceMeta.lastError = "";
+        domainMeta.source = "server";
+        domainMeta.syncStatus = "synced";
+        domainMeta.lastSyncedAt = payload.savedAt || new Date().toISOString();
+        domainMeta.lastError = "";
         render();
       })
       .catch((error) => {
@@ -770,6 +777,8 @@ function queueRemoteSave() {
 
         persistenceMeta.saveStatus = "error";
         persistenceMeta.lastError = userErrorMessage(error, "서버 저장 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.");
+        domainMeta.syncStatus = "error";
+        domainMeta.lastError = persistenceMeta.lastError;
         render();
       });
   }, 250);
