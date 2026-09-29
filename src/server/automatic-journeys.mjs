@@ -55,7 +55,21 @@ export async function verifyBoardingDirection(binding,journey,{env=process.env,f
 export async function discoverJourneyOptions(query,{lookup=lookupBoardingRoutes,journeys=fetchTransitRoutes,
   verify=verifyBoardingDirection,env=process.env}={}) {
   const [stops,paths]=await Promise.all([
-    lookup({...query,posX:query.stopLocation?.lng,posY:query.stopLocation?.lat},{env}).catch(error=>{throw Object.assign(error,{routeFailureCode:error.routeFailureCode || 'STATION_ROUTES_FAILED'});}),
+    lookup({...query,posX:query.stopLocation?.lng,posY:query.stopLocation?.lat},{env}).catch(error=>{
+      const known = [
+        '선택한 정류장의 공식 위치를 다시 확인하지 못했습니다. 지도에서 다시 선택해 주세요.',
+        '저장된 위치와 공식 정류장 위치가 일치하지 않습니다. 지도에서 다시 선택해 주세요.',
+        '경기도 정류장의 번호·이름·위치를 하나로 확정하지 못했습니다. 다른 정류장에 연결하지 않았습니다.',
+        'Gyeonggi station route search returned no rows.',
+        'Unsupported or missing live provider for station-route search.',
+      ];
+      console.error('[station-route-failure]', JSON.stringify({
+        reason:known.indexOf(error.message),type:error instanceof TypeError?'TypeError':error instanceof SyntaxError?'SyntaxError':error instanceof ReferenceError?'ReferenceError':'Error',
+        frame:String(error.stack || '').split('\n').find(line=>/^\s+at .*\/src\/server\/[\w.-]+\.mjs:\d+:\d+\)?$/.test(line)) || null,
+        status:Number.isInteger(error.status)?error.status:null,apiCode:Number.isInteger(error.apiCode)?error.apiCode:null,
+      }));
+      throw Object.assign(error,{routeFailureCode:error.routeFailureCode || 'STATION_ROUTES_FAILED'});
+    }),
     journeys(query,env).catch(error=>{throw Object.assign(error,{routeFailureCode:error.routeFailureCode || (error.code==='UPSTREAM_TIMEOUT'?'ROUTE_TIMEOUT':'ROUTE_SEARCH_FAILED')});}),
   ]);
   const station=stops.verifiedStation || query;
