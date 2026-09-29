@@ -22,14 +22,17 @@ export function selectBusHeadway(profile, now, holidayDates = []) {
   const day = new Date(`${date}T12:00:00+09:00`).getUTCDay();
   const holiday = holidayDates.includes(date);
   const type = holiday ? 'holiday' : day === 6 ? 'saturday' : day === 0 ? 'sunday' : 'weekday';
-  // Never substitute a weekday interval for missing weekend/holiday information.
-  const raw = profile[type] || profile.allDays;
-  const range = raw && headwayRange(raw.min,raw.max);
+  const validRange = raw => raw && headwayRange(raw.min,raw.max);
+  let range = validRange(profile[type]) || validRange(profile.allDays);
+  const weekdayFallback = !range && ['saturday','sunday'].includes(type);
+  if (weekdayFallback) range = validRange(profile.weekday);
   if (!range) return null;
-  const label = profile.allDays ? '공식 제공 간격' : ({weekday:'평일',saturday:'토요일',sunday:'일요일',holiday:'공휴일'})[type];
+  const dayLabel = ({weekday:'평일',saturday:'토요일',sunday:'일요일',holiday:'공휴일'})[type];
+  const label = weekdayFallback ? `${dayLabel} 정보 없음 · 평일 배차간격 대체 예상`
+    : validRange(profile[type]) ? dayLabel : '공식 제공 간격';
   // Midpoint of the published range, not an observed mean of actual arrivals.
   const minutes = (range.min + range.max) / 2;
-  return {...range,minutes,source:profile.source,label,checkedAt:profile.checkedAt || profile.fetchedAt,
+  return {...range,minutes,source:profile.source,label,weekdayFallback,checkedAt:profile.checkedAt || profile.fetchedAt,
     fetchedAt:profile.fetchedAt,stale:profile.stale === true,lastChangedAt:profile.lastChangedAt,
     text:`${label} ${range.min === range.max ? range.max : `${range.min}~${range.max}`}분`};
 }

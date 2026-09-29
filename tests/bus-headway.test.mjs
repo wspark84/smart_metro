@@ -24,8 +24,23 @@ test('official 13 to 45 minute range uses midpoint 29 without changing the sourc
   assert.equal(selectBusHeadway({status:'ready',allDays:{min:12,max:12}},new Date('2026-09-24T08:00:00+09:00')).minutes,12);
 });
 
-test('missing weekend metadata never falls back to weekday; malformed intervals cannot invent service',()=>{
-  assert.equal(selectBusHeadway({...profile,saturday:null},new Date('2026-09-26T08:00:00+09:00')),null);
+test('missing weekend metadata uses explicitly labelled weekday fallback',()=>{
+  for(const [type,date] of [['saturday','2026-09-26'],['sunday','2026-09-27']]) {
+    for(const missing of [null,{min:0,max:0}]) {
+      const result=selectBusHeadway({...profile,[type]:missing},new Date(`${date}T08:00:00+09:00`));
+      assert.equal(result.minutes,10);
+      assert.equal(result.weekdayFallback,true);
+      assert.match(result.text,/평일 배차간격 대체 예상/);
+    }
+  }
+  assert.equal(selectBusHeadway({...profile,saturday:null,weekday:null},new Date('2026-09-26T08:00:00+09:00')),null);
+  assert.equal(selectBusHeadway({...profile,holiday:null},new Date('2026-09-26T08:00:00+09:00'),['2026-09-26']),null);
+  const common=selectBusHeadway({...profile,saturday:null,allDays:{min:12,max:12}},new Date('2026-09-26T08:00:00+09:00'));
+  assert.equal(common.minutes,12);
+  assert.equal(common.weekdayFallback,false);
+});
+
+test('malformed intervals cannot invent service',()=>{
   for(const value of [null,'',0,-1,'10~20','1일 8회',181]) assert.equal(headwayRange(value),null);
   assert.deepEqual(headwayRange('',12),{min:12,max:12});
   assert.throws(()=>normalizeGyeonggiHeadway(gg,'wrong'));
