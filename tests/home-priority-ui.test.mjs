@@ -74,6 +74,15 @@ test('home prioritizes countdown, core inputs, submit, and only then transit det
   indexes.forEach((index, i) => assert.ok(index >= 0 && (!i || index > indexes[i-1]), markers[i]));
 });
 
+test('tight boarding encourages hurrying only while the vehicle is still expected', async () => {
+  const v = await view();
+  const render = minutes => v.run(`renderHomeTimetable({now:new Date('2026-09-29T19:15:00+09:00'),homePlan:{rows:[{level:'GREEN',deltaMinutes:15,arriveWorkAt:new Date('2026-09-29T19:52:00+09:00'),arrivalMinutes:${minutes},catchable:false}]},risk:{lastChanceConfirmed:false},stop:{name:'test'}},'7','test')`);
+  assert.match(render(3), /서두르면 가능!/);
+  assert.doesNotMatch(render(3), /탑승 어려움/);
+  assert.match(render(0), /출발한 것으로 예상/);
+  assert.doesNotMatch(render(-1), /서두르면 가능!/);
+});
+
 test('zero-minute departure tells the user to leave now', async () => {
   const v = await view();
   const html = v.html("model.dataSource='LIVE';model.risk=evaluateLateRisk({now:model.now,requiredArrivalTime:'23:59',route:{boardingAccessMin:3,onboardToDestinationMin:20},busArrivalsMin:[3]});");

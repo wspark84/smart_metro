@@ -5257,7 +5257,7 @@ function renderHomeTimetable(model, lineLabel, direction) {
           <td class="timetable-time">${escapeHtml(formatClock(addMinutes(model.now, item.arrivalMinutes)))}<small style="display:block;font-size:11px;font-weight:400">${model.retainedPrediction ? "이전 정보 · " : ""}${item.estimated ? "배차간격 기준 예상 · 실시간 아님" : model.retainedPrediction ? "당시 실시간 기준" : "실시간"}</small></td>
           <td class="timetable-line"><strong>${escapeHtml(item.routeNumber || lineLabel || "선택한 노선")}</strong><span>${escapeHtml(item.direction || direction || model.stop.name)}</span>${item.onboardDurationSec ? `<small>목적지까지 약 ${Math.ceil(item.onboardDurationSec/60)}분 · 환승 ${item.transfers || 0}회</small>` : ""}</td>
           <td class="timetable-arrival">${known ? escapeHtml(formatClock(item.arriveWorkAt)) : "—"}</td>
-          <td class="timetable-verdict">${known && !item.catchable ? "탑승 어려움" : known ? late ? `지각${item.estimated ? " 예상" : ""}<br><small>+${Math.abs(item.deltaMinutes)}분</small>` : item.deltaMinutes > 0 ? `${item.deltaMinutes}분 여유${item.estimated ? " 예상" : ""}` : item.estimated ? "정시 예상" : "정시" : "미확인"}</td>
+          <td class="timetable-verdict">${known && !item.catchable ? item.arrivalMinutes > 0 ? "서두르면 가능!" : "출발한 것으로 예상" : known ? late ? `지각${item.estimated ? " 예상" : ""}<br><small>+${Math.abs(item.deltaMinutes)}분</small>` : item.deltaMinutes > 0 ? `${item.deltaMinutes}분 여유${item.estimated ? " 예상" : ""}` : item.estimated ? "정시 예상" : "정시" : "미확인"}</td>
         </tr>${cut ? `<tr class="timetable-cut-label"><td colspan="4">지각선 · 이 차를 놓치면 다음 차는 지각 예상</td></tr>` : ""}`;
       }).join("") : `<tr><td colspan="4" class="timetable-empty">실시간 정보가 연결되면 탑승 가능한 차를 여기에 표시합니다.</td></tr>`}</tbody>
     </table></div>
