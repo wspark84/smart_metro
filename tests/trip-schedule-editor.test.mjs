@@ -24,6 +24,11 @@ test('schedule editor offers single start and repeat choices, weekdays and holid
  assert.match(editor.html(),/알람 반복 간격/);
  assert.match(editor.html(),/반복 요일/);
  assert.match(editor.html(),/공휴일에는 알람 쉬기/);
+ assert.match(editor.html(),/class="trip-weekdays"/);
+ assert.equal((editor.html().match(/class="trip-option-grid"/g)||[]).length,2);
+ assert.equal((editor.html().match(/class="trip-check-row"/g)||[]).length,2);
+ assert.match(editor.html(),/>30분 전<\/button>/);
+ assert.match(editor.html(),/class="trip-card-actions"/);
  assert.doesNotMatch(editor.html(),/알람 시간대|여러 개 선택 가능|공식 공휴일 정보/);
  editor.click({dataset:{tripAction:'alarm-start',value:'120'}});
  editor.click({dataset:{tripAction:'alarm-interval',value:'15'}});

@@ -61,13 +61,15 @@ export function createTripScheduleEditor({getState, saveTrips, render, mapKey, g
       <p><strong>선택한 도착지:</strong> ${esc(draft.destination?.address || '아직 선택하지 않았습니다')}</p>
       <div class="field-grid"><label class="field-block"><span>도착 목표시간</span><input type="time" data-trip-input="requiredArrivalTime" value="${esc(draft.requiredArrivalTime)}" /></label>
       <label class="field-block"><span>정류장까지 (분)</span><input type="number" min="0" max="180" data-trip-input="boardingAccessMin" value="${esc(draft.boardingAccessMin)}" /></label></div>
-      <h3>반복 요일</h3><div class="weekday-grid">${days.map((d,i)=>`<button class="weekday-chip ${draft.daysOfWeek.includes(i)?'selected':''}" aria-pressed="${draft.daysOfWeek.includes(i)}" data-trip-action="day" data-value="${i}">${d}</button>`).join('')}</div>
-      <h3>알람 시작</h3><div class="choice-grid">${ALARM_START_CHOICES.map(m=>`<button class="choice-chip ${Number(draft.alarmStartLeadMin)===m?'selected':''}" aria-pressed="${Number(draft.alarmStartLeadMin)===m}" data-trip-action="alarm-start" data-value="${m}">출발 ${m >= 60 ? `${m/60}시간` : `${m}분`} 전부터</button>`).join('')}</div>
-      <h3>알람 반복 간격</h3><div class="choice-grid">${ALARM_INTERVAL_CHOICES.map(m=>`<button class="choice-chip ${Number(draft.repeatIntervalMin)===m?'selected':''}" aria-pressed="${Number(draft.repeatIntervalMin)===m}" data-trip-action="alarm-interval" data-value="${m}">${m}분마다</button>`).join('')}</div>
-      <label><input type="checkbox" data-trip-input="skipHolidays" ${draft.skipHolidays?'checked':''} /> 공휴일에는 알람 쉬기</label>
-      <label><input type="checkbox" data-trip-input="enabled" ${draft.enabled?'checked':''} /> 이 일정 알람 켜기</label>
+      <h3 class="trip-option-title">반복 요일</h3><div class="trip-weekdays">${days.map((d,i)=>`<button class="weekday-chip ${draft.daysOfWeek.includes(i)?'selected':''}" aria-pressed="${draft.daysOfWeek.includes(i)}" data-trip-action="day" data-value="${i}">${d}</button>`).join('')}</div>
+      <h3 class="trip-option-title">알람 시작</h3><div class="trip-option-grid" role="group" aria-label="출발 전 알람 시작">${ALARM_START_CHOICES.map(m=>`<button class="choice-chip ${Number(draft.alarmStartLeadMin)===m?'selected':''}" aria-label="출발 ${m >= 60 ? `${m/60}시간` : `${m}분`} 전부터" aria-pressed="${Number(draft.alarmStartLeadMin)===m}" data-trip-action="alarm-start" data-value="${m}">${m >= 60 ? `${m/60}시간` : `${m}분`} 전</button>`).join('')}</div>
+      <h3 class="trip-option-title">알람 반복 간격</h3><div class="trip-option-grid" role="group" aria-label="알람 반복 간격">${ALARM_INTERVAL_CHOICES.map(m=>`<button class="choice-chip ${Number(draft.repeatIntervalMin)===m?'selected':''}" aria-pressed="${Number(draft.repeatIntervalMin)===m}" data-trip-action="alarm-interval" data-value="${m}">${m}분마다</button>`).join('')}</div>
+      <div class="trip-check-options">
+      <label class="trip-check-row"><input type="checkbox" data-trip-input="skipHolidays" ${draft.skipHolidays?'checked':''} /><span>공휴일에는 알람 쉬기</span></label>
+      <label class="trip-check-row"><input type="checkbox" data-trip-input="enabled" ${draft.enabled?'checked':''} /><span>이 일정 알람 켜기</span></label>
+      </div>
       ${error?`<p role="alert">${esc(error)}</p>`:''}
-      <div class="choice-grid">${button('save',saving?'저장 중…':'일정 저장')}${button('cancel','취소')}</div></section>`;
+      <div class="trip-card-actions">${button('save',saving?'저장 중…':'일정 저장')}${button('cancel','취소')}</div></section>`;
   }
   function mount() {
     if(!draft)return;
