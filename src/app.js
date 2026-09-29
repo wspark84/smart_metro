@@ -2874,7 +2874,7 @@ function renderTopBar(screen, model) {
             screen === "schedule"
               ? `<div class="topbar-subtitle">${model.scheduleState.badge}</div>`
               : screen === "settings"
-                ? `<div class="topbar-subtitle">웹에서는 알림 설정을 저장합니다. 휴대폰 권한은 앱에서 별도로 허용해야 합니다.</div>`
+                ? ""
                 : screen === "diagnostics" ? `<div class="topbar-subtitle">도착정보 정확도와 알림 처리 내역</div>` : `<div class="topbar-subtitle">탑승 정류장과 노선을 등록하세요</div>`
           }
         </div>
@@ -4029,7 +4029,6 @@ function renderBottomNav(screen) {
   const items = [
     { id: "home", label: "홈", icon: "dashboard" },
     { id: "schedule", label: "일정", icon: "event_repeat" },
-    { id: "diagnostics", label: "진단", icon: "monitoring" },
     { id: "settings", label: "설정", icon: "tune" },
   ];
 
@@ -6095,6 +6094,17 @@ function renderLegacySchedule(screen, model) {
 
 let themePreferenceSaved = true;
 
+function renderConsumerNotificationPanel() {
+  return `<section class="stack-panel" aria-label="알림 방식">
+    <h2 class="stack-title">알림 방식</h2>
+    ${[['soundEnabled','소리'],['vibrationEnabled','진동'],['ttsEnabled','음성 안내']].map(([key,label])=>`
+      <div class="toggle-row"><span>${label}</span><button class="toggle ${state.device[key]?'on':''}" role="switch" aria-label="${label}" aria-checked="${Boolean(state.device[key])}" data-action="toggle-field" data-field="device.${key}"><span></span></button></div>`).join('')}
+    ${state.device.platform==='web' ? `<button class="soft-button wide" data-action="subscribe-web-push" ${deviceMeta.tokenRegisterStatus==='sending'?'disabled':''}>${deviceMeta.tokenRegisterStatus==='sending'?'알림 연결 중…':'이 브라우저에서 알림 받기'}</button>` : ''}
+    ${deviceMeta.tokenRegisterStatus==='error' ? '<p role="alert">알림 연결을 확인하지 못했습니다. 다시 시도해 주세요.</p>' : ''}
+    <p class="field-help">알림을 받으려면 휴대폰 또는 브라우저의 알림 권한을 허용해 주세요.</p>
+    </section>`;
+}
+
 function renderSettings(screen, model) {
   const currentSound = SOUND_PRESETS.find((preset) => preset.id === state.notification.soundPresetId) || SOUND_PRESETS[0];
   const darkMode = window.smartMetroTheme?.getTheme() === "dark";
@@ -6104,13 +6114,13 @@ function renderSettings(screen, model) {
         <h2 class="stack-title" id="appearance-heading">화면 설정</h2>
         <div class="toggle-row">
           <div><div class="toggle-title" id="dark-mode-label">다크모드</div>
-            <p class="field-help" id="dark-mode-description">${darkMode ? "어두운 배경으로 보고 있습니다." : "밝은 배경이 기본입니다."} 이 브라우저에 선택한 모드를 저장합니다.</p></div>
+            <p class="field-help" id="dark-mode-description">${darkMode ? "어두운 화면" : "밝은 화면"}</p></div>
           <button type="button" class="toggle ${darkMode ? "on" : ""}" role="switch" aria-checked="${darkMode}" aria-labelledby="dark-mode-label" aria-describedby="dark-mode-description" data-action="toggle-dark-mode"><span></span></button>
         </div>
         ${!themePreferenceSaved ? `<p class="field-help" role="status">화면에는 적용했지만 브라우저 저장 공간에 저장하지 못했습니다. 다시 접속하면 기본 모드로 표시될 수 있습니다.</p>` : ""}
       </section>
       ${renderAccountPanel()}
-      ${renderDeviceDeliveryPanel()}
+      ${renderConsumerNotificationPanel()}
       <section class="stack-panel">
         <div class="stack-title"><span class="material-symbols-outlined">volume_up</span>알람 소리</div>
         <div class="option-list">
@@ -6121,7 +6131,6 @@ function renderSettings(screen, model) {
                   <span class="sound-radio">${currentSound.id === preset.id ? "[x]" : "[ ]"}</span>
                   <span>
                     <strong>${escapeHtml(preset.name)}</strong>
-                    <small>${escapeHtml(preset.detail)}</small>
                   </span>
                 </button>
                 <button class="icon-button soft" data-action="preview-sound" data-value="${preset.id}" aria-label="${escapeHtml(preset.name)} 미리 듣기">
@@ -6142,13 +6151,6 @@ function renderSettings(screen, model) {
           <input class="range-input" type="range" min="0" max="100" value="${state.notification.vibrationStrength}" data-field="notification.vibrationStrength" />
           <div class="slider-scale"><span>약하게</span><span>보통</span><span>강하게</span></div>
         </div>
-        <div class="toggle-row inset">
-          <div>
-            <div class="toggle-title">알람을 점점 강하게</div>
-            <p class="field-help">15초, 30초 무응답 시 단계적으로 진동과 소리를 더 강하게 올립니다.</p>
-          </div>
-          <button class="toggle ${state.notification.escalationEnabled ? "on" : ""}" data-action="toggle-field" data-field="notification.escalationEnabled"><span></span></button>
-        </div>
       </section>
       <section class="stack-panel">
         <div class="stack-title"><span class="material-symbols-outlined">record_voice_over</span>음성 안내</div>
@@ -6168,34 +6170,6 @@ function renderSettings(screen, model) {
         </div>
         <button class="soft-button wide" data-action="preview-tts">미리 듣기</button>
         <div class="sample-copy">${escapeHtml(model.notificationSpec.spokenText)}</div>
-      </section>
-      <section class="stack-panel">
-        <div class="stack-title"><span class="material-symbols-outlined">crisis_alert</span>단계별 알림 미리보기</div>
-        <div class="forecast-grid">
-          ${model.notificationTimeline
-            .map(
-              (item) => `
-                <article class="forecast-item ${item.stage === 2 ? "off" : "on"}">
-                  <div class="forecast-date">${escapeHtml(item.escalationLabel)} · +${item.secondsSinceTrigger}초</div>
-                  <div class="forecast-badge">${escapeUiMessage(item.riskLevel)} · ${escapeHtml(item.volumePercent.toString())}% 음량</div>
-                  <div class="forecast-copy">
-                    진동 ${escapeHtml(item.vibrationPattern.join("-"))} x ${escapeHtml(String(item.vibrationRepeats))}
-                    <br />
-                    ${escapeHtml(item.fullScreen ? "전체 화면 알림 설정 켜짐." : "일반 배너 알림.")}
-                    <br />
-                    ${escapeHtml(item.criticalBypass ? "방해금지 우회 요청." : "방해금지 우회를 요청하지 않습니다.")}
-                  </div>
-                </article>
-              `,
-            )
-            .join("")}
-        </div>
-        <div class="sample-copy">${escapeHtml(model.notificationSpec.title)} · ${escapeHtml(model.notificationSpec.body)}</div>
-      </section>
-      <section class="warning-panel">
-        <div class="warning-head"><span class="material-symbols-outlined">warning</span>긴급 알림의 방해금지 우회</div>
-        <p>여기서는 원하는 알림 방식을 저장합니다. 실제 권한은 안드로이드 앱에서 별도로 허용해야 하며, 아이폰은 애플의 알림 정책에 따라 지원 범위가 제한됩니다.</p>
-        <button class="toggle ${state.notification.dndBypass ? "on" : ""}" data-action="toggle-field" data-field="notification.dndBypass"><span></span></button>
       </section>
     </main>
     ${renderBottomNav(screen)}

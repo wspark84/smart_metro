@@ -51,10 +51,12 @@ test('all five web screens render Korean controls without changing input values'
     assert.match(app.innerHTML,/스마트 메트로|알림 설정|알람 일정|이동 경로 등록|진단 및 기록/);
     assert.doesNotMatch(app.innerHTML,/>\s*(?:Settings|Dashboard|Schedule|Device Delivery|Sound Alert|Active|Paused|Save Settings|Register)\s*</);
     if(screen==='settings') {
-      assert.match(app.innerHTML,/기기 알림 설정/);
+      assert.match(app.innerHTML,/알림 방식/);
       assert.match(app.innerHTML,/음성 안내/);
-      assert.match(app.innerHTML,/value="android"/);
-      assert.match(app.innerHTML,/data-field="device.pushEnabled"/);
+      assert.doesNotMatch(app.innerHTML,/푸시 토큰|기기 이름|기기 종류|FCM|APNs|단계별 알림 미리보기/);
+      assert.doesNotMatch(app.innerHTML,/data-field="device\.(platform|pushToken|fullScreenEnabled|dndOverrideGranted|batteryOptimizationIgnored)"/);
+      assert.match(app.innerHTML,/data-field="device.soundEnabled"/);
+      assert.doesNotMatch(app.innerHTML,/data-screen="diagnostics"/);
     }
   }
 });

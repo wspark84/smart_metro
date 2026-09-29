@@ -822,7 +822,7 @@ button {
   transform: translateX(-50%);
   width: min(100%, 420px);
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 8px;
   padding: 14px 16px 28px;
   background: rgba(255, 255, 255, 0.82);
