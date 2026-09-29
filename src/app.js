@@ -153,7 +153,6 @@ async function submitHomeTrip() {
   try {
     await saveRemoteAppState(snapshot);
     if (authMeta.user?.id !== userId) return;
-    await syncDomainSnapshot(snapshot);
     if (authMeta.user?.id !== userId || transitQueryKey(transitQueryForState(state)) !== queryKey) return;
     state.commute.boardingAccessMin = access;
     state.commute.planningHeadwayMin = null;

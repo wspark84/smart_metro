@@ -19,13 +19,36 @@ test('public screen files are not held behind a busy account runtime lock', asyn
     sendUnhandledServerError() { assert.fail('unexpected static request error'); },
   });
   vm.runInContext(callbackSource, context);
-  listener({method:'POST',url:'/api/app-state'}, {});
+  listener({method:'POST',url:'/api/device-profile'}, {});
   listener({method:'GET',url:'/'}, {});
   listener({method:'GET',url:'/src/locale-ko.js'}, {});
   listener({method:'HEAD',url:'/src/styles.css'}, {});
   await Promise.resolve();
   assert.deepEqual(served, ['/', '/src/locale-ko.js', '/src/styles.css']);
-  assert.equal(queued.length, 1, 'account writes must still use the protected runtime lock');
+  assert.equal(queued.length, 1, 'mutable alarm-related writes still use the runtime lock');
+});
+
+test('atomic settings save bypasses a blocked runtime, checks auth and commits before responding',async()=>{
+ const source=await readFile(new URL('../server.mjs',import.meta.url),'utf8');
+ const callback=source.slice(source.indexOf('const server = createServer('),source.indexOf('\nserver.listen('));
+ let listener,authenticated=false,trusted=true,committed=false;
+ const statuses=[],writes=[];
+ const context=vm.createContext({TRANSIT_LOOKUP_PATHS:new Set(),
+   createServer(fn){listener=fn;return {};},parseRequestUrl:r=>new URL(r.url,'http://localhost'),
+   isTrustedMutation:()=>trusted,createRequestAuth:()=>({resolve:async()=>authenticated?{user:{id:'test'}}:null}),
+   sendAuthJson(r,status){if(status===200)assert.equal(committed,true);statuses.push(status);},
+   readJsonBody:async()=>({user:{requiredArrivalTime:'15:30'},commute:{boardingAccessMin:3}}),
+   buildUserFileMap:id=>({appState:id+'/app-state',domain:id+'/domain'}),createSupabaseGateway:()=>({}),
+   runWithDocumentStorage:async(auth,gateway,work)=>{const result=await work();committed=true;return result;},
+   projectDomainSnapshot:state=>({user:state.user}),
+   writeAppState:async(state,path)=>writes.push(path),writeDomainSnapshot:async(state,path)=>writes.push(path),
+   runWithRuntimeLock(){assert.fail('settings must not wait for alarm runtime');},
+ });
+ vm.runInContext(callback,context);
+ const call=async()=>{listener({method:'POST',url:'/api/app-state'},{});await new Promise(r=>setTimeout(r,0));};
+ await call();assert.equal(statuses.at(-1),401);assert.equal(writes.length,0);
+ authenticated=true;trusted=false;await call();assert.equal(statuses.at(-1),403);assert.equal(writes.length,0);
+ trusted=true;await call();assert.equal(statuses.at(-1),200);assert.deepEqual(writes,['test/app-state','test/domain']);
 });
 
 test('station lookups bypass busy runtime writes but still require authentication', async () => {

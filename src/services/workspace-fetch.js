@@ -9,6 +9,7 @@ const READ_ONLY = new Set([
 
 export function createWorkspaceFetch(fetchImpl, { origin, locks, timeoutMs = 30000 } = {}) {
   let tail = Promise.resolve();
+  let settingsTail = Promise.resolve();
   let generation = 0;
   return function workspaceFetch(input, init) {
     const url = new URL(typeof input === 'string' || input instanceof URL ? input : input.url, origin);
@@ -18,6 +19,8 @@ export function createWorkspaceFetch(fetchImpl, { origin, locks, timeoutMs = 300
     if (url.pathname.startsWith('/api/auth/') || url.pathname === '/api/account/profile' ||
         (method === 'GET' && READ_ONLY.has(url.pathname))) return fetchImpl(input, init);
     const queuedGeneration = generation;
+    const settings = ['/api/app-state','/api/domain-sync'].includes(url.pathname);
+    const calculation = ['/api/commute/options','/api/commute/transit','/api/holidays'].includes(url.pathname);
     const upstreamSignal = init?.signal || input?.signal;
     const controller = new AbortController();
     const signal = controller.signal;
@@ -37,10 +40,11 @@ export function createWorkspaceFetch(fetchImpl, { origin, locks, timeoutMs = 300
       }
       return fetchImpl(input, {...init, signal});
     };
-    const result = tail.then(() => locks?.request
-      ? locks.request('smart-metro-workspace', {mode:'exclusive', ...(signal ? {signal} : {})}, run)
+    const result = (calculation ? Promise.resolve() : settings ? settingsTail : tail).then(() => !calculation && locks?.request
+      ? locks.request(settings ? 'smart-metro-settings' : 'smart-metro-workspace', {mode:'exclusive', ...(signal ? {signal} : {})}, run)
       : run());
-    tail = result.catch(() => {});
+    if(settings) settingsTail = result.catch(() => {});
+    else if(!calculation) tail = result.catch(() => {});
     return Promise.race([result, deadline]).finally(() => {
       clearTimeout(timer);
       upstreamSignal?.removeEventListener('abort', forwardAbort);

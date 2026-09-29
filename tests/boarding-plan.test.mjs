@@ -299,8 +299,8 @@ test('completion waits for server acknowledgement before applying fields and rep
   assert.equal(v.run('homeTripSave.status'),'saved');
   assert.equal(v.run('state.user.requiredArrivalTime'),'10:00');
   assert.equal(v.run('state.commute.boardingAccessMin'),5);
-  assert.equal(calls.length,2);
-  assert.equal(calls[1][1].commute.planningHeadwayMin,null);
+  assert.equal(calls.length,1,'settings and domain are now committed atomically by one server request');
+  assert.equal(calls[0][1].commute.planningHeadwayMin,null);
 });
 
 test('failed completion retains draft and never claims server save succeeded',async()=>{

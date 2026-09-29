@@ -3302,6 +3302,43 @@ const server = createServer((request, response) => {
     })().catch(() => sendAuthJson(response,503,{error:"검색 연결이 지연되고 있습니다. 잠시 후 다시 시도해 주세요."}));
     return;
   }
+  // Request-local settings and route reads must not wait for the mutable alarm engine.
+  if ((request.method === 'POST' && ['/api/app-state','/api/domain-sync','/api/commute/options','/api/commute/transit'].includes(requestUrl.pathname)) ||
+      (request.method === 'GET' && requestUrl.pathname === '/api/holidays')) {
+    void (async()=>{
+      if(request.method==='POST' && !isTrustedMutation(request)) {sendAuthJson(response,403,{error:'허용되지 않은 요청입니다.'});return;}
+      if(requestUrl.pathname==='/api/holidays') {sendAuthJson(response,200,await loadOfficialHolidayYear(requestUrl.searchParams.get('year')));return;}
+      const auth=await createRequestAuth(request,response).resolve();
+      if(!auth) {sendAuthJson(response,401,{error:'소셜 계정으로 로그인해 주세요.'});return;}
+      const input=await readJsonBody(request),files=buildUserFileMap(auth.user.id);
+      const result=await runWithDocumentStorage(auth,createSupabaseGateway(),async()=>{
+        if(['/api/app-state','/api/domain-sync'].includes(requestUrl.pathname)) {
+          const state=requestUrl.pathname==='/api/app-state'?input:input?.state;
+          const snapshot=projectDomainSnapshot(state || {});
+          // Both documents commit in the same existing optimistic transaction.
+          await Promise.all([writeAppState(state,files.appState),writeDomainSnapshot(snapshot,files.domain)]);
+          return {ok:true,state,snapshot,savedAt:new Date().toISOString()};
+        }
+        if(requestUrl.pathname==='/api/commute/transit') return fetchTransitRoutes(input,process.env);
+        const saved=await readAppState(files.appState);
+        if(!saved) throw Object.assign(new Error('출발·도착 정보를 먼저 저장해 주세요.'),{statusCode:400});
+        const runtime=await readAlarmRuntimeState(files.alarmRuntime);
+        return refreshJourneyOptions(input,{
+          previous:runtime?.automaticOptions,
+          planning:{requiredArrivalTime:saved.user.requiredArrivalTime,boardingAccessMin:saved.commute.boardingAccessMin},
+          loadArrival:binding=>loadStoredTransit(binding,{
+            now:new Date(),cache:runtime?.transitCache,
+            loadArrival:()=>loadWithCache({key:['live-arrivals',binding],ttlMs:LIVE_ARRIVAL_CACHE_TTL_MS,
+              allowStaleOnError:false,loader:()=>fetchLiveArrival(binding)}),
+            loadHeadway:()=>fetchBusHeadway(binding,{now:new Date()}),
+            saveCache:async()=>{},
+          }),
+        });
+      });
+      sendAuthJson(response,200,result);
+    })().catch(error=>sendAuthJson(response,error?.statusCode || 503,{error:error?.code==='DOCUMENT_CONFLICT'?error.message:'저장 또는 경로 조회에 실패했습니다. 잠시 후 다시 시도해 주세요.'}));
+    return;
+  }
   void runWithRuntimeLock(async () => {
     if (await handleSocialLoginRoute(request, response, readJsonBody)) return;
     const isApi = requestUrl.pathname.startsWith("/api/");

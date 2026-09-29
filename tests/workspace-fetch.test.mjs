@@ -5,6 +5,18 @@ import {createWorkspaceFetch} from '../src/services/workspace-fetch.js';
 const origin='https://metro.test';
 const defer=()=>{let resolve;const promise=new Promise(r=>resolve=r);return {promise,resolve};};
 
+test('slow alarm diagnostics cannot delay settings saves or route calculation',async()=>{
+ const wait=defer();
+ const client=createWorkspaceFetch(async path=>{
+   if(path==='/api/alarm-runtime')await wait.promise;
+   return new Response('{}');
+ },{origin,timeoutMs:100});
+ const runtime=client('/api/alarm-runtime').catch(()=>{});
+ try {
+   await Promise.all([client('/api/app-state',{method:'POST'}),client('/api/commute/options',{method:'POST'})]);
+ } finally {wait.resolve();await runtime.catch(()=>{});}
+});
+
 test('a stalled workspace request times out and queued saves can resume',async()=>{
  let calls=0;
  const client=createWorkspaceFetch((_path,init)=>{
@@ -15,7 +27,7 @@ test('a stalled workspace request times out and queued saves can resume',async()
  assert.equal((await client('/api/app-state',{method:'POST'})).status,200);
 });
 
-test('parallel settings saves and runtime reads cannot overlap document revisions',async()=>{
+test('parallel settings saves cannot overlap settings document revisions',async()=>{
   let revision=0,active=0,maxActive=0;
   const client=createWorkspaceFetch(async()=>{
     const expected=revision;active++;maxActive=Math.max(maxActive,active);
@@ -23,8 +35,8 @@ test('parallel settings saves and runtime reads cannot overlap document revision
     assert.equal(revision,expected,'concurrent writes would cause PT409');
     revision++;active--;return new Response('{}');
   },{origin});
-  await Promise.all(['/api/app-state','/api/domain-sync','/api/device-profile','/api/alarm-runtime','/api/dispatch-queue'].map(path=>client(path)));
-  assert.equal(maxActive,1);assert.equal(revision,5);
+  await Promise.all(['/api/app-state','/api/domain-sync','/api/app-state'].map(path=>client(path)));
+  assert.equal(maxActive,1);assert.equal(revision,3);
 });
 
 test('workspace queue never blocks transit search, auth, static files or other origins',async()=>{
@@ -54,10 +66,10 @@ test('logout cancels queued account writes before they can use a later session',
 
 test('aborted queued requests are not sent; Web Locks coordinates separate clients',async()=>{
   let tail=Promise.resolve(),active=0,max=0;
-  const locks={request(name,options,run){assert.equal(name,'smart-metro-workspace');assert.equal(options.mode,'exclusive');const result=tail.then(run);tail=result.catch(()=>{});return result;}};
+  const locks={request(name,options,run){assert.equal(name,'smart-metro-settings');assert.equal(options.mode,'exclusive');const result=tail.then(run);tail=result.catch(()=>{});return result;}};
   const fetchImpl=async()=>{active++;max=Math.max(max,active);await new Promise(r=>setTimeout(r,2));active--;return new Response('{}');};
   const one=createWorkspaceFetch(fetchImpl,{origin,locks}),two=createWorkspaceFetch(fetchImpl,{origin,locks});
-  await Promise.all([one('/api/app-state'),two('/api/alarm-runtime')]);assert.equal(max,1);
+  await Promise.all([one('/api/app-state'),two('/api/domain-sync')]);assert.equal(max,1);
   const abort=new AbortController();abort.abort();
   await assert.rejects(one('/api/app-state',{signal:abort.signal}),{name:'AbortError'});
 });

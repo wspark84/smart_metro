@@ -23,10 +23,20 @@ async function view() {
 
 test('saving interrupted by a route update unlocks the form and retains the draft',async()=>{
  const v=await view();
- v.run('getHomeTripDraft().access="3";homeTripDraft.target="14:30";homeTripDraft.dirty=true;saveRemoteAppState=async()=>{};syncDomainSnapshot=async()=>{state.user.workAddress="changed destination";state.user.workLocation={lat:37.5,lng:127.2};};');
+ v.run('getHomeTripDraft().access="3";homeTripDraft.target="14:30";homeTripDraft.dirty=true;saveRemoteAppState=async()=>{state.user.workAddress="changed destination";state.user.workLocation={lat:37.5,lng:127.2};};');
  await v.run('submitHomeTrip()');
  assert.equal(v.run('homeTripSave.status'),'error');
  assert.equal(v.run('homeTripDraft.target'),'14:30');
+});
+
+test('one confirmed atomic save applies the target and immediately requests calculation',async()=>{
+ const v=await view();
+ v.run('globalThis.calls=0;globalThis.calculations=0;saveState=()=>{};getHomeTripDraft().access="3";homeTripDraft.target="15:30";homeTripDraft.dirty=true;saveRemoteAppState=async()=>{calls++;};syncDomainSnapshot=async()=>{throw Error("must not require a second save");};queueAlarmPlanRefresh=()=>{};refreshVisibleTransit=async()=>{calculations++;};');
+ await v.run('submitHomeTrip()');
+ assert.equal(v.run('homeTripSave.status'),'saved');
+ assert.equal(v.run('state.user.requiredArrivalTime'),'15:30');
+ assert.equal(v.run('calls'),1);
+ assert.equal(v.run('calculations'),1);
 });
 
 test('mobile time inputs have fixed touch-friendly height instead of vertical flex growth',async()=>{
