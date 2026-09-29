@@ -2893,6 +2893,12 @@ function renderTopBar(screen, model) {
 
 function renderAuthScreen() {
   const pending = authMeta.status === "loading" || authMeta.submitStatus === "submitting";
+  // Unknown session state is not an anonymous session. OAuth callbacks and
+  // restored sessions must never paint the account chooser while being verified.
+  if (pending) return `<div class="app-shell"><main class="screen screen-form" aria-busy="true">
+    <section class="headline-block"><h1>스마트 메트로</h1>
+      <p role="status" aria-live="polite">${authMeta.submitStatus === "submitting" ? "로그인 연결 중…" : "연결 중…"}</p>
+    </section></main></div>`;
   const buttons = [["google", "구글"], ["kakao", "카카오"], ["naver", "네이버"]].map(([id, label]) => {
     const provider = authMeta.providerConfig?.providers?.[id];
     return `<button class="soft-button wide" data-action="start-social-auth" data-provider="${id}" ${provider?.ready && !pending ? "" : "disabled"}>${label}로 시작하기</button>

@@ -61,6 +61,20 @@ test('all five web screens render Korean controls without changing input values'
   }
 });
 
+test('session verification and OAuth redirect never flash the login chooser',async()=>{
+ const {context,app}=await makeView();
+ vm.runInContext('authMeta.status="loading";authMeta.user=null;render()',context);
+ assert.match(app.innerHTML,/role="status"/);
+ assert.doesNotMatch(app.innerHTML,/data-action="start-social-auth"|간편 로그인|자주 쓰는 계정으로/);
+ vm.runInContext('authMeta.status="anonymous";authMeta.submitStatus="submitting";render()',context);
+ assert.doesNotMatch(app.innerHTML,/data-action="start-social-auth"|간편 로그인/);
+ vm.runInContext('authMeta.submitStatus="idle";render()',context);
+ assert.match(app.innerHTML,/data-action="start-social-auth"/);
+ vm.runInContext('authMeta.status="error";authMeta.submitError="연결 실패";render()',context);
+ assert.match(app.innerHTML,/연결 실패/);
+ assert.match(app.innerHTML,/data-action="start-social-auth"/);
+});
+
 test('schedule only shows manual skip dates and hides holiday diagnostics and seven-day preview',async()=>{
  const {context,app}=await makeView();
  vm.runInContext('window.location.hash="#/schedule";render()',context);
