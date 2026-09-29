@@ -61,6 +61,14 @@ test('all five web screens render Korean controls without changing input values'
   }
 });
 
+test('schedule only shows manual skip dates and hides holiday diagnostics and seven-day preview',async()=>{
+ const {context,app}=await makeView();
+ vm.runInContext('window.location.hash="#/schedule";render()',context);
+ assert.match(app.innerHTML,/알람을 쉴 날짜/);
+ assert.match(app.innerHTML,/data-action="add-holiday"/);
+ assert.doesNotMatch(app.innerHTML,/공휴일 정보 갱신|마지막 확인|앞으로 7일|불러온 공휴일|data-action="sync-official-holidays"/);
+});
+
 test('an alarm plan with remaining triggers renders without an undefined variable', async () => {
   const {context,app} = await makeView();
   vm.runInContext(`window.location.hash='#/diagnostics';alarmPlanMeta.plan={remainingTriggers:1,todayStatus:{detail:'예정된 알람'},triggers:[{triggerAt:new Date().toISOString(),triggerKind:'normal',arrivalsMin:[5,10],notificationSpec:{riskLevel:'GREEN',body:'알람 안내'}}]};render();`,context);

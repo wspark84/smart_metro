@@ -1,4 +1,5 @@
 import { STOP_LIBRARY } from "../mock-data.js";
+import { scheduledReminderMinutes } from '../logic/trip-schedules.js';
 import {
   addMinutes,
   combineDateAndTime,
@@ -336,7 +337,7 @@ function buildDepartureAlarmPlan(state, today, options) {
       title:emergency.title,body:emergency.body,spokenText:emergency.body,emergencyKey,
       emergencyContextKey:stageKey,expiresAt:emergency.boardingAt,departureAt:emergency.leaveAt,
       fullScreen:true,volumePercent:100,vibrationRepeats:5}} : null;
-  const selectedReminders = DEPARTURE_REMINDER_MINUTES.filter(lead => !Array.isArray(state.schedule.reminderMinutes) || state.schedule.reminderMinutes.includes(lead));
+  const selectedReminders = state.tripId ? scheduledReminderMinutes(state.schedule) : DEPARTURE_REMINDER_MINUTES.filter(lead => !Array.isArray(state.schedule.reminderMinutes) || state.schedule.reminderMinutes.includes(lead));
   const allTriggers = scheduleState.firing && valid ? selectedReminders.map(lead => {
     const triggerAt = addMinutes(new Date(departureAt),-lead);
     const level = lead <= 3 ? 'RED' : lead <= 5 ? 'ORANGE' : lead <= 10 ? 'YELLOW' : 'GREEN';
@@ -360,7 +361,7 @@ function buildDepartureAlarmPlan(state, today, options) {
   }) : [];
   const triggers = allTriggers.filter(t=>Date.parse(t.triggerAt)>=today.getTime());
   return {generatedAt:today.toISOString(),dateKey:dateOnlyKey(today),todayStatus:scheduleState,
-    mode:'departure-deadline',departureAt:valid ? departureAt : null,
+    mode:'departure-deadline',tripId:state.tripId || null,departureAt:valid ? departureAt : null,
     planningObservation:{binding,snapshot,headway,gap,gapAt,stageKey,prediction:departurePrediction(boarding,today)},
     emergencyTrigger,emergencyContextKey:stageKey,
     stop:{id:stop.id,name:state.live.stationName || stop.name,stopCode:stop.stopCode},

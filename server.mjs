@@ -3331,10 +3331,26 @@ const server = createServer((request, response) => {
     void (async()=>{
       const startedAt = Date.now();
       if(request.method==='POST' && !isTrustedMutation(request)) {sendAuthJson(response,403,{error:'허용되지 않은 요청입니다.'});return;}
-      if(requestUrl.pathname==='/api/holidays') {sendAuthJson(response,200,await loadOfficialHolidayYear(requestUrl.searchParams.get('year')));return;}
       const auth=await createRequestAuth(request,response).resolve();
       const authenticatedAt = Date.now();
       if(!auth) {sendAuthJson(response,401,{error:'소셜 계정으로 로그인해 주세요.'});return;}
+      if(requestUrl.pathname==='/api/holidays') {
+        const year=requestUrl.searchParams.get('year');
+        const currentYear=Number(new Intl.DateTimeFormat('en',{timeZone:'Asia/Seoul',year:'numeric'}).format(new Date()));
+        if(![String(currentYear),String(currentYear+1)].includes(year)) {sendAuthJson(response,400,{error:'올해와 내년의 공휴일만 조회할 수 있습니다.'});return;}
+        // Coalesce the two year requests; persist before responding, independent of settings writes.
+        const result=await loadWithCache({key:['account-holiday-calendar',auth.user.id],ttlMs:60_000,allowStaleOnError:false,
+          loader:()=>runWithDocumentStorage(auth,createSupabaseGateway(),async()=>{
+            const files=buildUserFileMap(auth.user.id);
+            const runtime=await readAlarmRuntimeState(files.alarmRuntime) || {};
+            const calendar=await refreshHolidayCalendar(runtime.holidayCalendar || {});
+            if(calendar!==runtime.holidayCalendar) await writeAlarmRuntimeState({...runtime,holidayCalendar:calendar},files.alarmRuntime);
+            return {calendar};
+          })});
+        const calendar=result.value.calendar;
+        if(calendar.error) {sendAuthJson(response,503,{error:'공휴일 정보를 갱신하지 못했습니다. 기존 정보는 유지됩니다.'});return;}
+        sendAuthJson(response,200,{year,holidays:calendar.holidays.filter(item=>item.date.startsWith(`${year}-`)),fetchedAt:calendar.fetchedAt,source:'stored-calendar'});return;
+      }
       const input=await readJsonBody(request),files=buildUserFileMap(auth.user.id);
       const result=await runWithDocumentStorage(auth,createSupabaseGateway(),async()=>{
         if(['/api/app-state','/api/domain-sync'].includes(requestUrl.pathname)) {

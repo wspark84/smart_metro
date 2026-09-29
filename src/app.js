@@ -13,6 +13,7 @@
   normalizeBoardingAccessMin,
 } from "./logic/commute.js";
 import { buildConservativeReliabilityReport, buildConservativeWatchlistHighlight } from "./logic/conservative-report.js";
+import { holidayRefreshDue } from "./logic/holiday-calendar.js";
 import { buildDeliveryIntensityReport } from "./logic/delivery-intensity-report.js";
 import { buildLiveEtaGuard } from "./logic/live-eta-guard.js";
 import { resolveJourneyDuration, transitQueryForState, transitQueryKey } from "./logic/transit-journey.js";
@@ -1600,8 +1601,7 @@ async function syncScheduleHolidays(years = null) {
   const automatic = years === null;
   years ||= [String(year),String(year+1)];
   const complete = years.every(value=>state.holidaySync.loadedYears.includes(value));
-  if (automatic && now.getTime()-Date.parse(state.holidaySync.lastCheckedAt || '') <
-      (complete && !state.holidaySync.lastError ? 86400000 : 300000)) return;
+  if (automatic && (complete || state.holidaySync.lastError) && !holidayRefreshDue(state.holidaySync.lastCheckedAt, state.holidaySync.lastError, now)) return;
   const userId = authMeta.user?.id;
   holidayRefreshInFlight = true;
   state.holidaySync.status = 'loading';
@@ -5904,13 +5904,10 @@ function renderOnboarding() {
 
 function renderSchedule(screen, model) {
   return `<main class="screen screen-form with-bottom-nav" data-independent-schedules>${tripScheduleEditor.html()}
-    <details class="stack-panel"><summary>공휴일·쉬는 날짜 확인</summary>
-    <p>공식 공휴일 ${state.officialHolidays.length}일 · 마지막 확인 ${escapeHtml(formatSyncStamp(state.holidaySync.lastSyncedAt))}</p>
-    <button class="mini-button" data-action="sync-official-holidays">공휴일 정보 갱신</button>
-    <div class="holiday-list">${model.upcomingOfficialHolidays.map(h=>`<p>${escapeHtml(h.date)} · ${escapeHtml(h.name)}</p>`).join('')}</div>
+    <section class="stack-panel"><h2>알람을 쉴 날짜</h2>
     <div class="holiday-form"><input type="date" aria-label="쉬는 날짜" data-field="ui.holidayDraft" value="${escapeHtml(state.ui.holidayDraft)}" /><button class="mini-button" data-action="add-holiday">쉬는 날짜 추가</button></div>
     ${state.holidayDates.map(d=>`<p>${escapeHtml(d)} <button class="mini-button" data-action="remove-holiday" data-value="${escapeHtml(d)}">삭제</button></p>`).join('')}
-    </details></main>${renderBottomNav(screen)}`;
+    </section></main>${renderBottomNav(screen)}`;
 }
 
 function renderLegacySchedule(screen, model) {

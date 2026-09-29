@@ -108,7 +108,7 @@ export function reconcileAlarmRuntime(
       // Consume skipped stages together, but deliver only the most urgent one.
       // Stage keys stay stable when live ETAs move the departure deadline.
       if (trigger !== latestDepartureDue || latenessMs > 60_000 ||
-          currentNow.getTime() > Date.parse(plan.window.endAt) - 2*60_000) continue;
+          (plan.tripId ? currentNow.getTime() >= Date.parse(plan.departureAt) : currentNow.getTime() > Date.parse(plan.window.endAt) - 2*60_000)) continue;
     } else if (latenessMs > 90_000 || currentNow.getTime() > Date.parse(plan.window.endAt) + 90_000) continue;
     const event = buildTriggeredEvent({
       plan,

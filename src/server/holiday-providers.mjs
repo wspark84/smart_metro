@@ -1,5 +1,6 @@
 import { fetchWithTimeout } from "./upstream-fetch.mjs";
 import {loadWithCache} from './request-cache.mjs';
+import {holidayRefreshDue, koreanCalendarMonth} from '../logic/holiday-calendar.js';
 
 function xmlDecode(value) {
   return String(value ?? "")
@@ -114,7 +115,7 @@ export function holidayServiceKey(env = process.env) {
 export async function refreshHolidayCalendar(previous = {}, {now = new Date(), loader = loadOfficialHolidayYear} = {}) {
   const year = Number(new Intl.DateTimeFormat('en', {timeZone:'Asia/Seoul',year:'numeric'}).format(now));
   const years = [String(year), String(year + 1)];
-  if (previous.checkedAt && now.getTime() - Date.parse(previous.checkedAt) < 86400000 &&
+  if (!holidayRefreshDue(previous.checkedAt, previous.error, now) &&
       years.every(value => previous.years?.includes(value))) return previous;
   try {
     const results = await Promise.all(years.map(year => loader(year)));
@@ -127,7 +128,7 @@ export async function refreshHolidayCalendar(previous = {}, {now = new Date(), l
 
 export async function loadOfficialHolidayYear(year) {
   const normalizedYear = normalizeYear(year);
-  const result = await loadWithCache({key:['official-holidays',normalizedYear],ttlMs:86400000,
+  const result = await loadWithCache({key:['official-holidays',normalizedYear,koreanCalendarMonth(new Date())],ttlMs:31*86400000,
     allowStaleOnError:false,loader:()=>fetchOfficialHolidays({serviceKey:holidayServiceKey(),year:normalizedYear})});
   return {year:normalizedYear,holidays:result.value,fetchedAt:result.fetchedAt,source:result.cacheStatus};
 }

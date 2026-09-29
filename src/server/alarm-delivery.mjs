@@ -54,7 +54,7 @@ export function reconcileAlarmDelivery(deliveryState = createAlarmDeliveryState(
   if (plan?.mode === 'departure-deadline' && next.currentAlert &&
       !emergency &&
       (next.currentAlert.notificationSpec?.departureAt !== plan.departureAt ||
-       currentNow.getTime() > Date.parse(plan.departureAt) - 2*60_000)) {
+        (plan.tripId ? currentNow.getTime() >= Date.parse(plan.departureAt) : currentNow.getTime() > Date.parse(plan.departureAt) - 2*60_000))) {
     if (next.currentAlert.triggerKey) next.handledTriggerKeys.push(next.currentAlert.triggerKey);
     next.currentAlert = null;
   }

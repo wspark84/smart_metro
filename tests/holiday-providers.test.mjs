@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { fetchOfficialHolidays, normalizeHolidayItems, parseHolidayXml, refreshHolidayCalendar, holidayServiceKey } from "../src/server/holiday-providers.mjs";
+import {holidayRefreshDue,koreanCalendarMonth} from '../src/logic/holiday-calendar.js';
 
 test('holiday key prefers dedicated key and supports the shared public data key',()=>{
   assert.equal(holidayServiceKey({HOLIDAY_API_SERVICE_KEY:'holiday',TAGO_SERVICE_KEY:'shared'}),'holiday');
@@ -13,16 +14,27 @@ test('gateway errors and malformed responses never become an empty holiday calen
   assert.throws(()=>parseHolidayXml('<html>error</html>'));
 });
 
-test('automatic holiday calendar loads this and next year, checks daily and retains data on failure',async()=>{
+test('automatic holiday calendar loads this and next year once per Korean calendar month and retains data on failure',async()=>{
   const called=[];
   const loader=async year=>{called.push(year);return {holidays:[{date:`${year}-01-01`,name:'새해',isHoliday:true}],fetchedAt:'2026-09-29T00:00:00Z'};};
   const first=await refreshHolidayCalendar({}, {now:new Date('2026-09-29T00:00:00Z'),loader});
   assert.deepEqual(called,['2026','2027']);
   assert.equal(first.holidays.length,2);
   assert.equal(await refreshHolidayCalendar(first,{now:new Date('2026-09-29T10:00:00Z'),loader}),first);
-  const failed=await refreshHolidayCalendar(first,{now:new Date('2026-09-30T00:01:00Z'),loader:async()=>{throw Error('offline');}});
+  assert.equal(await refreshHolidayCalendar(first,{now:new Date('2026-09-30T14:59:59Z'),loader}),first);
+  assert.equal(called.length,2);
+  const failed=await refreshHolidayCalendar(first,{now:new Date('2026-09-30T15:00:00Z'),loader:async()=>{throw Error('offline');}});
   assert.deepEqual(failed.holidays,first.holidays);
   assert.ok(failed.error);
+});
+
+test('holiday refresh uses Korean month boundaries and retries failures only after an hour',()=>{
+ assert.equal(koreanCalendarMonth('2026-09-30T15:00:00Z'),'2026-10');
+ assert.equal(holidayRefreshDue('2026-09-01T00:00:00Z',false,new Date('2026-09-30T14:59:59Z')),false);
+ assert.equal(holidayRefreshDue('2026-09-01T00:00:00Z',false,new Date('2026-09-30T15:00:00Z')),true);
+ assert.equal(holidayRefreshDue('2026-10-01T00:00:00Z',true,new Date('2026-10-01T00:59:59Z')),false);
+ assert.equal(holidayRefreshDue('2026-10-01T00:00:00Z',true,new Date('2026-10-01T01:00:00Z')),true);
+ assert.equal(holidayRefreshDue('invalid',false,new Date()),true);
 });
 
 test("parseHolidayXml extracts raw holiday rows from the official XML response", () => {

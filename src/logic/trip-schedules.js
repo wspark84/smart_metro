@@ -1,6 +1,13 @@
 import { isValidLocation } from './commute.js';
 
 export const REMINDER_CHOICES = [20, 10, 5, 3];
+export const ALARM_START_CHOICES = [30, 60, 120];
+export const ALARM_INTERVAL_CHOICES = [1, 2, 3, 5, 10, 15, 30];
+export function scheduledReminderMinutes(schedule) {
+  const start = ALARM_START_CHOICES.includes(Number(schedule.alarmStartLeadMin)) ? Number(schedule.alarmStartLeadMin) : 30;
+  const interval = ALARM_INTERVAL_CHOICES.includes(Number(schedule.repeatIntervalMin)) ? Number(schedule.repeatIntervalMin) : 5;
+  return Array.from({length:Math.ceil(start / interval)}, (_, index) => start - index * interval);
+}
 export function reminderMinutes(values) {
   return REMINDER_CHOICES.filter(value => (Array.isArray(values) ? values : REMINDER_CHOICES).includes(value));
 }
@@ -22,7 +29,9 @@ export function normalizeTripSchedules(values) {
       location:{lat:Number(value.destination.location.lat),lng:Number(value.destination.location.lng)},
     } : null,
     daysOfWeek: [...new Set((Array.isArray(value.daysOfWeek) ? value.daysOfWeek : [1,2,3,4,5]).filter(day => Number.isInteger(day) && day >= 0 && day <= 6))],
-    reminderMinutes: reminderMinutes(value.reminderMinutes), skipHolidays:value.skipHolidays !== false,
+    alarmStartLeadMin: ALARM_START_CHOICES.includes(Number(value.alarmStartLeadMin)) ? Number(value.alarmStartLeadMin) : 30,
+    repeatIntervalMin: ALARM_INTERVAL_CHOICES.includes(Number(value.repeatIntervalMin)) ? Number(value.repeatIntervalMin) : 5,
+    skipHolidays:value.skipHolidays !== false,
     snoozeDate: /^\d{4}-\d{2}-\d{2}$/.test(value.snoozeDate || '') ? value.snoozeDate : null,
   }));
 }
@@ -33,7 +42,8 @@ export function scheduleValidation(trip) {
   if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(trip.requiredArrivalTime)) return '도착 목표시간을 입력해 주세요.';
   if (!Number.isFinite(Number(trip.boardingAccessMin)) || Number(trip.boardingAccessMin)<0 || Number(trip.boardingAccessMin)>180) return '정류장까지 걸리는 시간을 0~180분으로 입력해 주세요.';
   if (!trip.daysOfWeek?.length) return '반복할 요일을 하나 이상 선택해 주세요.';
-  if (!reminderMinutes(trip.reminderMinutes).length) return '사전 알림을 하나 이상 선택해 주세요.';
+  if (trip.alarmStartLeadMin != null && !ALARM_START_CHOICES.includes(Number(trip.alarmStartLeadMin))) return '알람 시작 시점을 선택해 주세요.';
+  if (trip.repeatIntervalMin != null && !ALARM_INTERVAL_CHOICES.includes(Number(trip.repeatIntervalMin))) return '알람 반복 간격을 선택해 주세요.';
   return '';
 }
 export function tripScheduleState(base, trip) {
@@ -42,6 +52,6 @@ export function tripScheduleState(base, trip) {
     commute:{...base.commute,routingMode:'all-routes',selectedStopId:trip.departure?.live?.stationId || trip.departure?.live?.nodeId || '',stopLocation:trip.departure?.location || null,
       boardingAccessMin:trip.boardingAccessMin,homeToStopWalkMin:trip.boardingAccessMin,transitJourney:null,automaticOptions:null,planningHeadwayMin:null,planningOfficialHeadwayMin:null,planningBindingKey:''},
     live:{...base.live,...trip.departure?.live,routeId:'',routeNumber:'',order:'',snapshot:null,lastSyncedAt:null},
-    schedule:{...base.schedule,enabled:trip.enabled && !scheduleValidation(trip),oneTimeDate:null,repeatPreset:'CUSTOM',daysOfWeek:trip.daysOfWeek,skipHolidays:trip.skipHolidays,snoozeDate:trip.snoozeDate,reminderMinutes:trip.reminderMinutes},
+    schedule:{...base.schedule,enabled:trip.enabled && !scheduleValidation(trip),oneTimeDate:null,repeatPreset:'CUSTOM',daysOfWeek:trip.daysOfWeek,skipHolidays:trip.skipHolidays,snoozeDate:trip.snoozeDate,alarmStartLeadMin:trip.alarmStartLeadMin ?? 30,repeatIntervalMin:trip.repeatIntervalMin ?? 5},
   };
 }

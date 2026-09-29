@@ -1,4 +1,4 @@
-import { REMINDER_CHOICES, normalizeTripSchedules, scheduleValidation } from './logic/trip-schedules.js';
+import { ALARM_START_CHOICES, ALARM_INTERVAL_CHOICES, normalizeTripSchedules, scheduleValidation } from './logic/trip-schedules.js';
 import { searchAddressPlaces } from './services/places.js';
 import { searchNearbyStations, searchLiveStations } from './services/live-bus.js';
 import { mountKakaoBoardingMap } from './services/kakao-map.js';
@@ -18,7 +18,7 @@ export function createTripScheduleEditor({getState, saveTrips, render, mapKey, g
   function open(trip) {
     reset(); keyword='';destinationKeyword='';mode=trip?.departure?.live?.provider==='subway'?'subway':'bus';
     draft = trip ? clone(trip) : {id:crypto.randomUUID(),name:'출근',enabled:true,requiredArrivalTime:'09:00',boardingAccessMin:5,
-      departure:null,destination:null,daysOfWeek:[1,2,3,4,5],reminderMinutes:[20,10,5,3],skipHolidays:true,snoozeDate:null};
+      departure:null,destination:null,daysOfWeek:[1,2,3,4,5],alarmStartLeadMin:30,repeatIntervalMin:5,skipHolidays:true,snoozeDate:null};
     center = draft.departure?.location || {lat:37.5665,lng:126.978}; render();
   }
   async function load(fn, apply) {
@@ -41,7 +41,7 @@ export function createTripScheduleEditor({getState, saveTrips, render, mapKey, g
       ${trips.length?trips.map(trip=>`<section class="stack-panel"><h2>${esc(trip.name)} · ${trip.enabled?'알람 켜짐':'알람 꺼짐'}</h2>
         <p>${esc(trip.departure?.live?.stationName)} → ${esc(trip.destination?.address)}</p>
         <p>${esc(trip.requiredArrivalTime)} 도착 · ${trip.daysOfWeek.map(d=>days[d]).join('·')} · ${trip.skipHolidays?'공휴일 쉬기':'공휴일도 알림'}</p>
-        <p>출발 ${trip.reminderMinutes.join('·')}분 전 알림 · 정류장까지 ${trip.boardingAccessMin}분</p>
+        <p>출발 ${trip.alarmStartLeadMin >= 60 ? `${trip.alarmStartLeadMin / 60}시간` : `${trip.alarmStartLeadMin}분`} 전부터 · ${trip.repeatIntervalMin}분마다 알림</p>
         <p role="status">${esc(getRuntime()?.tripContexts?.[trip.id]?.lastError || (getRuntime()?.tripContexts?.[trip.id]?.runtime?.nextTriggerAt ? `다음 알림: ${new Date(getRuntime().tripContexts[trip.id].runtime.nextTriggerAt).toLocaleTimeString('ko-KR',{timeZone:'Asia/Seoul',hour:'2-digit',minute:'2-digit'})}` : '해당 요일의 도착 목표 6시간 전부터 경로를 확인합니다.'))}</p>
         <div class="choice-grid">${button('edit','수정',`data-id="${esc(trip.id)}"`)}${button('toggle',trip.enabled?'알람 끄기':'알람 켜기',`data-id="${esc(trip.id)}"`)}${button('departed',trip.snoozeDate===dateOnlyKey(new Date())?'오늘 출발 완료':'오늘 출발했어요',`data-id="${esc(trip.id)}"`)}${button('delete','삭제',`data-id="${esc(trip.id)}"`)}</div></section>`).join(''):'<section class="stack-panel"><p>아직 등록한 일정이 없습니다. 출근 일정을 새로 입력해 주세요.</p></section>'}
       ${trips.length<10?button('new','+ 출근·반복 일정 추가'):''}`;
@@ -61,9 +61,9 @@ export function createTripScheduleEditor({getState, saveTrips, render, mapKey, g
       <div class="field-grid"><label class="field-block"><span>도착 목표시간</span><input type="time" data-trip-input="requiredArrivalTime" value="${esc(draft.requiredArrivalTime)}" /></label>
       <label class="field-block"><span>정류장까지 (분)</span><input type="number" min="0" max="180" data-trip-input="boardingAccessMin" value="${esc(draft.boardingAccessMin)}" /></label></div>
       <h3>반복 요일</h3><div class="weekday-grid">${days.map((d,i)=>`<button class="weekday-chip ${draft.daysOfWeek.includes(i)?'selected':''}" aria-pressed="${draft.daysOfWeek.includes(i)}" data-trip-action="day" data-value="${i}">${d}</button>`).join('')}</div>
-      <h3>출발 전 알림 (여러 개 선택 가능)</h3><div class="choice-grid">${REMINDER_CHOICES.map(m=>`<button class="choice-chip ${draft.reminderMinutes.includes(m)?'selected':''}" aria-pressed="${draft.reminderMinutes.includes(m)}" data-trip-action="reminder" data-value="${m}">${m}분 전</button>`).join('')}</div>
+      <h3>알람 시작</h3><div class="choice-grid">${ALARM_START_CHOICES.map(m=>`<button class="choice-chip ${Number(draft.alarmStartLeadMin)===m?'selected':''}" aria-pressed="${Number(draft.alarmStartLeadMin)===m}" data-trip-action="alarm-start" data-value="${m}">출발 ${m >= 60 ? `${m/60}시간` : `${m}분`} 전부터</button>`).join('')}</div>
+      <h3>알람 반복 간격</h3><div class="choice-grid">${ALARM_INTERVAL_CHOICES.map(m=>`<button class="choice-chip ${Number(draft.repeatIntervalMin)===m?'selected':''}" aria-pressed="${Number(draft.repeatIntervalMin)===m}" data-trip-action="alarm-interval" data-value="${m}">${m}분마다</button>`).join('')}</div>
       <label><input type="checkbox" data-trip-input="skipHolidays" ${draft.skipHolidays?'checked':''} /> 공휴일에는 알람 쉬기</label>
-      <p class="field-help">공식 공휴일 정보와 직접 추가한 휴일을 적용합니다. 실시간 도착이 앞당겨지면 긴급 알림은 별도로 동작합니다.</p>
       <label><input type="checkbox" data-trip-input="enabled" ${draft.enabled?'checked':''} /> 이 일정 알람 켜기</label>
       ${error?`<p role="alert">${esc(error)}</p>`:''}
       <div class="choice-grid">${button('save',saving?'저장 중…':'일정 저장')}${button('cancel','취소')}</div></section>`;
@@ -91,7 +91,8 @@ export function createTripScheduleEditor({getState, saveTrips, render, mapKey, g
     else if(action==='departed' && trip)void commit(trips.map(t=>t.id===trip.id?{...t,snoozeDate:dateOnlyKey(new Date())}:t));
     else if(draft){
       if(action==='save'){error=scheduleValidation(draft);if(error)render();else void commit([...trips.filter(t=>t.id!==draft.id),draft]);}
-      else if(action==='day' || action==='reminder'){const key=action==='day'?'daysOfWeek':'reminderMinutes',v=Number(target.dataset.value);draft[key]=draft[key].includes(v)?draft[key].filter(x=>x!==v):[...draft[key],v];render();}
+      else if(action==='day'){const v=Number(target.dataset.value);draft.daysOfWeek=draft.daysOfWeek.includes(v)?draft.daysOfWeek.filter(x=>x!==v):[...draft.daysOfWeek,v];render();}
+      else if(action==='alarm-start' || action==='alarm-interval'){const key=action==='alarm-start'?'alarmStartLeadMin':'repeatIntervalMin';draft[key]=Number(target.dataset.value);render();}
       else if(action==='bus' || action==='subway'){request++;loading=false;mode=action;places=[];stations=[];selected=null;render();}
       else if(action==='search-origin' && keyword.trim())void load(()=>mode==='bus'?searchAddressPlaces(keyword):searchLiveStations({provider:'subway',keyword}),p=>{if(mode==='bus')places=(p.results || []).filter(isValidLocation);else stations=(p.stations || []).map(s=>({...s,provider:'subway'}));});
       else if(action==='place'){const p=places[Number(target.dataset.index)];if(p){center={lat:p.lat,lng:p.lng};places=[];stations=[];selected=null;render();}}
