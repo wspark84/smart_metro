@@ -150,6 +150,7 @@ button:not(:disabled):active { filter: brightness(.90); }
 .home-target small, .home-access-time small { display: inline; font-size: 11px; font-weight: 400; color: var(--surface-muted); margin-left: 3px; }
 .home-target input { width: 100%; min-height: 44px; padding: 4px; font-weight: 750; }
 .home-access-time input { font-size: 18px; font-weight: 700; width: 100%; min-height: 44px; padding: 4px 8px; }
+.home-time-fields input { height: 44px; max-height: 44px; flex: 0 0 auto; box-sizing: border-box; }
 .home-trip #boarding-access-help { font-size: 12px; line-height: 1.6; margin: 8px 0 12px; }
 .home-trip [data-trip-save-status] { font-size: 12px; line-height: 1.4; margin: 4px 0; }
 .home-trip [data-trip-save-status]:empty { display: none; }
@@ -225,8 +226,8 @@ button:not(:disabled):active { filter: brightness(.90); }
   .home-countdown, .home-trip, .home-transit-detail { padding-inline: 14px; }
   .home-trip-field { padding-right: 82px; }
   .home-trip-field strong { font-size: 15px; }
-  .home-target { flex-wrap: wrap; }
-  .home-target input { flex: 1 1 140px; max-width: 100%; }
+  .home-target { flex-wrap: nowrap; }
+  .home-target input { max-width: 100%; }
   .home-editor .holiday-form { grid-template-columns: minmax(0, 1fr) auto; }
 }
 @media (prefers-reduced-motion: reduce) {

@@ -5,6 +5,16 @@ import {createWorkspaceFetch} from '../src/services/workspace-fetch.js';
 const origin='https://metro.test';
 const defer=()=>{let resolve;const promise=new Promise(r=>resolve=r);return {promise,resolve};};
 
+test('a stalled workspace request times out and queued saves can resume',async()=>{
+ let calls=0;
+ const client=createWorkspaceFetch((_path,init)=>{
+   if(++calls>1)return Promise.resolve(new Response('{}'));
+   return new Promise((resolve,reject)=>init.signal.addEventListener('abort',()=>reject(init.signal.reason),{once:true}));
+ },{origin,timeoutMs:20});
+ await assert.rejects(client('/api/alarm-runtime'),{name:'TimeoutError'});
+ assert.equal((await client('/api/app-state',{method:'POST'})).status,200);
+});
+
 test('parallel settings saves and runtime reads cannot overlap document revisions',async()=>{
   let revision=0,active=0,maxActive=0;
   const client=createWorkspaceFetch(async()=>{

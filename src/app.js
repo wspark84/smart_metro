@@ -130,6 +130,8 @@ function homeTripAlreadySaved() {
 
 async function submitHomeTrip() {
   if (homeTripSave.status === "saving" || homeTripAlreadySaved()) return;
+  // Submitting is an explicit end to editing, unlike background refreshes.
+  if (document.activeElement?.type === "time") document.activeElement.blur();
   const draft = getHomeTripDraft();
   const access = normalizeBoardingAccessMin(draft.access);
   if (access === null || !/^([01]\d|2[0-3]):[0-5]\d$/.test(draft.target)) {
@@ -167,7 +169,14 @@ async function submitHomeTrip() {
   } catch (error) {
     if (authMeta.user?.id !== userId) return;
     homeTripSave = {status:"error",key:"",message:"저장 완료를 확인하지 못했습니다. 입력값은 유지됩니다. 정보 입력 완료를 눌러 다시 시도해 주세요."};
-  } finally { if (authMeta.user?.id === userId) render(); }
+  } finally {
+    // Route discovery can update the route while the two saves are in flight.
+    // Never leave the form locked when an obsolete result is discarded.
+    if (homeTripSave.status === "saving") {
+      homeTripSave = {status:"error",key:"",message:"저장 중 경로 정보가 변경되었습니다. 입력값을 확인하고 다시 저장해 주세요."};
+    }
+    if (authMeta.user?.id === userId) render();
+  }
 }
 let audioContext = null;
 let visibleTransitRefreshPending = false;

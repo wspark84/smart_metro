@@ -21,6 +21,20 @@ async function view() {
   return {run, app, html: setup => run(`(() => {const model=getDashboardModel();model.homePlan=null;${setup || ''};return renderHome('home',model);})()`) };
 }
 
+test('saving interrupted by a route update unlocks the form and retains the draft',async()=>{
+ const v=await view();
+ v.run('getHomeTripDraft().access="3";homeTripDraft.target="14:30";homeTripDraft.dirty=true;saveRemoteAppState=async()=>{};syncDomainSnapshot=async()=>{state.user.workAddress="changed destination";state.user.workLocation={lat:37.5,lng:127.2};};');
+ await v.run('submitHomeTrip()');
+ assert.equal(v.run('homeTripSave.status'),'error');
+ assert.equal(v.run('homeTripDraft.target'),'14:30');
+});
+
+test('mobile time inputs have fixed touch-friendly height instead of vertical flex growth',async()=>{
+ const css=await readFile(new URL('../src/metro-theme.css',import.meta.url),'utf8');
+ assert.doesNotMatch(css,/\.home-target input\s*\{[^}]*flex:\s*1 1 140px/);
+ assert.match(css,/\.home-time-fields input\s*\{[^}]*height:\s*44px/);
+});
+
 test('background rendering never replaces a focused native time picker',async()=>{
  const v=await view();v.run('render();');
  v.app.innerHTML='existing input node and open picker';
