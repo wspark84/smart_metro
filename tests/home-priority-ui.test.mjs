@@ -69,7 +69,7 @@ test('time picker does not block navigation or session expiry',async()=>{
 test('home prioritizes countdown, core inputs, submit, and only then transit detail', async () => {
   const v = await view();
   const html = v.html();
-  const markers = ['class="home-countdown ', 'class="home-trip"', 'data-editor="departure"', 'data-editor="destination"', 'data-trip-field="target"', 'data-trip-field="access"', 'data-action="complete-home-trip"', 'class="home-alarm-actions"', 'data-action="departed"', 'class="home-timetable"', 'class="home-transit-detail"', 'class="home-help"'];
+  const markers = ['class="home-countdown ', 'class="home-trip"', 'data-editor="departure"', 'data-editor="destination"', 'data-trip-field="target"', 'data-trip-field="access"', 'data-action="complete-home-trip"', 'class="home-alarm-actions"', 'data-action="departed"', 'class="home-timetable"', 'data-home-disclosure="evidence"', 'data-home-disclosure="help"'];
   const indexes = markers.map(marker => html.indexOf(marker));
   indexes.forEach((index, i) => assert.ok(index >= 0 && (!i || index > indexes[i-1]), markers[i]));
 });

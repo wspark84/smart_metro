@@ -177,6 +177,11 @@ button:not(:disabled):active { filter: brightness(.90); }
 .home-alarm-actions > p { font-size: 12px; line-height: 1.7; margin: 10px 0; }
 .home-help { padding: 12px 18px; }
 .home-help p { font-size: 12px; line-height: 1.65; }
+.home-disclosure { border-bottom: 1px solid var(--outline); }
+.home-disclosure > summary { padding: 14px 18px; min-height: 48px; box-sizing: border-box; cursor: pointer; font-size: 14px; font-weight: 700; }
+.home-disclosure > summary:focus-visible { outline: 2px solid var(--surface-ink); outline-offset: -3px; }
+.home-transit-detail.home-disclosure, .home-help.home-disclosure { padding: 0; }
+.home-transit-detail.home-disclosure > p, .home-help.home-disclosure > p { margin: 8px 18px 12px; }
 .bottom-nav {
   z-index: 40; width: min(100%, 480px); border: 1px solid var(--outline); border-bottom: 0;
   border-radius: 0; background: var(--surface); box-shadow: none; backdrop-filter: none;

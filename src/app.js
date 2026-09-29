@@ -453,6 +453,7 @@ function applyPushGatewaySummary(summary, loadedAt = new Date().toISOString()) {
 }
 
 function resetWorkspaceMeta() {
+  homeDisclosureOpen.clear();
   tripScheduleEditor.reset();
   automaticOptions = null;
   homeTripDraft = null;
@@ -5069,6 +5070,10 @@ function renderServerEventPanel() {
 }
 
 let homeEditor = "";
+const homeDisclosureOpen = new Set();
+function homeDisclosureAttributes(key) {
+  return `data-home-disclosure="${key}"${homeDisclosureOpen.has(key) ? ' open' : ''}`;
+}
 let boardingPreview = {candidate:null,route:null,routes:[],status:"idle",error:"",request:0};
 let boardingArea = {center:null,keyword:"",results:[],status:"idle",error:"",request:0,revision:0,mode:"name"};
 
@@ -5357,11 +5362,13 @@ function renderHome(screen, model) {
       </div>
       <button class="primary-cta" data-action="departed">출발했어요</button>
     </section>
+    <details class="home-disclosure" ${homeDisclosureAttributes('timetable')}><summary>교통편 시간표</summary>
     ${renderHomeTimetable(model, state.live.routeNumber ? `${state.live.routeNumber}${state.live.provider === "subway" ? "" : "번"}` : "", subwayDirection ? `${subwayDirection.direction} · ${subwayDirection.nextStation} 방면` : "")}
+    </details>
     <div class="home-countdown-actions"><button class="ghost-link" data-action="sync-live-arrivals" ${!isLiveConfigured(state) || state.live.status === "loading" ? "disabled" : ""}>${state.live.status === "loading" ? "확인 중…" : "도착정보 새로고침"}</button><button class="ghost-link" data-action="edit-home-trip" data-editor="route" aria-expanded="${homeEditor === "route"}">목적지 경로 확인</button></div>
     ${homeEditor === "route" ? renderCommuteEstimatePanel() : ""}
-    <section class="home-transit-detail" aria-label="출발시간 계산 근거와 교통편">
-      <h2>교통편과 계산 근거</h2>
+    <details class="home-transit-detail home-disclosure" ${homeDisclosureAttributes('evidence')} aria-label="출발시간 계산 근거와 교통편">
+      <summary>교통편과 계산 근거</summary>
       ${confirmed ? `<p>놓치면 늦는 마지막 탑승편</p>` : ""}
       <p class="home-countdown-route">${hasPrediction ? `${escapeHtml(formatClock(addMinutes(model.now, target.arrivalMinutes)))} 탑승 예상 · ` : ""}${escapeHtml(lineLabel || model.stop.name)}</p>
       ${departure ? `<p class="home-evidence-note">교통편 도착까지 ${Math.ceil(target.arrivalMinutes)}분 · 이동시간 ${departure.accessMin}분</p>` : ""}
@@ -5377,14 +5384,16 @@ function renderHome(screen, model) {
       ${state.live.snapshot?.arrivalMessage ? `<p class="home-evidence-note">${escapeHtml(state.live.snapshot.arrivalMessage)}</p>` : ''}
       ${hasPrediction && !confirmed && !target.estimated ? `<p class="home-evidence-note">조회된 교통편 기준이며, 마지막 탑승편으로 확정되지 않았습니다.</p>` : ""}
       <p class="field-help" role="status">${plan?.headwayInfo ? `배차간격 자동 조회 · ${escapeHtml(plan.headwayInfo.text)} · ${escapeHtml(plan.headwayInfo.source)}. ${plan.headwayInfo.min !== plan.headwayInfo.max ? `배차간격 중간값 ${plan.headwayInfo.minutes}분 기준 예상입니다. 실제 운행 기록의 평균은 아닙니다. ` : ""}실제 운행 시각은 실시간 정보로 갱신합니다.` : "배차간격은 선택한 노선의 공식 API에서 자동으로 조회합니다. 직접 입력할 필요가 없습니다."}</p>
-    </section>
-    <section class="home-help" aria-label="입력과 알림 안내">
+    </details>
+    ${persistenceMeta.saveStatus === 'error' || domainMeta.syncStatus === 'error' ? `<div class="home-help">${renderHomeStorageStatus()}</div>` : ''}
+    <details class="home-help home-disclosure" ${homeDisclosureAttributes('help')} aria-label="입력과 알림 안내">
+      <summary>입력·알림 도움말</summary>
       ${renderHomeStorageStatus()}
       <p class="field-help">이동시간·도착 목표는 정보 입력 완료를 누르면 적용됩니다. 출발지와 도착지 선택은 각 선택 버튼에서 저장됩니다.</p>
       <p class="field-help" id="boarding-access-help">첫 교통편이 마을버스라면 약 3분 여유를 더해 입력하세요. 예: 이동 5분 + 여유 3분 = 8분. 자동 추가되지는 않습니다.</p>
       <p class="field-help">정보 입력을 완료하면 집에서 출발할 시각의 20분·10분·5분·3분 전에 단계별로 알립니다. 실시간 정보의 오차를 고려해 1분 전과 출발 시각 알람은 보내지 않습니다. 예상 정보는 예상이라고 표시하며, 실시간 정보로 갱신합니다.<br>출발했어요를 누르면 오늘 남은 알람을 중지합니다.</p>
       <p class="field-help">앱을 닫은 상태의 알림 수신은 아직 검증되지 않았습니다. 중요한 일정은 휴대폰 기본 알람도 함께 설정해 주세요.</p>
-    </section>
+    </details>
   </main>${renderBottomNav(screen)}`;
 }
 
@@ -6335,6 +6344,13 @@ function previewTts() {
   window.speechSynthesis.cancel();
   window.speechSynthesis.speak(utterance);
 }
+
+app.addEventListener('toggle', (event) => {
+  const target = event.target;
+  if (!target?.isConnected || !target.dataset?.homeDisclosure) return;
+  if (target.open) homeDisclosureOpen.add(target.dataset.homeDisclosure);
+  else homeDisclosureOpen.delete(target.dataset.homeDisclosure);
+}, true);
 
 app.addEventListener("click", (event) => {
   const tripTarget=event.target.closest('[data-trip-action]');

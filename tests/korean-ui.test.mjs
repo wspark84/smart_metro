@@ -69,6 +69,21 @@ test('schedule only shows manual skip dates and hides holiday diagnostics and se
  assert.doesNotMatch(app.innerHTML,/공휴일 정보 갱신|마지막 확인|앞으로 7일|불러온 공휴일|data-action="sync-official-holidays"/);
 });
 
+test('home folds timetable, evidence and help by default while retaining selected disclosure state',async()=>{
+ const {context,app}=await makeView();
+ vm.runInContext('render()',context);
+ for(const key of ['timetable','evidence','help']) {
+   assert.match(app.innerHTML,new RegExp(`<details[^>]*data-home-disclosure="${key}"`));
+   assert.doesNotMatch(app.innerHTML,new RegExp(`<details[^>]*data-home-disclosure="${key}"[^>]* open`));
+ }
+ assert.match(app.innerHTML,/<summary>교통편과 계산 근거<\/summary>/);
+ assert.match(app.innerHTML,/data-action="complete-home-trip"/);
+ assert.match(app.innerHTML,/data-action="departed"/);
+ vm.runInContext('homeDisclosureOpen.add("evidence");render();render()',context);
+ assert.match(app.innerHTML,/data-home-disclosure="evidence" open/);
+ assert.doesNotMatch(app.innerHTML,/data-home-disclosure="help" open/);
+});
+
 test('an alarm plan with remaining triggers renders without an undefined variable', async () => {
   const {context,app} = await makeView();
   vm.runInContext(`window.location.hash='#/diagnostics';alarmPlanMeta.plan={remainingTriggers:1,todayStatus:{detail:'예정된 알람'},triggers:[{triggerAt:new Date().toISOString(),triggerKind:'normal',arrivalsMin:[5,10],notificationSpec:{riskLevel:'GREEN',body:'알람 안내'}}]};render();`,context);
