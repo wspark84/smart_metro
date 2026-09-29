@@ -74,6 +74,12 @@ test('home prioritizes countdown, core inputs, submit, and only then transit det
   indexes.forEach((index, i) => assert.ok(index >= 0 && (!i || index > indexes[i-1]), markers[i]));
 });
 
+test('zero-minute departure tells the user to leave now', async () => {
+  const v = await view();
+  const html = v.html("model.dataSource='LIVE';model.risk=evaluateLateRisk({now:model.now,requiredArrivalTime:'23:59',route:{boardingAccessMin:3,onboardToDestinationMin:20},busArrivalsMin:[3]});");
+  assert.match(html, /0<span>지금 나가세요!<\/span>/);
+});
+
 test('missing access time never substitutes vehicle ETA into the home-departure hero', async () => {
   const v = await view();
   const html = v.html("model.dataSource='LIVE';model.risk.departure=null;model.risk.targetResult={level:'GREEN',arrivalMinutes:10,deltaMinutes:10};");

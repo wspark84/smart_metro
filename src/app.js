@@ -5334,7 +5334,7 @@ function renderHome(screen, model) {
   return `<main class="screen screen-home">
     <section class="home-countdown ${urgent ? "is-urgent" : ""}" aria-labelledby="home-countdown-title">
       <div class="home-countdown-heading"><h1 id="home-countdown-title">${title}</h1><span class="home-prediction-label" data-home-evidence>${tripDraft.dirty ? "미적용 · 이전 설정 기준" : retaining ? refreshing ? "갱신 중 · 이전 계산 유지" : "이전 정보 · 새 정보 확인 중" : departureStatus}</span></div>
-      <div class="home-countdown-value">${departure ? departure.minutes : "—"}<span>${plan?.urgentBoarding ? "지금 출발 · 탑승 미확정" : departure ? departure.remainingMin < 0 ? "출발 기한 지남" : departure.remainingMin < 1 ? "지금 출발" : "분 안에 출발" : "아직 계산할 수 없어요"}</span></div>
+      <div class="home-countdown-value">${departure ? departure.minutes : "—"}<span>${plan?.urgentBoarding ? "지금 나가세요! · 탑승 미확정" : departure ? departure.remainingMin < 0 ? "출발 기한 지남" : departure.remainingMin < 1 ? "지금 나가세요!" : "분 안에 출발" : "아직 계산할 수 없어요"}</span></div>
       ${calculationReason ? `<p class="field-help" role="status">${escapeHtml(calculationReason)}</p>` : ""}
       ${retaining ? `<p class="field-help" role="status">새 도착정보를 확인할 때까지 이전 계산을 표시합니다. 현재 운행과 다를 수 있습니다.</p>` : ""}
       ${earlyNotice ? `<p class="home-last-warning" role="alert">긴급 · 실시간 도착이 ${Math.floor(earlyNotice.advancedMin)}분 앞당겨졌어요. 지금 바로 출발하세요.</p>` : ''}
