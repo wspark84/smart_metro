@@ -3339,7 +3339,15 @@ const server = createServer((request, response) => {
       });
       response.setHeader?.('Server-Timing',`auth;dur=${authenticatedAt-startedAt},store_or_route;dur=${Date.now()-authenticatedAt},total;dur=${Date.now()-startedAt}`);
       sendAuthJson(response,200,result);
-    })().catch(error=>sendAuthJson(response,error?.statusCode || 503,{error:error?.code==='DOCUMENT_CONFLICT'?error.message:'저장 또는 경로 조회에 실패했습니다. 잠시 후 다시 시도해 주세요.'}));
+    })().catch(error=>{
+      const code=/^(ROUTE_HTTP_\d{3}|ROUTE_TIMEOUT|ROUTE_SEARCH_FAILED|STATION_ROUTES_FAILED)$/.test(error?.routeFailureCode || '') ? error.routeFailureCode : '';
+      const message=code.startsWith('ROUTE_HTTP_') ? `대중교통 경로 API가 요청을 거절했습니다(응답 ${code.slice(-3)}). 운영 연결 설정 확인이 필요합니다.` :
+        code==='STATION_ROUTES_FAILED' ? '출발 정류장의 노선 목록 조회에 실패했습니다.' :
+        code==='ROUTE_TIMEOUT' ? '목적지 경로 API 응답이 지연되고 있습니다.' :
+        code==='ROUTE_SEARCH_FAILED' ? '목적지 대중교통 경로를 가져오지 못했습니다.' : '저장 또는 경로 조회에 실패했습니다. 잠시 후 다시 시도해 주세요.';
+      console.error('[route-request]',JSON.stringify({code:code || 'REQUEST_FAILED'}));
+      sendAuthJson(response,error?.statusCode || 503,{error:error?.code==='DOCUMENT_CONFLICT'?error.message:message,code});
+    });
     return;
   }
   void runWithRuntimeLock(async () => {

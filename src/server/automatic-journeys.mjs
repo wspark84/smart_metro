@@ -55,7 +55,8 @@ export async function verifyBoardingDirection(binding,journey,{env=process.env,f
 export async function discoverJourneyOptions(query,{lookup=lookupBoardingRoutes,journeys=fetchTransitRoutes,
   verify=verifyBoardingDirection,env=process.env}={}) {
   const [stops,paths]=await Promise.all([
-    lookup({...query,posX:query.stopLocation?.lng,posY:query.stopLocation?.lat},{env}),journeys(query,env),
+    lookup({...query,posX:query.stopLocation?.lng,posY:query.stopLocation?.lat},{env}).catch(error=>{throw Object.assign(error,{routeFailureCode:error.routeFailureCode || 'STATION_ROUTES_FAILED'});}),
+    journeys(query,env).catch(error=>{throw Object.assign(error,{routeFailureCode:error.routeFailureCode || (error.code==='UPSTREAM_TIMEOUT'?'ROUTE_TIMEOUT':'ROUTE_SEARCH_FAILED')});}),
   ]);
   const station=stops.verifiedStation || query;
   const options=[],verifiedPaths=new Set(),verification=new Map();

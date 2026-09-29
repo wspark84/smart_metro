@@ -74,7 +74,7 @@ export async function fetchTransitRoutes(query, env = {}, fetchImpl = fetch) {
   const response = await fetchWithTimeout(`${PUBLIC_TRANSIT_URL}?${params}`, {
     headers: { Authorization: `KakaoAK ${env[config.source]}`, Accept: "application/json" },
   }, { fetchImpl });
-  if (!response.ok) throw new Error(`카카오 대중교통 조회 실패 (${response.status}). 서버 키·카카오맵 사용 설정·이용 한도를 확인해 주세요.`);
+  if (!response.ok) throw Object.assign(new Error(`카카오 대중교통 조회 실패 (${response.status}). 서버 키·카카오맵 사용 설정·이용 한도를 확인해 주세요.`),{routeFailureCode:`ROUTE_HTTP_${response.status}`});
   return normalizeTransitRoutes(await response.json(), query);
 }
 
