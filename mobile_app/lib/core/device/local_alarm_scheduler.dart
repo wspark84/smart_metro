@@ -128,10 +128,10 @@ class LocalAlarmScheduler {
 
     final critical = fullScreenRequested || dndBypassRequested;
     final channelId = dndBypassRequested && dndGranted
-        ? 'buswakeup-critical-dnd'
+        ? 'buswakeup-critical-dnd-song-v1'
         : critical
-        ? 'buswakeup-critical'
-        : 'buswakeup-morning';
+        ? 'buswakeup-critical-song-v1'
+        : 'buswakeup-morning-song-v1';
     final details = NotificationDetails(
       android: AndroidNotificationDetails(
         channelId,
@@ -144,7 +144,7 @@ class LocalAlarmScheduler {
         fullScreenIntent: fullScreenGranted,
         channelBypassDnd: dndBypassRequested && dndGranted,
         playSound: true,
-        sound: const RawResourceAndroidNotificationSound('mechanical_alarm'),
+        sound: const RawResourceAndroidNotificationSound('smart_metro_song'),
         enableVibration: true,
         vibrationPattern: Int64List.fromList(
           critical

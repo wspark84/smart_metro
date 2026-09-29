@@ -25,7 +25,7 @@ class PushAlarmPayload {
   }
 
   String get androidChannelId =>
-      isCritical ? 'buswakeup-critical' : 'buswakeup-morning';
+      isCritical ? 'buswakeup-critical-song-v1' : 'buswakeup-morning-song-v1';
 
   int get notificationId {
     var hash = 17;

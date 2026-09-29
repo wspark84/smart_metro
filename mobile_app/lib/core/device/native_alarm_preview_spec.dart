@@ -68,7 +68,7 @@ NativeAlarmPreviewSpec buildMustCatchNativeAlarmPreviewSpec({
     lateWarningPhrase: mustCatchLateWarningPhrase,
     repeatedLateWarningPhrase: repeatedWarning,
     soundPresetId: 'mechanical',
-    assetPath: 'audio/mechanical_alarm.wav',
+    assetPath: 'audio/smart_metro_song.mp4',
     volumePercent: 100,
     vibrationPattern: const <int>[1000, 200],
     vibrationRepeats: 8,

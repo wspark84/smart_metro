@@ -187,8 +187,8 @@ function buildFcmRequest(preview, gatewayConfig, authorizationToken) {
         android: {
           priority: envelope.platformHints?.priority === "max" ? "HIGH" : "NORMAL",
           notification: {
-            channel_id: String(envelope.platformHints?.channelId || "buswakeup-morning"),
-            sound: message.sound?.mechanicalTone ? "mechanical_alarm" : "default",
+            channel_id: `${String(envelope.platformHints?.channelId || "buswakeup-morning").replace(/-song-v1$/, "")}-song-v1`,
+            sound: "smart_metro_song",
           },
         },
         apns: {

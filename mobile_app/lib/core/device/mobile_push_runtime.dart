@@ -282,8 +282,8 @@ Future<void> busWakeUpFirebaseMessagingBackgroundHandler(
 }
 
 class _PushNotificationDisplay {
-  static const String _criticalChannelId = 'buswakeup-critical';
-  static const String _morningChannelId = 'buswakeup-morning';
+  static const String _criticalChannelId = 'buswakeup-critical-song-v1';
+  static const String _morningChannelId = 'buswakeup-morning-song-v1';
   final FlutterLocalNotificationsPlugin _notifications =
       FlutterLocalNotificationsPlugin();
   bool _initialized = false;
@@ -335,7 +335,7 @@ class _PushNotificationDisplay {
         importance: payload.isCritical ? Importance.max : Importance.high,
         priority: payload.isCritical ? Priority.max : Priority.high,
         playSound: true,
-        sound: const RawResourceAndroidNotificationSound('mechanical_alarm'),
+        sound: const RawResourceAndroidNotificationSound('smart_metro_song'),
         enableVibration: true,
         vibrationPattern: Int64List.fromList(
           payload.isCritical
@@ -375,7 +375,7 @@ class _PushNotificationDisplay {
       description: 'High-priority BusWakeUp late-risk alarms.',
       importance: Importance.max,
       playSound: true,
-      sound: const RawResourceAndroidNotificationSound('mechanical_alarm'),
+      sound: const RawResourceAndroidNotificationSound('smart_metro_song'),
       enableVibration: true,
       vibrationPattern: Int64List.fromList(
         const <int>[0, 1000, 200, 1000, 200, 1000],
@@ -392,7 +392,7 @@ class _PushNotificationDisplay {
       description: 'BusWakeUp morning commute arrival alarms.',
       importance: Importance.high,
       playSound: true,
-      sound: const RawResourceAndroidNotificationSound('mechanical_alarm'),
+      sound: const RawResourceAndroidNotificationSound('smart_metro_song'),
       enableVibration: true,
       vibrationPattern: Int64List.fromList(const <int>[0, 400, 200, 400]),
       audioAttributesUsage: AudioAttributesUsage.alarm,

@@ -58,7 +58,7 @@ test("mobile Flutter workspace scaffold exists", async () => {
   assert.match(androidManifest, /buswakeup-critical/);
   assert.match(pushRuntime, /FirebaseMessaging\.onBackgroundMessage/);
   assert.match(pushRuntime, /requestPermissionAndGetToken/);
-  assert.match(pushRuntime, /RawResourceAndroidNotificationSound\('mechanical_alarm'\)/);
+  assert.match(pushRuntime, /RawResourceAndroidNotificationSound\('smart_metro_song'\)/);
   assert.match(pushRuntime, /mechanical_alarm\.wav/);
   assert.match(pushPayload, /buswakeup-critical/);
   assert.match(firebaseOptions, /smart-metro-ed2ad/);
@@ -69,7 +69,7 @@ test("mobile Flutter workspace scaffold exists", async () => {
   assert.match(smokeTest, /BusWakeUpApp shows a bootstrap loading state first/);
   assert.match(smokeTest, /InMemorySharedPreferencesAsync\.empty/);
   assert.match(previewSpec, /이 버스 놓치면 지각이다\./);
-  assert.match(previewSpec, /audio\/mechanical_alarm\.wav/);
+  assert.match(previewSpec, /audio\/smart_metro_song\.mp4/);
   assert.match(previewService, /mechanical sound/);
   assert.match(previewService, /Korean TTS/);
   assert.match(mobileScript, /build-apk-debug/);

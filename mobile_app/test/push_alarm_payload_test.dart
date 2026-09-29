@@ -16,7 +16,7 @@ void main() {
     );
 
     expect(payload.isCritical, isTrue);
-    expect(payload.androidChannelId, 'buswakeup-critical');
+    expect(payload.androidChannelId, 'buswakeup-critical-song-v1');
     expect(payload.notificationId, greaterThan(0));
   });
 
@@ -31,7 +31,7 @@ void main() {
     );
 
     expect(payload.isCritical, isFalse);
-    expect(payload.androidChannelId, 'buswakeup-morning');
+    expect(payload.androidChannelId, 'buswakeup-morning-song-v1');
     expect(payload.title, '1002 bus commute alarm');
   });
 }
