@@ -22,7 +22,7 @@ class _SocialLoginScreenState extends State<SocialLoginScreen> {
     body: Center(child: SingleChildScrollView(padding: const EdgeInsets.all(24), child: Column(
       mainAxisSize: MainAxisSize.min, children: [
         const Text('이거 놓치면 지각', style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold)),
-        const SizedBox(height: 16), const Text('기존 스마트메트로에서 사용한 계정으로 로그인하세요.'),
+        const SizedBox(height: 16), const Text('기존 이거 놓치면 지각 계정으로 로그인하세요.'),
         const SizedBox(height: 24),
         FilledButton(onPressed: _busy ? null : () => _login(OAuthProvider.google), child: const Text('구글로 시작하기')),
         FilledButton(onPressed: _busy ? null : () => _login(OAuthProvider.kakao), child: const Text('카카오로 시작하기')),

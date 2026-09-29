@@ -48,7 +48,7 @@ test('all five web screens render Korean controls without changing input values'
     if (process.env.KOREAN_COPY_AUDIT) {
       console.log(screen, [...new Set(visible.match(/[A-Za-z][A-Za-z _-]{2,}/g) || [])]);
     }
-    assert.match(app.innerHTML,/스마트 메트로|알림 설정|알람 일정|이동 경로 등록|진단 및 기록/);
+    assert.match(app.innerHTML,/이거 놓치면 지각|알림 설정|알람 일정|이동 경로 등록|진단 및 기록/);
     assert.doesNotMatch(app.innerHTML,/>\s*(?:Settings|Dashboard|Schedule|Device Delivery|Sound Alert|Active|Paused|Save Settings|Register)\s*</);
     if(screen==='settings') {
       assert.match(app.innerHTML,/알림 방식/);
