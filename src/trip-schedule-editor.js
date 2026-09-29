@@ -8,6 +8,7 @@ import { isValidLocation, dateOnlyKey } from './logic/commute.js';
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const days = ['일','월','화','수','목','금','토'];
 const clone = value => JSON.parse(JSON.stringify(value));
+const actionIcon = name => `<span class="material-symbols-outlined" aria-hidden="true">${name}</span>`;
 
 // This editor owns its draft. It never assigns or persists the home's user/commute/live fields.
 export function createTripScheduleEditor({getState, saveTrips, render, mapKey, getRuntime=()=>({})}) {
@@ -38,12 +39,12 @@ export function createTripScheduleEditor({getState, saveTrips, render, mapKey, g
     const button=(action,label,extra='')=>`<button class="soft-button" data-trip-action="${action}" ${saving?'disabled':''} ${extra}>${label}</button>`;
     if(!draft)return `<section class="headline-block"><h1>반복 이동 일정</h1><p>홈은 비정기 이동용입니다. 출근·등교는 여기에서 따로 등록하세요.</p></section>
       ${error?`<p role="alert">${esc(error)}</p>`:''}${notice?`<p role="status">${esc(notice)}</p>`:''}
-      ${trips.length?trips.map(trip=>`<section class="stack-panel"><h2>${esc(trip.name)} · ${trip.enabled?'알람 켜짐':'알람 꺼짐'}</h2>
+      ${trips.length?trips.map(trip=>`<section class="stack-panel trip-card"><div class="trip-card-heading"><h2>${esc(trip.name)} · ${trip.enabled?'알람 켜짐':'알람 꺼짐'}</h2><button class="trip-delete-button" data-trip-action="delete" data-id="${esc(trip.id)}" aria-label="${esc(trip.name)} 일정 삭제" title="일정 삭제" ${saving?'disabled':''}>${actionIcon('delete')}</button></div>
         <p>${esc(trip.departure?.live?.stationName)} → ${esc(trip.destination?.address)}</p>
         <p>${esc(trip.requiredArrivalTime)} 도착 · ${trip.daysOfWeek.map(d=>days[d]).join('·')} · ${trip.skipHolidays?'공휴일 쉬기':'공휴일도 알림'}</p>
         <p>출발 ${trip.alarmStartLeadMin >= 60 ? `${trip.alarmStartLeadMin / 60}시간` : `${trip.alarmStartLeadMin}분`} 전부터 · ${trip.repeatIntervalMin}분마다 알림</p>
         <p role="status">${esc(getRuntime()?.tripContexts?.[trip.id]?.lastError || (getRuntime()?.tripContexts?.[trip.id]?.runtime?.nextTriggerAt ? `다음 알림: ${new Date(getRuntime().tripContexts[trip.id].runtime.nextTriggerAt).toLocaleTimeString('ko-KR',{timeZone:'Asia/Seoul',hour:'2-digit',minute:'2-digit'})}` : '해당 요일의 도착 목표 6시간 전부터 경로를 확인합니다.'))}</p>
-        <div class="choice-grid">${button('edit','수정',`data-id="${esc(trip.id)}"`)}${button('toggle',trip.enabled?'알람 끄기':'알람 켜기',`data-id="${esc(trip.id)}"`)}${button('departed',trip.snoozeDate===dateOnlyKey(new Date())?'오늘 출발 완료':'오늘 출발했어요',`data-id="${esc(trip.id)}"`)}${button('delete','삭제',`data-id="${esc(trip.id)}"`)}</div></section>`).join(''):'<section class="stack-panel"><p>아직 등록한 일정이 없습니다. 출근 일정을 새로 입력해 주세요.</p></section>'}
+        <div class="trip-card-actions">${button('edit',`${actionIcon('edit')}<span>수정</span>`,`data-id="${esc(trip.id)}"`)}${button('toggle',`${actionIcon(trip.enabled?'notifications_off':'notifications_active')}<span>${trip.enabled?'알람 끄기':'알람 켜기'}</span>`,`data-id="${esc(trip.id)}"`)}${button('departed',`${actionIcon('directions_walk')}<span>${trip.snoozeDate===dateOnlyKey(new Date())?'오늘 출발 완료':'오늘 출발했어요'}</span>`,`data-id="${esc(trip.id)}"`)}</div></section>`).join(''):'<section class="stack-panel"><p>아직 등록한 일정이 없습니다. 출근 일정을 새로 입력해 주세요.</p></section>'}
       ${trips.length<10?button('new','+ 출근·반복 일정 추가'):''}`;
     return `<section class="headline-block"><h1>반복 일정 입력</h1><p>홈의 출발지·도착지는 그대로 유지됩니다. 버스·지하철·환승 경로를 자동 비교합니다.</p></section>
       <section class="stack-panel"><label class="field-block"><span>일정 이름</span><input data-trip-input="name" value="${esc(draft.name)}" maxlength="60" /></label>
