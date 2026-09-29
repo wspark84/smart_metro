@@ -5,7 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 class MobileSocialAuth {
   static const origin = 'https://smart-metro.vercel.app';
-  static const callback = 'com.buswakeup.buswakeup_mobile://login-callback/';
+  static const callback = 'com.smartmetro.app://login-callback/';
   static bool ready = false;
   static Future<void> initialize() async {
     if (ready) return;
@@ -25,12 +25,14 @@ class MobileSocialAuth {
         authOptions: FlutterAuthClientOptions(
           authFlowType: AuthFlowType.pkce,
           localStorage: _SecureSessionStorage(),
-          detectSessionInUriPredicate: (uri) => uri.scheme == 'com.buswakeup.buswakeup_mobile' && uri.host == 'login-callback' && uri.path == '/',
+          detectSessionInUriPredicate: acceptsCallback,
         ));
       ready = true;
     } finally { http.close(force: true); }
   }
   static SupabaseClient get client => Supabase.instance.client;
+  static bool acceptsCallback(Uri uri) => uri.scheme == Uri.parse(callback).scheme &&
+      uri.host == 'login-callback' && uri.path == '/' && uri.userInfo.isEmpty && !uri.hasPort;
   static Future<String?> token() async {
     if (!ready) return null;
     final session = client.auth.currentSession;

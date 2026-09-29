@@ -60,7 +60,7 @@
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="com.buswakeup.buswakeup_mobile" android:host="login-callback" />
+                <data android:scheme="com.smartmetro.app" android:host="login-callback" />
             </intent-filter>
         </receiver>
     </application>

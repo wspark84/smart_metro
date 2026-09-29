@@ -6,7 +6,7 @@ This folder contains the Flutter mobile-app workspace for Smart Metro (이놓지
 
 - Android uses Supabase PKCE Google/Kakao browser login and encrypted session storage.
 - Production backend is fixed to `https://smart-metro.vercel.app`; bearer credentials are never sent to another origin or an HTTP redirect.
-- Add the exact redirect URL `com.buswakeup.buswakeup_mobile://login-callback/` to Supabase Auth URL Configuration before physical-device login testing.
+- Add the exact redirect URL `com.smartmetro.app://login-callback/` to Supabase Auth URL Configuration before physical-device login testing. Android package IDs may contain underscores, URI schemes may not.
 - Android Firebase is connected to `smart-metro-ed2ad`. Server service-account private keys must never be included in this app or repository.
 - After login, use the Device screen action `이 휴대폰 알림 켜기 · 서버에 등록` to request notification permission and register the FCM token against the authenticated account.
 - Operations screens remain the earlier mobile QA interface, not a port of the current web home UI. Physical-device OAuth return and background delivery are not yet verified. Historical Android Firebase placeholder instructions below are superseded by this section.
