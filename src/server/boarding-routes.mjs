@@ -23,7 +23,11 @@ export async function lookupBoardingRoutes(binding, {
   const source=matches[0];
   if(!sameHeadwayStation(source,{...source,posX:x,posY:y,stationName:binding.stationName}))
     throw new Error('저장된 위치와 공식 정류장 위치가 일치하지 않습니다. 지도에서 다시 선택해 주세요.');
-  const regional=await stations({serviceKey:env.GYEONGGI_SERVICE_KEY,keyword:source.stationNumber});
+  // TAGO serializes nodeno as a number, losing the leading zero. A partial
+  // four-digit GBIS search can fill its result page with unrelated stops.
+  const rawNumber=String(source.stationNumber || '').trim();
+  const keyword=/^\d{4}$/.test(rawNumber)?rawNumber.padStart(5,'0'):rawNumber;
+  const regional=await stations({serviceKey:env.GYEONGGI_SERVICE_KEY,keyword});
   const verified=regional.filter(s=>sameHeadwayStation(source,s));
   if(verified.length!==1) console.error('[station-match]',JSON.stringify({
     count:regional.length,numberLength:String(source.stationNumber || '').length,

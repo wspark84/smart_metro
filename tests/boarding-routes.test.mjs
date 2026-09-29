@@ -18,6 +18,15 @@ test('valid primary routes never invoke fallback',async()=>{
  const result=await lookupBoardingRoutes(binding,{...options,primary:async()=>({routes:[{routeId:'original'}]}),nearby:()=>assert.fail()});
  assert.equal(result.routes[0].routeId,'original');
 });
+
+test('TAGO numeric stop number keeps its leading zero for regional lookup',async()=>{
+ const result=await lookupBoardingRoutes(binding,{...options,
+   nearby:async()=>[{...tago,stationNumber:'4413'}],
+   stations:async({keyword})=>keyword==='04413'?[{...regional,stationNumber:'04413'}]:
+     Array.from({length:10},(_,i)=>({...regional,stationId:`unrelated-${i}`,stationNumber:`14413${i}`})),
+ });
+ assert.equal(result.verifiedStation.stationId,regional.stationId);
+});
 test('opposite stop, mismatched identity, missing location and ambiguous stops fail closed',async()=>{
  for(const overrides of [
   {stations:async()=>[{...regional,stationNumber:'47957'}]},
