@@ -5343,7 +5343,7 @@ function renderHome(screen, model) {
       ${hasPrediction && target.arriveWorkAt ? `<p class="home-arrive-by">→ ${plan?.urgentBoarding ? '탑승 시 ' : ''}목적지 <strong>${escapeHtml(formatClock(target.arriveWorkAt))}</strong> 도착 예상</p>` : ""}
       ${hasPrediction && target.routeNumber ? `<p class="field-help">추천 ${escapeHtml(target.routeNumber)} · ${escapeHtml(formatClock(addMinutes(model.now,target.arrivalMinutes)))} 탑승 · 환승 ${target.transfers || 0}회</p>` : ""}
       ${hasPrediction && (confirmed || plan?.estimatedLast) && model.risk.followingResult?.deltaMinutes < 0 ? `<p class="home-last-warning">놓치면 다음 차는 지각 예상${model.risk.followingResult.arriveWorkAt ? ` · ${escapeHtml(formatClock(model.risk.followingResult.arriveWorkAt))} 도착` : ""}</p>` : ""}
-      ${hasPrediction && target.deltaMinutes < 0 ? `<p class="home-verdict">현재 교통편에 타도 목표시간보다 늦을 것으로 예상됩니다.</p>` : ""}
+      ${hasPrediction && target.deltaMinutes < 0 ? `<p class="home-verdict">오늘도 지각확정.</p>` : ""}
     </section>
     <section class="home-trip" aria-labelledby="home-trip-title">
       <h2 id="home-trip-title">어디에, 몇 시까지 가세요?</h2>
