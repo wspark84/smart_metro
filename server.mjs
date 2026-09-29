@@ -54,7 +54,7 @@ import {
 } from "./src/server/device-token.mjs";
 import { readDomainSnapshot, writeDomainSnapshot } from "./src/server/domain-store.mjs";
 import { readFcmAuthStatus } from "./src/server/fcm-auth.mjs";
-import { fetchOfficialHolidays, getHolidayApiConfig } from "./src/server/holiday-providers.mjs";
+import { loadOfficialHolidayYear, refreshHolidayCalendar, getHolidayApiConfig } from "./src/server/holiday-providers.mjs";
 import { buildMobileHealthPayload } from "./src/server/mobile-health.mjs";
 import { createAsyncMutex } from "./src/server/async-mutex.mjs";
 import {runCatalogJob} from './src/server/transit-catalog.mjs';
@@ -987,6 +987,11 @@ async function tickAlarmRuntime(now = new Date()) {
     };
   }
 
+  if (getHolidayApiConfig().configured) {
+    const calendar = await refreshHolidayCalendar(alarmRuntimeState.holidayCalendar || {holidays:state.officialHolidays});
+    alarmRuntimeState = {...alarmRuntimeState,holidayCalendar:calendar};
+    if (calendar.holidays) state = {...state,officialHolidays:calendar.holidays};
+  }
   if(state.commute?.routingMode==='all-routes' && isAlarmRefreshWindow(state,now)) {
     try {
       const automaticOptions=await refreshJourneyOptions(transitQueryForState(state),{
@@ -3146,10 +3151,7 @@ async function handleRequest(request, response) {
   if (requestUrl.pathname === "/api/holidays") {
     try {
       const year = requestUrl.searchParams.get("year") || "";
-      const payload = await fetchOfficialHolidays({
-        serviceKey: process.env.HOLIDAY_API_SERVICE_KEY,
-        year,
-      });
+      const payload = await loadOfficialHolidayYear(year);
 
       response.writeHead(200, {
         "Content-Type": "application/json; charset=utf-8",
@@ -3157,10 +3159,7 @@ async function handleRequest(request, response) {
       });
       response.end(
         JSON.stringify({
-          year,
-          holidays: payload,
-          source: "live",
-          fetchedAt: new Date().toISOString(),
+          ...payload,
         }),
       );
       return;

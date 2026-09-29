@@ -1,7 +1,29 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { fetchOfficialHolidays, normalizeHolidayItems, parseHolidayXml } from "../src/server/holiday-providers.mjs";
+import { fetchOfficialHolidays, normalizeHolidayItems, parseHolidayXml, refreshHolidayCalendar, holidayServiceKey } from "../src/server/holiday-providers.mjs";
+
+test('holiday key prefers dedicated key and supports the shared public data key',()=>{
+  assert.equal(holidayServiceKey({HOLIDAY_API_SERVICE_KEY:'holiday',TAGO_SERVICE_KEY:'shared'}),'holiday');
+  assert.equal(holidayServiceKey({TAGO_SERVICE_KEY:'shared'}),'shared');
+});
+
+test('gateway errors and malformed responses never become an empty holiday calendar',()=>{
+  assert.throws(()=>parseHolidayXml('<OpenAPI_ServiceResponse><returnAuthMsg>SERVICE_KEY_IS_NOT_REGISTERED_ERROR</returnAuthMsg></OpenAPI_ServiceResponse>'));
+  assert.throws(()=>parseHolidayXml('<html>error</html>'));
+});
+
+test('automatic holiday calendar loads this and next year, checks daily and retains data on failure',async()=>{
+  const called=[];
+  const loader=async year=>{called.push(year);return {holidays:[{date:`${year}-01-01`,name:'새해',isHoliday:true}],fetchedAt:'2026-09-29T00:00:00Z'};};
+  const first=await refreshHolidayCalendar({}, {now:new Date('2026-09-29T00:00:00Z'),loader});
+  assert.deepEqual(called,['2026','2027']);
+  assert.equal(first.holidays.length,2);
+  assert.equal(await refreshHolidayCalendar(first,{now:new Date('2026-09-29T10:00:00Z'),loader}),first);
+  const failed=await refreshHolidayCalendar(first,{now:new Date('2026-09-30T00:01:00Z'),loader:async()=>{throw Error('offline');}});
+  assert.deepEqual(failed.holidays,first.holidays);
+  assert.ok(failed.error);
+});
 
 test("parseHolidayXml extracts raw holiday rows from the official XML response", () => {
   const xml = `
@@ -123,6 +145,7 @@ test("fetchOfficialHolidays validates parameters and returns normalized official
   });
 
   assert.equal(requestedUrl.searchParams.get("ServiceKey"), "demo-key");
+  assert.equal(requestedUrl.protocol, "https:");
   assert.equal(requestedUrl.searchParams.get("solYear"), "2026");
   assert.equal(requestedUrl.searchParams.get("numOfRows"), "100");
   assert.deepEqual(holidays, [

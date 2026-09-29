@@ -620,6 +620,7 @@ async function hydrateAuthenticatedWorkspace() {
   await Promise.all([refreshBusApiConfig(), refreshPlaceApiConfig(), refreshCommuteApiConfig(), refreshHolidayApiConfig()]);
   await hydrateStateFromServer();
   await hydrateStateFromDomain();
+  void syncScheduleHolidays();
   if(state.live.provider!=='none' && state.live.stationName && state.commute.routingMode!=='all-routes') {
     state.commute.routingMode='all-routes';
     persist();
@@ -1562,6 +1563,44 @@ function getLiveBinding() {
     selectedStopId: state.commute.selectedStopId,
     stopKey: getAccuracyStopKey(),
   };
+}
+
+let holidayRefreshInFlight = false;
+async function syncScheduleHolidays(years = null) {
+  if (!holidayApiConfig.configured || holidayRefreshInFlight || !isAuthenticated()) return;
+  const now = new Date();
+  const year = Number(new Intl.DateTimeFormat('en',{timeZone:'Asia/Seoul',year:'numeric'}).format(now));
+  const automatic = years === null;
+  years ||= [String(year),String(year+1)];
+  const complete = years.every(value=>state.holidaySync.loadedYears.includes(value));
+  if (automatic && now.getTime()-Date.parse(state.holidaySync.lastCheckedAt || '') <
+      (complete && !state.holidaySync.lastError ? 86400000 : 300000)) return;
+  const userId = authMeta.user?.id;
+  holidayRefreshInFlight = true;
+  state.holidaySync.status = 'loading';
+  try {
+    const results = await Promise.all(years.map(value=>fetchOfficialHolidays(value)));
+    if (authMeta.user?.id !== userId) return;
+    results.forEach((result,index)=>replaceOfficialHolidaysForYear(years[index],result.holidays));
+    state.holidaySync.loadedYears = [...new Set([...state.holidaySync.loadedYears,...years])].sort();
+    state.holidaySync.lastSyncedAt = results.map(result=>result.fetchedAt).sort()[0];
+    state.holidaySync.status = 'ready';
+    state.holidaySync.lastError = '';
+    state.holidaySync.lastCheckedAt = now.toISOString();
+    persist();
+    queueAlarmPlanRefresh();
+  } catch {
+    if (authMeta.user?.id !== userId) return;
+    state.holidaySync.status = 'error';
+    state.holidaySync.lastError = '공휴일 조회에 실패했습니다. 기존 휴일은 유지됩니다. 잠시 후 동기화를 눌러 주세요.';
+  } finally {
+    holidayRefreshInFlight = false;
+    if (authMeta.user?.id === userId) {
+      state.holidaySync.lastCheckedAt = now.toISOString();
+      saveState(state);
+      render();
+    }
+  }
 }
 
 const tagoCitiesMeta = { cities: [], status: "idle", error: "" };
@@ -5913,7 +5952,7 @@ function renderSchedule(screen, model) {
                   : state.holidaySync.lastError
                     ? escapeHtml(state.holidaySync.lastError)
                     : model.holidayApiConfigured
-                      ? "한국천문연구원의 공식 공휴일 정보를 불러올 수 있습니다."
+                      ? "한국천문연구원 공식 공휴일을 자동 확인합니다. 올해·내년 자료를 저장하고 하루마다 갱신합니다."
                       : "공휴일 자동 조회를 사용하려면 운영 서버에 공휴일 API 키를 설정해야 합니다."
               }
             </div>
@@ -6868,26 +6907,8 @@ app.addEventListener("click", (event) => {
       return render();
     }
 
-    state.holidaySync.status = "loading";
-    state.holidaySync.lastError = "";
+    void syncScheduleHolidays([year]);
     render();
-    fetchOfficialHolidays(year)
-      .then((payload) => {
-        const holidays = Array.isArray(payload.holidays) ? payload.holidays : [];
-        replaceOfficialHolidaysForYear(year, holidays);
-        state.holidaySync.status = "ready";
-        state.holidaySync.lastSyncedAt = payload.fetchedAt || new Date().toISOString();
-        state.holidaySync.lastError = "";
-        state.holidaySync.loadedYears = [...new Set([...state.holidaySync.loadedYears, year])].sort();
-        pushHistory("공휴일 정보 갱신 완료", `${year}년 공휴일 ${holidays.length}개를 불러왔습니다.`);
-        render();
-      })
-      .catch((error) => {
-        state.holidaySync.status = "error";
-        state.holidaySync.lastError = userErrorMessage(error, "공휴일 조회 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.");
-        pushHistory("공휴일 정보 갱신 실패", state.holidaySync.lastError, "ERROR");
-        render();
-      });
     return;
   }
   if (action === "add-holiday") {
@@ -7194,6 +7215,7 @@ window.setInterval(() => {
   if (document.visibilityState !== "visible") {
     return;
   }
+  void syncScheduleHolidays();
 
   queueAlarmPlanRefresh(0);
   queueAlarmRuntimeRefresh(0);

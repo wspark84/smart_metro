@@ -1,4 +1,5 @@
 import { fetchWithTimeout } from "./upstream-fetch.mjs";
+import {loadWithCache} from './request-cache.mjs';
 
 function xmlDecode(value) {
   return String(value ?? "")
@@ -58,6 +59,9 @@ function formatHolidayDate(rawDate) {
 }
 
 export function parseHolidayXml(xml) {
+  if (!/<resultCode>00<\/resultCode>/.test(xml)) {
+    throw new Error('공휴일 API 응답을 확인하지 못했습니다. 활용승인과 인증키를 확인해 주세요.');
+  }
   const resultCode = getXmlValue(xml, "resultCode");
   if (resultCode && resultCode !== "00") {
     throw new Error(`Holiday API error: ${getXmlValue(xml, "resultMsg") || resultCode}`);
@@ -99,8 +103,33 @@ export function normalizeHolidayItems(parsed) {
 
 export function getHolidayApiConfig() {
   return {
-    configured: Boolean(process.env.HOLIDAY_API_SERVICE_KEY),
+    configured: Boolean(holidayServiceKey()),
   };
+}
+
+export function holidayServiceKey(env = process.env) {
+  return env.HOLIDAY_API_SERVICE_KEY || env.TAGO_SERVICE_KEY || '';
+}
+
+export async function refreshHolidayCalendar(previous = {}, {now = new Date(), loader = loadOfficialHolidayYear} = {}) {
+  const year = Number(new Intl.DateTimeFormat('en', {timeZone:'Asia/Seoul',year:'numeric'}).format(now));
+  const years = [String(year), String(year + 1)];
+  if (previous.checkedAt && now.getTime() - Date.parse(previous.checkedAt) < 86400000 &&
+      years.every(value => previous.years?.includes(value))) return previous;
+  try {
+    const results = await Promise.all(years.map(year => loader(year)));
+    return {years, holidays:results.flatMap(result => result.holidays),checkedAt:now.toISOString(),
+      fetchedAt:results.map(result=>result.fetchedAt).sort()[0],error:''};
+  } catch {
+    return {...previous, years, checkedAt:now.toISOString(),error:'공휴일 정보를 갱신하지 못했습니다. 이전에 확인한 휴일을 유지합니다.'};
+  }
+}
+
+export async function loadOfficialHolidayYear(year) {
+  const normalizedYear = normalizeYear(year);
+  const result = await loadWithCache({key:['official-holidays',normalizedYear],ttlMs:86400000,
+    allowStaleOnError:false,loader:()=>fetchOfficialHolidays({serviceKey:holidayServiceKey(),year:normalizedYear})});
+  return {year:normalizedYear,holidays:result.value,fetchedAt:result.fetchedAt,source:result.cacheStatus};
 }
 
 export async function fetchOfficialHolidays({ serviceKey, year, month = "", fetchImpl = fetch }) {
@@ -110,7 +139,8 @@ export async function fetchOfficialHolidays({ serviceKey, year, month = "", fetc
 
   const normalizedYear = normalizeYear(year);
   const normalizedMonth = normalizeMonth(month);
-  const url = new URL("http://apis.data.go.kr/B090041/openapi/service/SpcdeInfoService/getRestDeInfo");
+  const url = new URL("https://apis.data.go.kr/B090041/openapi/service/SpcdeInfoService/getRestDeInfo");
+  try { serviceKey = decodeURIComponent(serviceKey); } catch { /* raw key */ }
   url.searchParams.set("ServiceKey", serviceKey);
   url.searchParams.set("pageNo", "1");
   url.searchParams.set("numOfRows", "100");
