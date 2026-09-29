@@ -53,6 +53,7 @@ export function projectDomainSnapshot(state) {
     },
     schedule: {
       id: "primary-schedule",
+      tripSchedules: safe.tripSchedules,
       startTime: safe.schedule.startTime,
       endTime: safe.schedule.endTime,
       repeatIntervalMin: safe.schedule.repeatIntervalMin,
@@ -82,6 +83,7 @@ export function projectDomainSnapshot(state) {
 export function applyDomainSnapshotToState(snapshot, baseState = clone(DEFAULT_STATE)) {
   const next = clone(baseState || DEFAULT_STATE);
   const domain = snapshot || {};
+  next.tripSchedules = domain.schedule?.tripSchedules ?? next.tripSchedules ?? [];
 
   next.user = mergeEntity(next.user, {
     name: domain.user?.name,

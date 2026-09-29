@@ -61,9 +61,9 @@ test('background rendering never replaces a focused native time picker',async()=
 });
 test('time picker does not block navigation or session expiry',async()=>{
  const v=await view();v.run('render();document.activeElement={inApp:true,type:"time"};window.location.hash="#/schedule";render();');
- assert.match(v.app.innerHTML,/data-field="schedule.startTime"/);
+ assert.match(v.app.innerHTML,/data-independent-schedules/);
  v.run('authMeta.status="anonymous";authMeta.user=null;render();');
- assert.doesNotMatch(v.app.innerHTML,/data-field="schedule.startTime"/);
+ assert.doesNotMatch(v.app.innerHTML,/data-independent-schedules/);
 });
 
 test('home prioritizes countdown, core inputs, submit, and only then transit detail', async () => {

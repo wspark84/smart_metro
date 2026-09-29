@@ -181,6 +181,7 @@ export function evaluateLateRisk({ requiredArrivalTime, route, busArrivalsMin, n
 }
 
 export function shouldFireToday(schedule, todayDate, holidayDates = []) {
+  if (schedule.enabled === false) return false;
   const weekday = getKoreaWeekday(todayDate);
   const todayKey = dateOnlyKey(todayDate);
 
@@ -194,6 +195,7 @@ export function shouldFireToday(schedule, todayDate, holidayDates = []) {
 }
 
 export function describeScheduleState(schedule, todayDate, holidayDates = []) {
+  if (schedule.enabled === false) return {firing:false,badge:'알람 꺼짐',detail:'이 일정의 알람이 꺼져 있습니다.'};
   const todayKey = dateOnlyKey(todayDate);
   const weekday = getKoreaWeekday(todayDate);
   const weekdayNames = ["일", "월", "화", "수", "목", "금", "토"];

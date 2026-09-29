@@ -1,4 +1,5 @@
 import { DEFAULT_DEVICE_PROFILE, sanitizeDeviceProfile } from "./device-profile.js";
+import { normalizeTripSchedules } from './logic/trip-schedules.js';
 import { createDefaultLiveBindings, ensureLiveBindingState } from "./logic/live-bindings.js";
 import { STOP_LIBRARY } from "./mock-data.js";
 import { isValidLocation, normalizeBoardingAccessMin } from "./logic/commute.js";
@@ -6,6 +7,7 @@ import { isValidLocation, normalizeBoardingAccessMin } from "./logic/commute.js"
 const STORAGE_KEY = "buswakeup-demo-state";
 
 export const DEFAULT_STATE = {
+  tripSchedules: [],
   ui: {
     routeSearch: "",
     holidayDraft: "",
@@ -171,6 +173,7 @@ function sanitizeAddressResults(results) {
 
 export function sanitizeState(state) {
   const safe = merge(clone(DEFAULT_STATE), state);
+  safe.tripSchedules = normalizeTripSchedules(safe.tripSchedules);
   safe.ui.busCityQuery = String(safe.ui.busCityQuery || "").slice(0,60);
   const stop = STOP_LIBRARY.find((item) => item.id === safe.commute.selectedStopId) || STOP_LIBRARY[0];
   const liveRoute = safe.live.provider !== "none" && safe.live.routeNumber;

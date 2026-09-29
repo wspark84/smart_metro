@@ -8,6 +8,7 @@ import { buildConservativeProbeBias, buildConservativeReliabilityReport } from "
 import { dateOnlyKey, mergeHolidayDates } from "./src/logic/commute.js";
 import { buildDeliveryIntensityReport } from "./src/logic/delivery-intensity-report.js";
 import { applyAlarmDeliveryAction, createAlarmDeliveryState, reconcileAlarmDelivery } from "./src/server/alarm-delivery.mjs";
+import { reconcileTripSchedules } from './src/server/trip-schedule-runtime.mjs';
 import { resetDispatchQueueForAlert, resetPushGatewayHandledKeysForAlert } from "./src/server/alert-pipeline-reset.mjs";
 import { sanitizeAuthUser } from "./src/server/auth-service.mjs";
 import { readAlarmDeliveryState, writeAlarmDeliveryState } from "./src/server/alarm-delivery-store.mjs";
@@ -1023,7 +1024,7 @@ async function tickAlarmRuntime(now = new Date()) {
     // Cancel every queued stage when today's schedule is stopped or expired.
     // Otherwise a failed push from an older alert could still be retried.
     for (const bundle of dispatchQueueState.bundles || []) {
-      if (bundle.alertTriggerKey) {
+      if (bundle.alertTriggerKey && !bundle.alertTriggerKey.startsWith('trip:')) {
         dispatchQueueState = resetDispatchQueueForAlert(dispatchQueueState, bundle.alertTriggerKey);
       }
     }
@@ -1036,6 +1037,28 @@ async function tickAlarmRuntime(now = new Date()) {
     now,
   );
   dispatchQueueState = dispatchResult.queue;
+  const scheduled = await reconcileTripSchedules(state,alarmRuntimeState.tripContexts,now,{
+    accuracyRuntime:busAccuracyRuntimeState,
+    refresh:(trip,previous,at)=>refreshJourneyOptions(transitQueryForState(trip),{loadArrival:loadSavedTransit,previous,now:at,
+      planning:{requiredArrivalTime:trip.user.requiredArrivalTime,boardingAccessMin:trip.commute.boardingAccessMin}}),
+  });
+  alarmRuntimeState={...alarmRuntimeState,tripContexts:scheduled.contexts};
+  // Deleted, paused and completed schedules must not leave retrying push bundles behind.
+  for(const bundle of dispatchQueueState.bundles || []) {
+    if(!bundle.alertTriggerKey?.startsWith('trip:'))continue;
+    const id=bundle.alertTriggerKey.split(':')[1];
+    const item=scheduled.results.find(item=>item.trip.id===id);
+    if(!item || !item.result.plan.todayStatus.firing || now.getTime()>Date.parse(item.result.plan.window.endAt)+90_000)
+      dispatchQueueState=resetDispatchQueueForAlert(dispatchQueueState,bundle.alertTriggerKey);
+  }
+  for(const item of scheduled.results){
+    const dispatch=reconcileDispatchQueue(dispatchQueueState,item.delivery,deviceProfileState,
+      {notificationSettings:item.state.notification,dateKey:item.result.runtime.dateKey,tripId:item.trip.id},now);
+    dispatchQueueState=dispatch.queue;
+    dispatchResult.newBundles.push(...dispatch.newBundles);
+    result.dueEvents.push(...item.result.dueEvents);
+  }
+  result.runtime=alarmRuntimeState;
   const executionResult = reconcileDispatchExecutions(dispatchExecutionState, dispatchQueueState, deviceProfileState, now);
   dispatchExecutionState = executionResult.executions;
   if (isBackgroundAlarmWorker()) {

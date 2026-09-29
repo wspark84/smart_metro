@@ -322,7 +322,7 @@ function buildDepartureAlarmPlan(state, today, options) {
   const departureAt = reminder?.departureAt;
   const valid = Boolean(departureAt && boarding.risk.targetResult.deltaMinutes >= 0);
   const goalAt = combineDateAndTime(today,state.user.requiredArrivalTime);
-  const stageKey = JSON.stringify([binding,state.user.requiredArrivalTime]);
+  const stageKey = JSON.stringify([binding,state.user.requiredArrivalTime,...(state.tripId ? [state.tripId] : [])]);
   const selectedSnapshot=state.commute.routingMode==='all-routes' ? state.commute.automaticOptions?.options.find(o=>o.id===boarding.risk.targetResult.optionId)?.snapshot : current;
   const emergency = scheduleState.firing && prior?.stageKey===stageKey
     ? detectEarlyDeparture(boarding,prior.prediction,today,selectedSnapshot?.fetchedAt) : null;
@@ -336,7 +336,8 @@ function buildDepartureAlarmPlan(state, today, options) {
       title:emergency.title,body:emergency.body,spokenText:emergency.body,emergencyKey,
       emergencyContextKey:stageKey,expiresAt:emergency.boardingAt,departureAt:emergency.leaveAt,
       fullScreen:true,volumePercent:100,vibrationRepeats:5}} : null;
-  const allTriggers = scheduleState.firing && valid ? DEPARTURE_REMINDER_MINUTES.map(lead => {
+  const selectedReminders = DEPARTURE_REMINDER_MINUTES.filter(lead => !Array.isArray(state.schedule.reminderMinutes) || state.schedule.reminderMinutes.includes(lead));
+  const allTriggers = scheduleState.firing && valid ? selectedReminders.map(lead => {
     const triggerAt = addMinutes(new Date(departureAt),-lead);
     const level = lead <= 3 ? 'RED' : lead <= 5 ? 'ORANGE' : lead <= 10 ? 'YELLOW' : 'GREEN';
     const evaluatedAt = triggerAt > today ? triggerAt : today;

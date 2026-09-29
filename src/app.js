@@ -88,6 +88,7 @@ import { loadState, resetState, sanitizeState, saveState } from "./state.js";
 import { createWorkspaceFetch } from "./services/workspace-fetch.js";
 import { buildBoardingPlan, validHeadway, buildDepartureReminder, departurePrediction, detectEarlyDeparture, departurePlanningEnabled } from "./logic/boarding-plan.js";
 import { selectBusHeadway } from "./logic/bus-headway.js";
+import { createTripScheduleEditor } from "./trip-schedule-editor.js";
 
 if (typeof window.fetch === "function") {
   window.fetch = createWorkspaceFetch(window.fetch.bind(window), {
@@ -97,6 +98,22 @@ if (typeof window.fetch === "function") {
 
 const app = document.querySelector("#app");
 let state = loadState();
+let tripSchedulesSaving = false;
+const tripScheduleEditor = createTripScheduleEditor({getState:()=>state,render:()=>render(),
+  getRuntime:()=>alarmRuntimeMeta.runtime,
+  mapKey:()=>placeApiConfig.maps?.kakao?.javascriptKey || '',
+  saveTrips:async trips=>{
+    if (!isAuthenticated()) throw new Error('로그인이 필요합니다.');
+    const userId=authMeta.user.id;
+    for(const timer of [remoteSaveTimer,domainSyncTimer]) if(timer)window.clearTimeout(timer);
+    remoteSaveToken++;domainSyncToken++;
+    tripSchedulesSaving=true;
+    try {
+      await saveRemoteAppState(sanitizeState({...state,tripSchedules:trips}));
+      if(authMeta.user?.id!==userId)throw new Error('로그인 계정이 변경되었습니다.');
+      state.tripSchedules=trips;saveState(state);queueAlarmRuntimeRefresh();
+    } finally {tripSchedulesSaving=false;}
+  }});
 let homeTripDraft = null;
 let homeTripSave = {status:"idle",message:"",key:""};
 let planningObservation = null;
@@ -435,6 +452,7 @@ function applyPushGatewaySummary(summary, loadedAt = new Date().toISOString()) {
 }
 
 function resetWorkspaceMeta() {
+  tripScheduleEditor.reset();
   automaticOptions = null;
   homeTripDraft = null;
   homeTripSave = {status:"idle",message:"",key:""};
@@ -727,6 +745,7 @@ async function submitAccountProfileUpdate() {
 
 
 function persist() {
+  if (tripSchedulesSaving) return;
   if (homeTripSave.status === "saving") return;
   saveState(state);
   if (!isAuthenticated()) {
@@ -5885,6 +5904,17 @@ function renderOnboarding() {
 }
 
 function renderSchedule(screen, model) {
+  return `<main class="screen screen-form with-bottom-nav" data-independent-schedules>${tripScheduleEditor.html()}
+    <details class="stack-panel"><summary>공휴일·쉬는 날짜 확인</summary>
+    <p>공식 공휴일 ${state.officialHolidays.length}일 · 마지막 확인 ${escapeHtml(formatSyncStamp(state.holidaySync.lastSyncedAt))}</p>
+    <button class="mini-button" data-action="sync-official-holidays">공휴일 정보 갱신</button>
+    <div class="holiday-list">${model.upcomingOfficialHolidays.map(h=>`<p>${escapeHtml(h.date)} · ${escapeHtml(h.name)}</p>`).join('')}</div>
+    <div class="holiday-form"><input type="date" aria-label="쉬는 날짜" data-field="ui.holidayDraft" value="${escapeHtml(state.ui.holidayDraft)}" /><button class="mini-button" data-action="add-holiday">쉬는 날짜 추가</button></div>
+    ${state.holidayDates.map(d=>`<p>${escapeHtml(d)} <button class="mini-button" data-action="remove-holiday" data-value="${escapeHtml(d)}">삭제</button></p>`).join('')}
+    </details></main>${renderBottomNav(screen)}`;
+}
+
+function renderLegacySchedule(screen, model) {
   return `
     <main class="screen screen-form with-bottom-nav">
       <section class="headline-block">
@@ -6194,6 +6224,7 @@ function render() {
     return;
   }
   timePickerRenderPending = false;
+  if(screen===renderedScreen && screen==='schedule' && document.activeElement?.dataset?.tripInput && app.contains(document.activeElement))return;
   renderedScreen = screen;
   const previousMap = screen === "home" ? document.querySelector("#boarding-map") : null;
   const boardingMapKey = JSON.stringify([state.live.provider,boardingArea.revision,stationSelectionKey(boardingPreview.candidate),state.ui.liveSearchResults,placeApiConfig.maps?.kakao?.javascriptKey]);
@@ -6212,6 +6243,7 @@ function render() {
           : screen === "diagnostics" ? renderDiagnostics(screen, model) : renderOnboarding();
 
   app.innerHTML = `<div class="app-shell ${screen === "home" ? "has-home" : ""}">${renderTopBar(screen, model)}${content}</div>`;
+  if(screen==='schedule')tripScheduleEditor.mount();
   if (screen === "home" && homeEditor === "departure" && (state.ui.liveSearchResults.length || (state.live.provider !== "subway" && busApiConfig.providers?.tago?.configured))) {
     const placeholder = document.querySelector("#boarding-map");
     if (previousMap?.dataset?.mapKey === boardingMapKey && previousMap.dataset.mapStatus === "ready") {
@@ -6334,6 +6366,8 @@ function previewTts() {
 }
 
 app.addEventListener("click", (event) => {
+  const tripTarget=event.target.closest('[data-trip-action]');
+  if(tripTarget && isAuthenticated()){tripScheduleEditor.click(tripTarget);return;}
   void primeAlarmPlayback();
   const target = event.target.closest("[data-action]");
   if (!target) return;
@@ -6943,6 +6977,7 @@ app.addEventListener("click", (event) => {
 
 app.addEventListener("input", (event) => {
   const target = event.target;
+  if(isAuthenticated() && tripScheduleEditor.input(target))return;
   if (homeTripSave.status === "saving") return;
   if (target.dataset.tripField && isAuthenticated()) {
     const draft = getHomeTripDraft();
@@ -7100,6 +7135,7 @@ app.addEventListener("keydown", event => {
 
 app.addEventListener("change", (event) => {
   const target = event.target;
+  if(isAuthenticated() && tripScheduleEditor.input(target))return;
   if (homeTripSave.status === "saving") return;
   if (!isAuthenticated()) return;
   if (target.dataset.tripField) return;

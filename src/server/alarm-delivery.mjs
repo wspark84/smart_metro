@@ -7,7 +7,7 @@ function triggerKeyFromEvent(event) {
     return "";
   }
 
-  return `${event.dateKey}:${event.triggerAt}`;
+  return `${event.tripId ? `trip:${event.tripId}:` : ''}${event.dateKey}:${event.triggerAt}`;
 }
 
 export function createAlarmDeliveryState() {

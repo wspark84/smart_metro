@@ -6,7 +6,7 @@ function clone(value) {
 }
 
 function extractDateKey(value) {
-  const match = /^(\d{4}-\d{2}-\d{2}):/.exec(String(value || "").trim());
+  const match = /^(?:trip:[a-zA-Z0-9_-]+:)?(\d{4}-\d{2}-\d{2}):/.exec(String(value || "").trim());
   return match ? match[1] : null;
 }
 
@@ -82,6 +82,7 @@ function normalizeDispatchContext(contextOrNow, maybeNow) {
           ? contextOrNow.notificationSettings
           : {},
       dateKey: contextOrNow.dateKey ? String(contextOrNow.dateKey) : null,
+      tripId: contextOrNow.tripId ? String(contextOrNow.tripId) : null,
       now: contextOrNow.now ?? maybeNow ?? new Date(),
     };
   }
@@ -271,7 +272,8 @@ export function reconcileDispatchQueue(queueState, deliveryState, deviceProfile,
   }
   next.dateKey = context.dateKey || storedDateKey || null;
   const currentAlert = deliveryState?.currentAlert;
-  next.bundles = next.bundles.filter(bundle => !bundle.notificationSpec?.departureAt ||
+  const belongsToContext = bundle => context.tripId ? bundle.alertTriggerKey?.startsWith(`trip:${context.tripId}:`) : !bundle.alertTriggerKey?.startsWith('trip:');
+  next.bundles = next.bundles.filter(bundle => !belongsToContext(bundle) || !bundle.notificationSpec?.departureAt ||
     (currentAlert?.status === 'ACTIVE' && bundle.alertTriggerKey === currentAlert.triggerKey &&
       bundle.notificationSpec.departureAt === currentAlert.notificationSpec?.departureAt));
   const newBundles = [];

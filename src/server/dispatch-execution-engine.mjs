@@ -5,7 +5,7 @@ function clone(value) {
 }
 
 function extractDateKey(value) {
-  const match = /^(\d{4}-\d{2}-\d{2}):/.exec(String(value || "").trim());
+  const match = /^(?:trip:[a-zA-Z0-9_-]+:)?(\d{4}-\d{2}-\d{2}):/.exec(String(value || "").trim());
   return match ? match[1] : null;
 }
 

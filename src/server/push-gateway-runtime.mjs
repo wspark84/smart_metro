@@ -23,7 +23,7 @@ function clone(value) {
 
 function extractDateKey(value) {
   const safe = String(value || "").trim();
-  const dispatchMatch = /^(\d{4}-\d{2}-\d{2}):/.exec(safe);
+  const dispatchMatch = /^(?:trip:[a-zA-Z0-9_-]+:)?(\d{4}-\d{2}-\d{2}):/.exec(safe);
   if (dispatchMatch) {
     return dispatchMatch[1];
   }

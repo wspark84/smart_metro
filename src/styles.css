@@ -1183,6 +1183,14 @@ button {
   color: var(--primary);
 }
 
+[data-independent-schedules] .field-block input {
+  height: 48px;
+  min-height: 48px;
+  flex: 0 0 auto;
+}
+[data-independent-schedules] .choice-grid { gap: 8px; }
+[data-independent-schedules] .soft-button { white-space: normal; }
+
 .screen-form .soft-button,
 .screen-form .primary-cta,
 .screen-form .add-button {
