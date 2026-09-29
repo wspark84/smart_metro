@@ -18,6 +18,13 @@ test('saved trip actions use separate accessible delete and a full-width departu
 test('schedule editor offers single start and repeat choices, weekdays and holiday toggle',()=>{
  const editor=createTripScheduleEditor({getState:()=>({tripSchedules:[]}),saveTrips:async()=>{},render:()=>{},mapKey:()=>''});
  editor.click({dataset:{tripAction:'new'}});
+ assert.match(editor.html(),/class="trip-transport-options" role="group" aria-label="교통수단 선택"/);
+ assert.match(editor.html(),/data-trip-action="bus" aria-pressed="true"/);
+ assert.match(editor.html(),/aria-hidden="true">directions_bus/);
+ assert.match(editor.html(),/<span>지하철<\/span>/);
+ editor.click({dataset:{tripAction:'subway'}});
+ assert.match(editor.html(),/data-trip-action="subway" aria-pressed="true"/);
+ assert.match(editor.html(),/data-trip-action="bus" aria-pressed="false"/);
  assert.match(editor.html(),/출발 30분 전부터/);
  assert.match(editor.html(),/출발 1시간 전부터/);
  assert.match(editor.html(),/출발 2시간 전부터/);

@@ -48,7 +48,7 @@ export function createTripScheduleEditor({getState, saveTrips, render, mapKey, g
       ${trips.length<10?button('new','+ 출근·반복 일정 추가'):''}`;
     return `<section class="headline-block"><h1>반복 일정 입력</h1><p>홈의 출발지·도착지는 그대로 유지됩니다. 버스·지하철·환승 경로를 자동 비교합니다.</p></section>
       <section class="stack-panel"><label class="field-block"><span>일정 이름</span><input data-trip-input="name" value="${esc(draft.name)}" maxlength="60" /></label>
-      <h3>출발 정류장·역 선택</h3><div class="choice-grid">${button('bus','버스')}${button('subway','지하철')}</div>
+      <h3>출발 정류장·역 선택</h3><div class="trip-transport-options" role="group" aria-label="교통수단 선택">${['bus','subway'].map(value=>`<button class="choice-chip ${mode===value?'selected':''}" data-trip-action="${value}" aria-pressed="${mode===value}" ${saving?'disabled':''}>${actionIcon(value==='bus'?'directions_bus':'subway')}<span>${value==='bus'?'버스':'지하철'}</span></button>`).join('')}</div>
       <div class="holiday-form"><input class="text-field-input" data-trip-input="keyword" value="${esc(keyword)}" placeholder="${mode==='bus'?'주소·건물명으로 지도 위치 찾기':'지하철역 이름'}" />${button('search-origin',loading?'조회 중…':'검색',loading?'disabled':'')}</div>
       ${places.map((p,i)=>button('place',esc(p.placeName || p.label),`data-index="${i}"`)).join('')}
       <div class="boarding-map-shell has-search-center"><div id="trip-schedule-map" class="boarding-map">지도를 불러오는 중…</div></div>
