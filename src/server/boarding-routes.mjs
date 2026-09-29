@@ -25,6 +25,12 @@ export async function lookupBoardingRoutes(binding, {
     throw new Error('저장된 위치와 공식 정류장 위치가 일치하지 않습니다. 지도에서 다시 선택해 주세요.');
   const regional=await stations({serviceKey:env.GYEONGGI_SERVICE_KEY,keyword:source.stationNumber});
   const verified=regional.filter(s=>sameHeadwayStation(source,s));
+  if(verified.length!==1) console.error('[station-match]',JSON.stringify({
+    count:regional.length,numberLength:String(source.stationNumber || '').length,
+    numberMatches:regional.filter(s=>String(s.stationNumber).replace(/^0+/,'')===String(source.stationNumber).replace(/^0+/,'')).length,
+    nameMatches:regional.filter(s=>String(s.stationName).replace(/[\s.,·]/g,'')===String(source.stationName).replace(/[\s.,·]/g,'')).length,
+    locations:regional.filter(s=>s.posX && s.posY).length,
+  }));
   if(verified.length!==1) throw new Error('경기도 정류장의 번호·이름·위치를 하나로 확정하지 못했습니다. 다른 정류장에 연결하지 않았습니다.');
   const station={...verified[0],provider:'gyeonggi',providerLabel:'경기도 버스',selectionId:`gyeonggi:${verified[0].stationId}`,nodeId:''};
   const found=await routes({serviceKey:env.GYEONGGI_SERVICE_KEY,stationId:station.stationId});
