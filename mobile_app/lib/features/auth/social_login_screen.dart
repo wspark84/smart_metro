@@ -18,7 +18,7 @@ class _SocialLoginScreenState extends State<SocialLoginScreen> {
     finally { if (mounted) setState(() { _busy = false; }); }
   }
   @override Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('이놓지 · Smart Metro')),
+    appBar: AppBar(title: const Text('이거 놓치면 지각')),
     body: Center(child: SingleChildScrollView(padding: const EdgeInsets.all(24), child: Column(
       mainAxisSize: MainAxisSize.min, children: [
         const Text('이거 놓치면 지각', style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold)),
