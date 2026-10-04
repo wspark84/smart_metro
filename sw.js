@@ -7,10 +7,10 @@ self.addEventListener("push", (event) => {
   try {
     payload = event.data ? event.data.json() : {};
   } catch {
-    payload = { body: event.data ? event.data.text() : "이거 놓치면 지각 알람" };
+    payload = { body: event.data ? event.data.text() : "이노치 알람" };
   }
 
-  const title = String(payload.title || "이거 놓치면 지각 이동 알람");
+  const title = String(payload.title || "이노치 이동 알람");
   const options = {
     body: String(payload.body || "이동 알람을 확인해 주세요."),
     tag: String(payload.tag || "buswakeup-alarm"),

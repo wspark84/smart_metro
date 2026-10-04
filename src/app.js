@@ -2847,7 +2847,7 @@ function renderTopBar(screen, model) {
   if (screen === "home") {
     return `
       <header class="topbar topbar-home">
-        <div class="brandmark">이거 놓치면 지각</div>
+        <div class="brandmark">이노치</div>
         <div class="topbar-goal"><b>${escapeHtml(state.user.requiredArrivalTime)}</b> 도착 목표</div>
         <button class="icon-button" data-action="logout" aria-label="로그아웃">
           ${renderUiIcon("logout")}
@@ -2896,7 +2896,7 @@ function renderAuthScreen() {
   // Unknown session state is not an anonymous session. OAuth callbacks and
   // restored sessions must never paint the account chooser while being verified.
   if (pending) return `<div class="app-shell"><main class="screen screen-form" aria-busy="true">
-    <section class="headline-block"><h1>이거 놓치면 지각</h1>
+    <section class="headline-block"><h1>이노치</h1><p>이거 놓치면 지각</p>
       <p role="status" aria-live="polite">${authMeta.submitStatus === "submitting" ? "로그인 연결 중…" : "연결 중…"}</p>
     </section></main></div>`;
   const buttons = [["google", "구글"], ["kakao", "카카오"], ["naver", "네이버"]].map(([id, label]) => {
@@ -2905,7 +2905,7 @@ function renderAuthScreen() {
       ${provider?.ready ? "" : `<div class="field-help">${label}: ${escapeHtml(provider?.reason || "연결 상태를 확인하고 있습니다.")}</div>`}`;
   }).join("");
   return `<div class="app-shell"><main class="screen screen-form">
-    <section class="headline-block"><h1>이거 놓치면 지각</h1>
+    <section class="headline-block"><h1>이노치</h1><p>이거 놓치면 지각</p>
       <p>자주 쓰는 계정으로 시작하세요. 처음 로그인하면 계정이 만들어집니다.</p></section>
     <section class="stack-panel auth-panel">
       <div class="stack-title"><span class="material-symbols-outlined">verified_user</span>간편 로그인</div>

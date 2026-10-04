@@ -63,7 +63,7 @@ test("mobile Flutter workspace scaffold exists", async () => {
   assert.match(pushPayload, /buswakeup-critical/);
   assert.match(firebaseOptions, /smart-metro-ed2ad/);
   assert.match(firebaseOptions, /FirebaseOptions\(/);
-  assert.match(webIndex, /BusWakeUp Mobile/);
+  assert.match(webIndex, /이노치 inochi · 이거 놓치면 지각/);
   assert.match(localProperties, /flutter\.sdk=/);
   assert.match(localProperties, /sdk\.dir=/);
   assert.match(smokeTest, /BusWakeUpApp shows a bootstrap loading state first/);

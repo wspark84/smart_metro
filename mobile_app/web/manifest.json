@@ -1,11 +1,11 @@
 {
-    "name": "BusWakeUp Mobile",
-    "short_name": "BusWakeUp",
+    "name": "이노치 inochi",
+    "short_name": "이노치",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
     "theme_color": "#0175C2",
-    "description": "BusWakeUp mobile alarm shell for Seoul and Gyeonggi commuters.",
+    "description": "이거 놓치면 지각",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

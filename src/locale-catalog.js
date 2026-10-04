@@ -1,7 +1,7 @@
 // Legacy server/history messages translated only for display.
 export const KOREAN_COPY = {
-  "BusWakeUp": "이거 놓치면 지각",
-  "Smart Metro": "이거 놓치면 지각",
+  "BusWakeUp": "이노치",
+  "Smart Metro": "이노치",
   "Route Registration": "이동 경로 등록",
   "Schedule Settings": "알람 일정",
   "Notification Style": "알림 설정",

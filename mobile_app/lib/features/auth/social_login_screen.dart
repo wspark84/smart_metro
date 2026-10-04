@@ -18,11 +18,11 @@ class _SocialLoginScreenState extends State<SocialLoginScreen> {
     finally { if (mounted) setState(() { _busy = false; }); }
   }
   @override Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('이거 놓치면 지각')),
+    appBar: AppBar(title: const Text('이노치')),
     body: Center(child: SingleChildScrollView(padding: const EdgeInsets.all(24), child: Column(
       mainAxisSize: MainAxisSize.min, children: [
         const Text('이거 놓치면 지각', style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold)),
-        const SizedBox(height: 16), const Text('기존 이거 놓치면 지각 계정으로 로그인하세요.'),
+        const SizedBox(height: 16), const Text('이노치 계정으로 로그인하세요.'),
         const SizedBox(height: 24),
         FilledButton(onPressed: _busy ? null : () => _login(OAuthProvider.google), child: const Text('구글로 시작하기')),
         FilledButton(onPressed: _busy ? null : () => _login(OAuthProvider.kakao), child: const Text('카카오로 시작하기')),
