@@ -6501,7 +6501,7 @@ app.addEventListener("click", (event) => {
     automaticOptions = null;
     Object.assign(state.live,{stationId:candidate.stationId,
       stationName:route?.stationName || candidate.stationName,arsId:candidate.arsId || "",routeId:route?.routeId || "",
-      routeNumber:route?.routeNumber || "",order:route?.order || "",cityCode:candidate.cityCode || "",nodeId:candidate.nodeId || "",snapshot:null,lastError:"",status:"idle",lastSyncedAt:""});
+      routeNumber:route?.routeNumber || "",order:route?.order || "",cityCode:candidate.cityCode || "",nodeId:candidate.nodeId || "",lineName:candidate.lineName || "",snapshot:null,lastError:"",status:"idle",lastSyncedAt:""});
     state.commute.planningBindingKey = JSON.stringify([state.live.provider,state.live.stationId || state.live.nodeId,state.live.routeId,state.live.order]);
     if (candidate.cityId) state.ui.busCityId = candidate.cityId;
     const selectedCity = busCitiesMeta.cities.find(city => city.id === state.ui.busCityId);

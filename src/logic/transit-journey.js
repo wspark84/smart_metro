@@ -16,6 +16,8 @@ export function transitQueryForState(state) {
     cityCode: String(state?.live?.cityCode || ""),
     nodeId: String(state?.live?.nodeId || ""),
     arsId: String(state?.live?.arsId || ""),
+    // Subway line label from station search; keeps same-named stations apart.
+    lineName: String(state?.live?.lineName || ""),
   };
 }
 

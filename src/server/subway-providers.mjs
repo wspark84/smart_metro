@@ -109,7 +109,11 @@ export async function fetchSubwayArrival(binding, deps = {}) {
 export async function subwayStationRoutes(binding, {env = process.env, fetchImpl = fetch, timetable = timetableSubwayDirections, ...deps} = {}) {
   const lineName = text(binding.lineName);
   let realtimeError;
-  if (!OUTSIDE_SEOUL_REALTIME.test(lineName.replace(/\s+/g, '')) && text(env.SEOUL_SUBWAY_API_KEY)) {
+  // Seoul's API matches by station name only, so require a capital-area location when known.
+  const lat = Number(binding.posY), lng = Number(binding.posX);
+  const located = Number.isFinite(lat) && Number.isFinite(lng) && lat !== 0 && lng !== 0;
+  const capitalArea = !located || (lat >= 36.7 && lat <= 38.3 && lng >= 126.2 && lng <= 127.9);
+  if (capitalArea && !OUTSIDE_SEOUL_REALTIME.test(lineName.replace(/\s+/g, '')) && text(env.SEOUL_SUBWAY_API_KEY)) {
     try {
       const routes = subwayDirections(await fetchSubwayRows(binding.stationName, env, fetchImpl))
         .filter(route => !lineName || linesCompatible(lineName, route.routeNumber));

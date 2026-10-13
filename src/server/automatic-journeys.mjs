@@ -1,7 +1,7 @@
 import {lookupBoardingRoutes} from './boarding-routes.mjs';
 import {fetchTransitRoutes} from './transit-providers.mjs';
 import {fetchWithTimeout} from './upstream-fetch.mjs';
-import {parseSubwayRouteId,isTimetableSubwayRoute} from '../logic/station-search.js';
+import {parseSubwayRouteId,isTimetableSubwayRoute,linesCompatible} from '../logic/station-search.js';
 import {verifyTimetableDirection} from './subway-timetable.mjs';
 import {transitQueryKey} from '../logic/transit-journey.js';
 import {routeRows} from './tago-headway-binding.mjs';
@@ -83,7 +83,7 @@ export async function discoverJourneyOptions(query,{lookup=lookupBoardingRoutes,
       stationId:route.stationId || station.stationId || query.stationId,
       nodeId:route.nodeId || station.nodeId || query.nodeId,
       stationName:station.stationName || query.stationName,routeId:route.routeId,routeNumber:route.routeNumber};
-    const matches=candidates.filter(path=>path.firstVehicles.some(v=>same(v.name,route.routeNumber)));
+    const matches=candidates.filter(path=>path.firstVehicles.some(v=>route.basis==='timetable' ? linesCompatible(v.name,route.routeNumber) : same(v.name,route.routeNumber)));
     for(const path of matches) {
       try {
         const verificationKey=JSON.stringify([binding.provider,binding.cityCode,binding.stationId || binding.nodeId,binding.routeId,binding.order,path.nextStation,path.steps[0]?.stops,path.firstVehicles]);

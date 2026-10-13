@@ -120,3 +120,13 @@ test("station routes keep Seoul real-time but never use it for regional lines", 
   assert.ok(regional.every((route) => route.basis === "timetable"));
   await assert.rejects(subwayStationRoutes({ stationName: "없는역", lineName: "대구 1호선" }, { env: seoulEnv, fetchImpl: seoulFetch, readCatalog: async () => null, loadHolidays: noHolidays }), /공식 시간표를 찾지 못했습니다/);
 });
+
+test("a regional location never uses Seoul real-time even without a line name", async () => {
+  resetRequestCache();
+  let seoulCalls = 0;
+  const fetchImpl = async (url) => { if (String(url).includes("swopenapi")) { seoulCalls += 1; throw new Error("must not call"); } return fakeFetch()(url); };
+  const routes = await subwayStationRoutes({ stationName: "서면", posX: "129.059", posY: "35.157" },
+    { env: { ...env, SEOUL_SUBWAY_API_KEY: "s" }, fetchImpl, readCatalog: async () => null, loadHolidays: noHolidays, now: new Date("2026-10-13T08:03:00+09:00") });
+  assert.equal(seoulCalls, 0);
+  assert.ok(routes.length >= 2 && routes.every((r) => r.basis === "timetable"));
+});
