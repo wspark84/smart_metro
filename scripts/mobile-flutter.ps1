@@ -33,6 +33,10 @@ try {
       & $flutterBin pub get
       break
     }
+    "build-aab" {
+      & $flutterBin build appbundle --release
+      break
+    }
     "analyze" {
       & $flutterBin analyze
       break
