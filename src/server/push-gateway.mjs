@@ -1,3 +1,4 @@
+import { isAllowedWebPushEndpoint } from "./ops-access.mjs";
 import { createPrivateKey, randomUUID, sign } from "node:crypto";
 import { connect as connectHttp2 } from "node:http2";
 
@@ -244,7 +245,7 @@ function buildApnsRequest(preview, gatewayConfig, authorizationToken = "") {
 
 function getWebPushSubscription(targetProfile) {
   const subscription = targetProfile?.webPushSubscription;
-  if (!subscription || typeof subscription !== "object" || !/^https:\/\/.+/i.test(String(subscription.endpoint || ""))) {
+  if (!subscription || typeof subscription !== "object" || !isAllowedWebPushEndpoint(subscription.endpoint)) {
     return null;
   }
   if (!subscription.keys?.p256dh || !subscription.keys?.auth) {

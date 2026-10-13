@@ -1,3 +1,4 @@
+import { OPERATOR_ONLY_PATHS, isOperator, redactFcmAuthStatus, createUserThrottle, MAX_PROBE_CANDIDATES, PROBE_PROVIDERS } from "./src/server/ops-access.mjs";
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { extname } from "node:path";
@@ -100,6 +101,9 @@ const ROOT = process.cwd();
 const LIVE_ARRIVAL_CACHE_TTL_MS = 10_000;
 const MAX_REQUEST_BODY_BYTES = 256 * 1024;
 const runWithRuntimeLock = createAsyncMutex();
+// Each user may send one test push per 30 seconds and 20 per day (per instance).
+const testPushThrottle = createUserThrottle({ minIntervalMs: 30_000, dailyMax: 20 });
+
 const PUBLIC_API_PATHS = new Set([
   "/api/bus/config",
   "/api/holidays/config",
@@ -1345,6 +1349,14 @@ async function handleRequest(request, response) {
     }
 
     await activateUserContext(requestAuth.user);
+    if (OPERATOR_ONLY_PATHS.has(requestUrl.pathname) && !isOperator(requestAuth.user)) {
+      response.writeHead(403, {
+        "Content-Type": "application/json; charset=utf-8",
+        "Cache-Control": "no-store",
+      });
+      response.end(JSON.stringify({ error: "운영자 전용 기능입니다." }));
+      return;
+    }
   }
 
 
@@ -1890,7 +1902,7 @@ async function handleRequest(request, response) {
 
   if (requestUrl.pathname === "/api/fcm-auth/status" && request.method === "GET") {
     try {
-      const status = await readFcmAuthStatus(process.env, new Date());
+      const status = redactFcmAuthStatus(await readFcmAuthStatus(process.env, new Date()), isOperator(activeUserContext.user));
       response.writeHead(200, {
         "Content-Type": "application/json; charset=utf-8",
         "Cache-Control": "no-store",
@@ -2019,8 +2031,22 @@ async function handleRequest(request, response) {
 
   if (requestUrl.pathname === "/api/push-gateway/test-dispatch" && request.method === "POST") {
     try {
+      const operator = isOperator(activeUserContext.user);
+      const allowance = operator ? { ok: true } : testPushThrottle(activeUserContext.user?.id);
+      if (!allowance.ok) {
+        response.writeHead(429, {
+          "Content-Type": "application/json; charset=utf-8",
+          "Cache-Control": "no-store",
+        });
+        response.end(JSON.stringify({ error: allowance.retryAfterSec
+          ? `시험 알림은 ${allowance.retryAfterSec}초 후에 다시 보낼 수 있습니다.`
+          : "오늘 보낼 수 있는 시험 알림 횟수를 모두 사용했습니다." }));
+        return;
+      }
       deviceProfileState = await readEffectiveDeviceProfile();
-      const payload = await readJsonBody(request);
+      const rawPayload = await readJsonBody(request);
+      // Only operators may choose notification text; users get the fixed test copy.
+      const payload = operator ? rawPayload : { riskLevel: rawPayload?.riskLevel };
       const appState = await readEffectiveAppState();
       const preview = buildTestPushPreview(
         deviceProfileState,
@@ -2963,7 +2989,11 @@ async function handleRequest(request, response) {
         selectedStopId: appState?.commute?.selectedStopId || "",
         stopName: payload?.stopName || "",
       });
-      const candidates = Array.isArray(payload?.candidates) ? payload.candidates : [];
+      const candidates = (Array.isArray(payload?.candidates) ? payload.candidates : [])
+        .filter((candidate) => PROBE_PROVIDERS.has(String(candidate?.provider || "").trim()));
+      if (candidates.length > MAX_PROBE_CANDIDATES) {
+        throw new Error(`정확도 비교는 한 번에 ${MAX_PROBE_CANDIDATES}개 제공처까지만 조회할 수 있습니다.`);
+      }
       if (!candidates.length) {
         throw new Error("At least one provider candidate is required for an accuracy probe.");
       }
