@@ -5040,6 +5040,11 @@ function renderAccountPanel() {
     </label>
     <div class="field-help">${escapeHtml(copy)}</div>
     <button class="soft-button wide" data-action="save-account-profile">이름 저장</button>
+    <div class="field-help legal-links">
+      <a href="/privacy" target="_blank" rel="noopener">개인정보처리방침</a> ·
+      <a href="/terms" target="_blank" rel="noopener">이용약관</a> ·
+      <a href="/account/delete">회원 탈퇴</a>
+    </div>
   </section>`;
 }
 

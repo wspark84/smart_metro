@@ -1,3 +1,5 @@
+import { createAdminDeleter, defaultSubscriptionStatus, deleteAccount, expiredAuthCookies } from "./account-deletion.mjs";
+import { readReturnPath, RETURN_COOKIE } from "./legal-pages.mjs";
 import { createRequestAuth, getAuthOrigin, getSocialLoginConfig, isTrustedMutation, SOCIAL_PROVIDERS, toWorkspaceUser } from "./supabase-session.mjs";
 import { fetchNaverUserInfo } from "./naver-userinfo.mjs";
 import { sanitizeAuthUser } from "./auth-service.mjs";
@@ -16,10 +18,11 @@ export function sendAuthJson(response, status, payload) {
 
 export async function handleSocialLoginRoute(request, response, readJsonBody, {
   env = process.env, createAuth = createRequestAuth, naverUserInfo = fetchNaverUserInfo,
+  deleteUser = createAdminDeleter(env), subscriptionStatus = defaultSubscriptionStatus(env),
 } = {}) {
   const url = new URL(request.url, "http://internal");
   const path = url.pathname;
-  const handled = path.startsWith("/api/auth/") || DISABLED.has(path) || path === "/api/account/profile";
+  const handled = path.startsWith("/api/auth/") || DISABLED.has(path) || path === "/api/account/profile" || path === "/api/account/delete";
   if (!handled) return false;
   try {
     if (path === "/api/auth/mobile-config" && request.method === "GET") {
@@ -65,7 +68,12 @@ export async function handleSocialLoginRoute(request, response, readJsonBody, {
       const auth = createAuth(request, response, { env });
       const { error } = await auth.client.auth.exchangeCodeForSession(code);
       if (error || !await auth.resolve()) throw new Error("OAuth session rejected");
-      response.writeHead(303, { Location: "/", "Cache-Control": "private, no-store", "Referrer-Policy": "no-referrer" });
+      // Only allow-listed return paths (the web account deletion page); never an open redirect.
+      const returnTo = readReturnPath(request.headers.cookie);
+      const cookies = [response.getHeader?.("Set-Cookie") || []].flat();
+      if (returnTo !== "/") cookies.push(`${RETURN_COOKIE}=; Path=/; Max-Age=0; SameSite=Lax`);
+      if (cookies.length) response.setHeader("Set-Cookie", cookies);
+      response.writeHead(303, { Location: returnTo, "Cache-Control": "private, no-store", "Referrer-Policy": "no-referrer" });
       response.end();
       return true;
     }
@@ -96,6 +104,23 @@ export async function handleSocialLoginRoute(request, response, readJsonBody, {
       const { data, error } = await auth.updateProfile(name);
       if (error) throw new Error("Profile update failed");
       sendAuthJson(response, 200, { ok: true, user: sanitizeAuthUser(toWorkspaceUser(data.user)) });
+      return true;
+    }
+    if (path === "/api/account/delete" && request.method === "POST") {
+      const auth = createAuth(request, response, { env });
+      const user = await auth.resolve();
+      if (!user) {
+        sendAuthJson(response, 401, { error: "로그인이 필요합니다.", code: "LOGIN_REQUIRED" });
+        return true;
+      }
+      try {
+        const result = await deleteAccount({ userId: user.user.id, input: await readJsonBody(request), deleteUser, subscriptionStatus });
+        response.setHeader("Set-Cookie", expiredAuthCookies(request.headers.cookie, getAuthOrigin(env).startsWith("https:")));
+        console.info("[account-deleted]");
+        sendAuthJson(response, 200, result);
+      } catch (error) {
+        sendAuthJson(response, error.statusCode || 503, { error: error.code ? error.message : "계정을 삭제하지 못했습니다. 잠시 후 다시 시도해 주세요.", code: error.code || "DELETE_FAILED" });
+      }
       return true;
     }
     sendAuthJson(response, 404, { error: "지원하지 않는 로그인 경로입니다." });

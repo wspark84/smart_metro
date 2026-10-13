@@ -1,3 +1,4 @@
+import { renderLegalPage } from "./src/server/legal-pages.mjs";
 import { OPERATOR_ONLY_PATHS, isOperator, redactFcmAuthStatus, createUserThrottle, MAX_PROBE_CANDIDATES, PROBE_PROVIDERS } from "./src/server/ops-access.mjs";
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
@@ -3235,6 +3236,14 @@ async function handleRequest(request, response) {
     }
   }
 
+  // Store-required legal pages and the web account deletion page (no account state).
+  const legalPage = ["GET", "HEAD"].includes(request.method) ? renderLegalPage(requestUrl.pathname) : null;
+  if (legalPage) {
+    response.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer" });
+    response.end(request.method === "HEAD" ? undefined : legalPage);
+    return;
+  }
+
   const pathname = requestUrl.pathname === "/" ? "/index.html" : requestUrl.pathname;
   const publicFilePath = resolvePublicStaticFile(ROOT, pathname);
 
@@ -3341,7 +3350,7 @@ const server = createServer((request, response) => {
     })().catch(error=>sendAuthJson(response,error?.statusCode || 503,{error:error?.code?error.message:'구독 정보를 확인하지 못했습니다.',code:error?.code || 'BILLING_ERROR'}));
     return;
   }
-  if (requestUrl.pathname.startsWith("/api/auth/") || requestUrl.pathname === "/api/account/profile") {
+  if (requestUrl.pathname.startsWith("/api/auth/") || requestUrl.pathname === "/api/account/profile" || requestUrl.pathname === "/api/account/delete") {
     void handleSocialLoginRoute(request, response, readJsonBody)
       .catch((error) => sendUnhandledServerError(response, error));
     return;
