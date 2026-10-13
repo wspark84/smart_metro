@@ -12,6 +12,12 @@ void main() {
     final manifest = File('android/app/src/main/AndroidManifest.xml').readAsStringSync();
     expect(manifest, contains('android:scheme="${uri.scheme}"'));
     expect(manifest, contains('android:host="${uri.host}"'));
+    final activity = RegExp(r'<activity\b[\s\S]*?</activity>').firstMatch(manifest)!.group(0)!;
+    expect(activity, contains('android:host="login-callback"'));
+    expect(activity, contains('android:scheme="inochi" android:host="subscription"'));
+    for (final receiver in RegExp(r'<receiver\b[\s\S]*?</receiver>').allMatches(manifest)) {
+      expect(receiver.group(0), isNot(contains('android.intent.action.VIEW')));
+    }
   });
   test('callback accepts only the app callback origin and path', () {
     expect(MobileSocialAuth.acceptsCallback(Uri.parse('${MobileSocialAuth.callback}?code=test')), isTrue);

@@ -17,12 +17,14 @@ class MobileOperationsScreen extends StatefulWidget {
     required this.sessionPayload,
     required this.onLoggedOut,
     required this.onSessionExpired,
+    this.onSubscription,
   });
 
   final MobileApiClient apiClient;
   final Map<String, dynamic> sessionPayload;
   final Future<void> Function() onLoggedOut;
   final Future<void> Function() onSessionExpired;
+  final Future<void> Function()? onSubscription;
 
   @override
   State<MobileOperationsScreen> createState() => _MobileOperationsScreenState();
@@ -1881,6 +1883,7 @@ class _MobileOperationsScreenState extends State<MobileOperationsScreen> {
       appBar: AppBar(
         title: const Text('BusWakeUp Ops'),
         actions: <Widget>[
+          IconButton(tooltip: '일정 구독', onPressed: widget.onSubscription, icon: const Icon(Icons.workspace_premium_outlined)),
           IconButton(
             tooltip: 'Refresh',
             onPressed: _loading ? null : _loadAll,

@@ -84,7 +84,7 @@ export async function discoverJourneyOptions(query,{lookup=lookupBoardingRoutes,
     const matches=candidates.filter(path=>path.firstVehicles.some(v=>same(v.name,route.routeNumber)));
     for(const path of matches) {
       try {
-        const verificationKey=JSON.stringify([binding.provider,binding.stationId,binding.routeId,binding.order,path.nextStation,path.steps[0]?.stops,path.firstVehicles]);
+        const verificationKey=JSON.stringify([binding.provider,binding.cityCode,binding.stationId || binding.nodeId,binding.routeId,binding.order,path.nextStation,path.steps[0]?.stops,path.firstVehicles]);
         if(!verification.has(verificationKey)) verification.set(verificationKey,verify(binding,path,{env}));
         if(!await verification.get(verificationKey)) continue;
         options.push({...path,id:`${binding.provider}:${route.routeId}:${path.id}`,binding,
@@ -111,7 +111,7 @@ export async function refreshJourneyOptions(query,{loadArrival,discover=discover
   const snapshots=new Map(),options=[];
   // Sequential durable-cache writes avoid losing another route's observation.
   for(const option of metadata.options) {
-    const id=JSON.stringify([option.binding.provider,option.binding.stationId,option.binding.routeId,option.binding.order]);
+    const id=JSON.stringify([option.binding.provider,option.binding.cityCode,option.binding.stationId || option.binding.nodeId,option.binding.routeId,option.binding.order]);
     if(!snapshots.has(id)) {
       try { const result=await loadArrival(option.binding);snapshots.set(id,{...result.value,fetchedAt:result.fetchedAt,cacheStatus:result.cacheStatus}); }
       catch { snapshots.set(id,{liveStatus:'unavailable',arrivalsMin:[]}); }

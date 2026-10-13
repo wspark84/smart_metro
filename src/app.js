@@ -90,6 +90,7 @@ import { createWorkspaceFetch } from "./services/workspace-fetch.js";
 import { buildBoardingPlan, validHeadway, buildDepartureReminder, departurePrediction, detectEarlyDeparture, departurePlanningEnabled } from "./logic/boarding-plan.js";
 import { selectBusHeadway } from "./logic/bus-headway.js";
 import { createTripScheduleEditor } from "./trip-schedule-editor.js";
+import {subscriptionPaywall} from "./subscription-view.js";
 
 if (typeof window.fetch === "function") {
   window.fetch = createWorkspaceFetch(window.fetch.bind(window), {
@@ -100,6 +101,19 @@ if (typeof window.fetch === "function") {
 const app = document.querySelector("#app");
 let state = loadState();
 let tripSchedulesSaving = false;
+let subscriptionMeta={userId:null,loading:false,active:false,available:false,checkedAt:0,error:''};
+async function refreshSubscription(force=false) {
+  const userId=authMeta.user?.id;
+  if(!userId || subscriptionMeta.loading || (!force && subscriptionMeta.userId===userId && Date.now()-subscriptionMeta.checkedAt<60000))return;
+  subscriptionMeta={...subscriptionMeta,userId,loading:true,active:false,error:''};
+  try {
+    const response=await fetch('/api/subscription',{signal:AbortSignal.timeout(15000)});
+    const data=await response.json();
+    if(!response.ok)throw new Error(data.error || '구독 상태를 확인하지 못했습니다.');
+    if(authMeta.user?.id===userId)subscriptionMeta={...data,userId,loading:false,checkedAt:Date.now(),error:''};
+  }catch(error){if(authMeta.user?.id===userId)subscriptionMeta={userId,loading:false,active:false,available:false,checkedAt:Date.now(),error:error.message};}
+  finally{if(authMeta.user?.id!==userId)subscriptionMeta={userId:null,loading:false,active:false,available:false,checkedAt:0,error:''};render();}
+}
 const tripScheduleEditor = createTripScheduleEditor({getState:()=>state,render:()=>render(),
   getRuntime:()=>alarmRuntimeMeta.runtime,
   mapKey:()=>placeApiConfig.maps?.kakao?.javascriptKey || '',
@@ -5918,6 +5932,9 @@ function renderOnboarding() {
 }
 
 function renderSchedule(screen, model) {
+  void refreshSubscription();
+  if(subscriptionMeta.userId!==authMeta.user?.id || !subscriptionMeta.active)
+    return `<main class="screen screen-form with-bottom-nav">${subscriptionPaywall(subscriptionMeta)}</main>${renderBottomNav(screen)}`;
   return `<main class="screen screen-form with-bottom-nav" data-independent-schedules>${tripScheduleEditor.html()}
     <section class="stack-panel"><h2>알람을 쉴 날짜</h2>
     <div class="holiday-form"><input type="date" aria-label="쉬는 날짜" data-field="ui.holidayDraft" value="${escapeHtml(state.ui.holidayDraft)}" /><button class="mini-button" data-action="add-holiday">쉬는 날짜 추가</button></div>
@@ -6491,6 +6508,11 @@ app.addEventListener("click", (event) => {
     resetBoardingPreview();
     void refreshVisibleTransit();
     return render();
+  }
+  if(action==='subscription-refresh'){void refreshSubscription(true);return render();}
+  if(action==='subscribe-schedules'){
+    window.location.href='inochi://subscription';
+    return;
   }
   if (action === "goto") return goTo(target.dataset.screen);
   if (action === "focus-panel") {

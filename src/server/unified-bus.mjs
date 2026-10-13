@@ -26,15 +26,27 @@ export function buildBusCities(tagoCities, configured) {
   return cities.sort((a,b)=>a.id==='seoul'?-1:b.id==='seoul'?1:a.cityName.localeCompare(b.cityName,'ko'));
 }
 
-export async function fetchUnifiedBusCities({env=process.env,fetchImpl=fetch}={}) {
+export async function fetchUnifiedBusCities({env=process.env,fetchImpl=fetch,loadTagoCities=fetchTagoCities}={}) {
   const configured={seoul:Boolean(env.SEOUL_OPEN_API_KEY),gyeonggi:Boolean(env.GYEONGGI_SERVICE_KEY),tago:Boolean(env.TAGO_SERVICE_KEY)};
   let tagoCities=[];
+  let arrivalCities=null;
   const warnings=[];
   if(configured.tago) {
-    try { tagoCities=await fetchTagoCities({serviceKey:env.TAGO_SERVICE_KEY,service:'stops',fetchImpl}); }
-    catch { warnings.push('전국 도시 목록을 불러오지 못했습니다. 잠시 후 도시 목록을 다시 불러와 주세요.'); }
+    const [stops,arrivals]=await Promise.allSettled(['stops','arrivals'].map(service=>
+      loadTagoCities({serviceKey:env.TAGO_SERVICE_KEY,service,fetchImpl})));
+    if(stops.status==='fulfilled') tagoCities=stops.value;
+    else warnings.push('전국 도시 목록을 불러오지 못했습니다. 잠시 후 도시 목록을 다시 불러와 주세요.');
+    if(arrivals.status==='fulfilled') arrivalCities=new Set(arrivals.value.map(c=>String(c.cityCode)));
+    // One diagnostic on total outage; never mistake a failed lookup for no coverage.
+    else if(stops.status==='fulfilled') warnings.push('실시간 도착정보 제공 지역을 확인하지 못했습니다. 정류장 검색은 사용할 수 있습니다.');
   }
-  return {provider:'auto',cities:buildBusCities(tagoCities,configured),warnings,configured};
+  const cities=buildBusCities(tagoCities,configured).map(city=>{
+    const regional=city.providers.some(p=>p!=='tago');
+    const arrivalSupport=regional ? 'available' : !city.available ? 'unavailable' :
+      arrivalCities===null ? 'unknown' : arrivalCities.has(String(city.cityCode)) ? 'available' : 'unavailable';
+    return {...city,arrivalSupport};
+  });
+  return {provider:'auto',cities,warnings,configured};
 }
 
 export async function searchUnifiedBusStations({cityId,keyword},{loadCities=fetchUnifiedBusCities,search=searchLiveStations}={}) {
@@ -47,6 +59,7 @@ export async function searchUnifiedBusStations({cityId,keyword},{loadCities=fetc
   const results=await Promise.allSettled(city.providers.map(provider=>search({provider,cityCode:city.cityCode,keyword:query,
     ...(provider==='gyeonggi'?{regionName:city.id.slice(3)}:{})})));
   const warnings=[...(catalog.warnings || [])], stations=[];
+  if(city.arrivalSupport==='unavailable') warnings.push('이 지역은 정류장 검색을 지원하지만 연결된 API의 실시간 도착정보 제공 지역에는 없습니다.');
   let succeeded=0;
   results.forEach((result,index)=>{
     const provider=city.providers[index];

@@ -9,6 +9,7 @@ import { dateOnlyKey, mergeHolidayDates } from "./src/logic/commute.js";
 import { buildDeliveryIntensityReport } from "./src/logic/delivery-intensity-report.js";
 import { applyAlarmDeliveryAction, createAlarmDeliveryState, reconcileAlarmDelivery } from "./src/server/alarm-delivery.mjs";
 import { reconcileTripSchedules } from './src/server/trip-schedule-runtime.mjs';
+import {createPlaySubscriptions, assertTripScheduleChange, armFreeHomeAlarm, enforceFreeHomeDate} from './src/server/play-subscription.mjs';
 import { resetDispatchQueueForAlert, resetPushGatewayHandledKeysForAlert } from "./src/server/alert-pipeline-reset.mjs";
 import { sanitizeAuthUser } from "./src/server/auth-service.mjs";
 import { readAlarmDeliveryState, writeAlarmDeliveryState } from "./src/server/alarm-delivery-store.mjs";
@@ -270,7 +271,7 @@ async function readEffectiveDeviceProfile() {
 
 async function persistDomainSnapshot(domainSnapshot) {
   const files = getActiveFiles();
-  const appState = applyDomainSnapshotToState(domainSnapshot, (await readAppState(files.appState)) || undefined);
+  const appState = armFreeHomeAlarm(applyDomainSnapshotToState(domainSnapshot, (await readAppState(files.appState)) || undefined));
   await Promise.all([writeDomainSnapshot(domainSnapshot, files.domain), writeAppState(appState, files.appState)]);
   return domainSnapshot;
 }
@@ -988,6 +989,7 @@ async function tickAlarmRuntime(now = new Date()) {
     };
   }
 
+  state=enforceFreeHomeDate(state,now);
   if (getHolidayApiConfig().configured) {
     const calendar = await refreshHolidayCalendar(alarmRuntimeState.holidayCalendar || {holidays:state.officialHolidays});
     alarmRuntimeState = {...alarmRuntimeState,holidayCalendar:calendar};
@@ -1037,7 +1039,10 @@ async function tickAlarmRuntime(now = new Date()) {
     now,
   );
   dispatchQueueState = dispatchResult.queue;
-  const scheduled = await reconcileTripSchedules(state,alarmRuntimeState.tripContexts,now,{
+  let paidSchedules=false;
+  try { paidSchedules=(await createPlaySubscriptions().status(activeUserContext.user.id)).active; }
+  catch { /* Fail closed for paid alarms; keep the free home alarm running. */ }
+  const scheduled = await reconcileTripSchedules(paidSchedules?state:{...state,tripSchedules:[]},alarmRuntimeState.tripContexts,now,{
     accuracyRuntime:busAccuracyRuntimeState,
     refresh:(trip,previous,at)=>refreshJourneyOptions(transitQueryForState(trip),{loadArrival:loadSavedTransit,previous,now:at,
       planning:{requiredArrivalTime:trip.user.requiredArrivalTime,boardingAccessMin:trip.commute.boardingAccessMin}}),
@@ -3292,6 +3297,20 @@ const server = createServer((request, response) => {
   // Auth uses a fresh request-scoped Supabase client, never the mutable alarm
   // workspace. Slow account/alarms must not queue login, callback or logout.
   // The auth handler retains its own origin, PKCE and identity checks.
+  if (requestUrl.pathname.startsWith('/api/subscription')) {
+    void (async()=>{
+      const allowed=(request.method==='GET' && requestUrl.pathname==='/api/subscription') ||
+        (request.method==='POST' && requestUrl.pathname==='/api/subscription/verify');
+      if(!allowed){sendAuthJson(response,405,{error:'허용되지 않은 결제 요청입니다.'});return;}
+      if(request.method==='POST' && !isTrustedMutation(request)){sendAuthJson(response,403,{error:'허용되지 않은 요청입니다.'});return;}
+      const auth=await createRequestAuth(request,response).resolve();
+      if(!auth){sendAuthJson(response,401,{error:'로그인이 필요합니다.'});return;}
+      const billing=createPlaySubscriptions();
+      const result=request.method==='GET'?await billing.status(auth.user.id):await billing.verify(auth.user.id,(await readJsonBody(request)).purchaseToken);
+      sendAuthJson(response,200,result);
+    })().catch(error=>sendAuthJson(response,error?.statusCode || 503,{error:error?.code?error.message:'구독 정보를 확인하지 못했습니다.',code:error?.code || 'BILLING_ERROR'}));
+    return;
+  }
   if (requestUrl.pathname.startsWith("/api/auth/") || requestUrl.pathname === "/api/account/profile") {
     void handleSocialLoginRoute(request, response, readJsonBody)
       .catch((error) => sendUnhandledServerError(response, error));
@@ -3354,7 +3373,10 @@ const server = createServer((request, response) => {
       const input=await readJsonBody(request),files=buildUserFileMap(auth.user.id);
       const result=await runWithDocumentStorage(auth,createSupabaseGateway(),async()=>{
         if(['/api/app-state','/api/domain-sync'].includes(requestUrl.pathname)) {
-          const state=requestUrl.pathname==='/api/app-state'?input:input?.state;
+          const state=armFreeHomeAlarm(requestUrl.pathname==='/api/app-state'?input:input?.state);
+          const previous=await readAppState(files.appState);
+          if(JSON.stringify(previous?.tripSchedules || [])!==JSON.stringify(state?.tripSchedules || []))
+            assertTripScheduleChange(previous,state,(await createPlaySubscriptions().status(auth.user.id)).active);
           const snapshot=projectDomainSnapshot(state || {});
           // Both documents commit in the same existing optimistic transaction.
           await Promise.all([writeAppState(state,files.appState),writeDomainSnapshot(snapshot,files.domain)]);
@@ -3385,7 +3407,7 @@ const server = createServer((request, response) => {
         code==='ROUTE_TIMEOUT' ? '목적지 경로 API 응답이 지연되고 있습니다.' :
         code==='ROUTE_SEARCH_FAILED' ? '목적지 대중교통 경로를 가져오지 못했습니다.' : '저장 또는 경로 조회에 실패했습니다. 잠시 후 다시 시도해 주세요.';
       console.error('[route-request]',JSON.stringify({code:code || 'REQUEST_FAILED'}));
-      sendAuthJson(response,error?.statusCode || 503,{error:error?.code==='DOCUMENT_CONFLICT'?error.message:message,code});
+      sendAuthJson(response,error?.statusCode || 503,{error:['DOCUMENT_CONFLICT','SUBSCRIPTION_REQUIRED','BILLING_NOT_READY'].includes(error?.code)?error.message:message,code:error?.code || code});
     });
     return;
   }

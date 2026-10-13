@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
 import { TRANSIT_LOOKUP_PATHS } from '../src/server/transit-lookups.mjs';
+import {armFreeHomeAlarm} from '../src/server/play-subscription.mjs';
 
 test('public screen files are not held behind a busy account runtime lock', async () => {
   const source = await readFile(new URL('../server.mjs', import.meta.url), 'utf8');
@@ -33,7 +34,7 @@ test('atomic settings save bypasses a blocked runtime, checks auth and commits b
  const callback=source.slice(source.indexOf('const server = createServer('),source.indexOf('\nserver.listen('));
  let listener,authenticated=false,trusted=true,committed=false;
  const statuses=[],writes=[];
- const context=vm.createContext({TRANSIT_LOOKUP_PATHS:new Set(),
+ const context=vm.createContext({TRANSIT_LOOKUP_PATHS:new Set(),armFreeHomeAlarm,
    createServer(fn){listener=fn;return {};},parseRequestUrl:r=>new URL(r.url,'http://localhost'),
    isTrustedMutation:()=>trusted,createRequestAuth:()=>({resolve:async()=>authenticated?{user:{id:'test'}}:null}),
    sendAuthJson(r,status){if(status===200)assert.equal(committed,true);statuses.push(status);},
@@ -41,6 +42,7 @@ test('atomic settings save bypasses a blocked runtime, checks auth and commits b
    buildUserFileMap:id=>({appState:id+'/app-state',domain:id+'/domain'}),createSupabaseGateway:()=>({}),
    runWithDocumentStorage:async(auth,gateway,work)=>{const result=await work();committed=true;return result;},
    projectDomainSnapshot:state=>({user:state.user}),
+   readAppState:async()=>null,
    writeAppState:async(state,path)=>writes.push(path),writeDomainSnapshot:async(state,path)=>writes.push(path),
    runWithRuntimeLock(){assert.fail('settings must not wait for alarm runtime');},
  });

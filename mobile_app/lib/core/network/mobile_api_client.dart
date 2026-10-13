@@ -80,6 +80,10 @@ class MobileApiClient {
     return _request('GET', '/api/auth/session');
   }
 
+  Future<Map<String, dynamic>> fetchSubscription() => _request('GET', '/api/subscription');
+  Future<Map<String, dynamic>> verifySubscription(String token) => _request(
+    'POST', '/api/subscription/verify', body: {'purchaseToken': token}, timeout: const Duration(seconds: 40));
+
   Future<Map<String, dynamic>> register({
     required String name,
     required String email,
@@ -313,6 +317,7 @@ class MobileApiClient {
     String path, {
     Map<String, String>? queryParameters,
     Map<String, dynamic>? body,
+    Duration timeout = _requestTimeout,
   }) async {
     final uri = Uri.parse('$_baseUrl$path').replace(
       queryParameters: queryParameters,
@@ -337,7 +342,7 @@ class MobileApiClient {
         request.add(utf8.encode(jsonEncode(body)));
       }
 
-      final response = await request.close().timeout(_requestTimeout);
+      final response = await request.close().timeout(timeout);
       _captureSessionCookie(response.headers[HttpHeaders.setCookieHeader]);
 
       final rawBody = await response

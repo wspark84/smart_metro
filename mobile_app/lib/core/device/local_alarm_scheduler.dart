@@ -71,7 +71,15 @@ class LocalAlarmScheduler {
     required bool dndBypassRequested,
     required String routeNumber,
     required Map<String, dynamic> schedule,
+    bool serverManaged = true,
   }) async {
+    // Recurring production alarms must be authorized at delivery time. Old local
+    // 30-day reservations could survive a refund or account change.
+    if (serverManaged) {
+      await cancelLocalBackup();
+      return const LocalAlarmScheduleResult(scheduled: false, exact: false, scheduledAt: null,
+        message: '일정 자동 알림은 서버에서 구독 상태를 확인한 뒤 전송합니다. 기기에 반복 예약하지 않습니다.');
+    }
     if (kIsWeb ||
         ![
           TargetPlatform.android,

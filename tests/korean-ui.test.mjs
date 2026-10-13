@@ -34,8 +34,18 @@ async function makeView() {
   });
   vm.runInContext(source,context);
   vm.runInContext('authMeta.status="authenticated"; authMeta.user={id:"test",name:"한국어 사용자",providers:["google"]};',context);
+  vm.runInContext('subscriptionMeta={userId:"test",active:true,available:true,checkedAt:Date.now()};',context);
   return {context,app};
 }
+
+test('free user sees subscription explanation instead of schedule editor',async()=>{
+ const {context,app}=await makeView();
+ vm.runInContext('subscriptionMeta.active=false;window.location.hash="#/schedule";render();',context);
+ assert.match(app.innerHTML,/유료 구독을 하시겠어요/);
+ assert.doesNotMatch(app.innerHTML,/data-independent-schedules/);
+ vm.runInContext('window.location.hash="#/home";render();',context);
+ assert.doesNotMatch(app.innerHTML,/일정 구독 안내/);
+});
 
 test('all five web screens render Korean controls without changing input values', async () => {
   const {context,app} = await makeView();

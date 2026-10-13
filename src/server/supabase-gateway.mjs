@@ -24,6 +24,7 @@ export function getSupabaseConfig(env = process.env) {
 }
 
 function providerFailure(error) {
+  if(error?.code==='PT402')return failure('SUBSCRIPTION_REQUIRED','일정 자동 알림은 월 5,000원 구독 기능입니다.',402);
   // Never return provider diagnostics: these can include SQL, URLs or user data.
   const messages = {
     invalid_credentials: "이메일 또는 비밀번호가 맞지 않습니다.",

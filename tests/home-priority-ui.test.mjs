@@ -18,6 +18,7 @@ async function view() {
   vm.runInContext(source, context);
   const run = code => vm.runInContext(code, context);
   run('authMeta.status="authenticated";authMeta.user={id:"ui-test",providers:["google"]};');
+  run('subscriptionMeta={userId:"ui-test",active:true,available:true,checkedAt:Date.now()};');
   return {run, app, html: setup => run(`(() => {const model=getDashboardModel();model.homePlan=null;${setup || ''};return renderHome('home',model);})()`) };
 }
 

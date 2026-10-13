@@ -11,18 +11,30 @@ const ALIASES = {"서울역":"서울","응암":"응암순환(상선)","공릉":"
 export async function searchSubwayStations(keyword, env = process.env, fetchImpl = fetch) {
   if (!text(env.KAKAO_LOCAL_REST_API_KEY)) throw new Error("지하철역 검색에 카카오 장소 검색 키가 필요합니다.");
   let stations = [];
+  const deadline=Date.now()+8000;
   for (const query of stationSearchQueries(keyword)) {
-    const params = new URLSearchParams({query, category_group_code:"SW8",size:"15"});
-    const response = await fetchWithTimeout(`https://dapi.kakao.com/v2/local/search/keyword.json?${params}`, {headers:{Authorization:`KakaoAK ${env.KAKAO_LOCAL_REST_API_KEY}`}}, {fetchImpl});
+    // Local keyword search exposes at most 45 results (15 per page).
+    for(let page=1;page<=3;page++) {
+    const remaining=deadline-Date.now();
+    if(remaining<=0) throw new Error('지하철역 검색 시간이 초과되었습니다. 지역과 역 이름을 함께 입력해 주세요.');
+    const params = new URLSearchParams({query, category_group_code:"SW8",size:"15",page:String(page)});
+    const response = await fetchWithTimeout(`https://dapi.kakao.com/v2/local/search/keyword.json?${params}`, {headers:{Authorization:`KakaoAK ${env.KAKAO_LOCAL_REST_API_KEY}`}}, {fetchImpl,timeoutMs:remaining});
     if (!response.ok) throw new Error(`지하철역 검색 실패 (${response.status}).`);
     const payload = await response.json();
-    stations = (payload.documents || []).filter(item => item.category_group_code === "SW8").map(item => {
-      const name = text(item.place_name).replace(/\s+[^\s]*(?:호선|분당선|중앙선|철도|신설선|경춘선|GTX-A).*$/i, "");
+    const batch = (payload.documents || []).filter(item => item.category_group_code === "SW8").map(item => {
+      // Split the station/line boundary, not a Seoul-specific list of line names.
+      // Preserves 부산 1호선, 동해선, 대경선 and 경전철 labels verbatim.
+      const display=text(item.place_name);
+      const stationPrefix=display.match(/^(.+?역)\s+(.+)$/);
+      const name = stationPrefix ? stationPrefix[1] : display.replace(/\s+[^\s]*(?:호선|분당선|중앙선|철도|신설선|경춘선|GTX-A).*$/i, "");
       const stationName = name.replace(/역$/, "");
       return {stationId:`kakao:${text(item.id)}`, stationName, displayName:text(item.place_name),
         address:text(item.road_address_name || item.address_name), posX:text(item.x), posY:text(item.y),
         stationNumber:"", category:text(item.category_name), lineName:text(item.place_name).slice(name.length).trim()};
     }).filter(item => item.stationId !== "kakao:" && item.stationName && isValidLocation({lat:item.posY,lng:item.posX}));
+    stations.push(...batch);
+    if(payload.meta?.is_end!==false) break;
+    }
     if (stations.length) break;
   }
   if(fetchImpl===globalThis.fetch) {

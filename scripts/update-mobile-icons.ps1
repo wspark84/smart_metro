@@ -1,7 +1,7 @@
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Drawing
 $root = Join-Path (Split-Path -Parent $PSScriptRoot) 'mobile_app'
-$source = [System.Drawing.Image]::FromFile((Join-Path $root 'smart_metro_icon.png'))
+$source = [System.Drawing.Image]::FromFile((Join-Path $root 'inochi_app_icon.png'))
 function Save-Icon([string]$relativePath, [int]$size) {
   $bitmap = New-Object System.Drawing.Bitmap($size, $size)
   $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
@@ -37,6 +37,7 @@ try {
     Save-Icon "web/icons/Icon-maskable-$size.png" $size
   }
   Save-Icon 'web/favicon.png' 32
+  Save-Icon 'inochi_kakao_icon.png' 128
 } finally {
   $source.Dispose()
 }
