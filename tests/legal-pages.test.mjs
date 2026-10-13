@@ -29,3 +29,11 @@ test("server exposes legal pages and the account deletion endpoint", async () =>
   const social = await readFile(new URL("../src/server/social-login-routes.mjs", import.meta.url), "utf8");
   assert.match(social, /Location: returnTo/);
 });
+
+test("operator details are filled for store submission", () => {
+  for (const page of ["/privacy", "/terms"]) {
+    const html = renderLegalPage(page);
+    for (const text of ["라이프로직스", "박우석", "214-59-00854", "제2025-용인수지-1706호", "lifelogics@naver.com"]) assert.ok(html.includes(text), `${page} ${text}`);
+    assert.ok(!html.includes("등록 예정"), page);
+  }
+});

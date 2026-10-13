@@ -2,17 +2,17 @@
 //   /privacy          개인정보처리방침
 //   /terms            이용약관
 //   /account/delete   웹 계정 삭제 (Google Play "계정 삭제 URL")
-// Fill OPERATOR before the first production release; blank values render as "등록 예정".
+// Operator details supplied by 대표 (2026-10-13). Blank values would render as "등록 예정".
 
 export const OPERATOR = Object.freeze({
   serviceName: "이노치 (이거 놓치면 지각)",
-  businessName: "",          // 상호 (사업자등록증 기준)
-  representative: "",        // 대표자 성명
-  registrationNumber: "",    // 사업자등록번호
-  mailOrderNumber: "",       // 통신판매업 신고번호 (해당 시)
-  address: "",               // 사업장 주소
-  email: "",                 // 고객·개인정보 문의 이메일
-  privacyOfficer: "",        // 개인정보 보호책임자 성명(직책)
+  businessName: "라이프로직스",
+  representative: "박우석",
+  registrationNumber: "214-59-00854",
+  mailOrderNumber: "제2025-용인수지-1706호",
+  address: "경기도 화성시 동탄구 동탄중심상가1길 36, 8층 801-137A호(반송동, 원영빌딩)",
+  email: "lifelogics@naver.com",
+  privacyOfficer: "박우석 (대표)",
   effectiveDate: "2026-11-01",
 });
 

@@ -1,3 +1,4 @@
+import { handleMobileApi } from "./src/server/mobile-api.mjs";
 import { renderLegalPage } from "./src/server/legal-pages.mjs";
 import { OPERATOR_ONLY_PATHS, isOperator, redactFcmAuthStatus, createUserThrottle, MAX_PROBE_CANDIDATES, PROBE_PROVIDERS } from "./src/server/ops-access.mjs";
 import { createServer } from "node:http";
@@ -208,6 +209,46 @@ function buildUserFileMap(userId) {
 // Home initialization needs only three documents, not the mutable alarm engine.
 // All paths and data stay local to this authenticated request; RLS and the
 // document transaction still enforce ownership and optimistic concurrency.
+// Dependencies for the Flutter app API (src/server/mobile-api.mjs).
+function mobileApiDeps() {
+  return {
+    sendJson: sendAuthJson, isTrustedMutation, readJsonBody, assertTripScheduleChange,
+    authenticate: (request, response) => createRequestAuth(request, response).resolve(),
+    subscriptionStatus: (userId) => createPlaySubscriptions().status(userId),
+    withUserDocuments: (auth, work) => runWithDocumentStorage(auth, createSupabaseGateway(), async () => {
+      const files = buildUserFileMap(auth.user.id);
+      const runtime = await readAlarmRuntimeState(files.alarmRuntime);
+      return work({
+        async readState() {
+          const stored = await readAppState(files.appState);
+          if (stored) return stored;
+          const seed = projectDomainSnapshot({});
+          seed.user.name = auth.user.name || seed.user.name;
+          const state = applyDomainSnapshotToState(seed);
+          state.user.name = auth.user.name || state.user.name;
+          return state;
+        },
+        async saveState(next) {
+          const state = armFreeHomeAlarm(next);
+          // Both documents commit in the same optimistic transaction.
+          await Promise.all([writeAppState(state, files.appState), writeDomainSnapshot(projectDomainSnapshot(state), files.domain)]);
+          return state;
+        },
+        loadOptions: (query, planning) => refreshJourneyOptions(query, {
+          previous: runtime?.automaticOptions, planning,
+          loadArrival: (binding) => loadStoredTransit(binding, {
+            now: new Date(), cache: runtime?.transitCache,
+            loadArrival: () => loadWithCache({ key: ["live-arrivals", binding], ttlMs: LIVE_ARRIVAL_CACHE_TTL_MS,
+              allowStaleOnError: false, loader: () => fetchLiveArrival(binding) }),
+            loadHeadway: () => fetchBusHeadway(binding, { now: new Date() }),
+            saveCache: async () => {},
+          }),
+        }),
+      });
+    }),
+  };
+}
+
 async function readWorkspaceView(auth, path) {
   const files = buildUserFileMap(auth.user.id);
   let [appState, domain, device] = await Promise.all([
@@ -3348,6 +3389,12 @@ const server = createServer((request, response) => {
       const result=request.method==='GET'?await billing.status(auth.user.id):await billing.verify(auth.user.id,(await readJsonBody(request)).purchaseToken);
       sendAuthJson(response,200,result);
     })().catch(error=>sendAuthJson(response,error?.statusCode || 503,{error:error?.code?error.message:'구독 정보를 확인하지 못했습니다.',code:error?.code || 'BILLING_ERROR'}));
+    return;
+  }
+  // Flutter app API; does not wait behind the shared alarm runtime lock.
+  if (requestUrl.pathname.startsWith("/api/mobile/") && requestUrl.pathname !== "/api/mobile/health") {
+    void handleMobileApi(request, response, mobileApiDeps())
+      .catch(() => sendAuthJson(response, 503, { error: "요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요." }));
     return;
   }
   if (requestUrl.pathname.startsWith("/api/auth/") || requestUrl.pathname === "/api/account/profile" || requestUrl.pathname === "/api/account/delete") {

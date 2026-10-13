@@ -22,7 +22,7 @@ export function normalizeTripSchedules(values) {
     boardingAccessMin: Math.min(180, Math.max(0, Number(value.boardingAccessMin) || 0)),
     departure: value.departure && isValidLocation(value.departure.location) ? {
       location: {lat:Number(value.departure.location.lat),lng:Number(value.departure.location.lng)},
-      live: Object.fromEntries(['provider','stationId','stationName','arsId','cityCode','nodeId'].map(key => [key,String(value.departure.live?.[key] || '').slice(0,150)])),
+      live: Object.fromEntries(['provider','stationId','stationName','arsId','cityCode','nodeId','lineName'].map(key => [key,String(value.departure.live?.[key] || '').slice(0,150)])),
     } : null,
     destination: value.destination && isValidLocation(value.destination.location) ? {
       address:String(value.destination.address || '').slice(0,300),
