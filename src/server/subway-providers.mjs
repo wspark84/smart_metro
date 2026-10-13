@@ -3,6 +3,12 @@ import { isValidLocation } from "../logic/commute.js";
 import { rankStationCandidates, stationSearchQueries } from "../logic/station-search.js";
 import {readCatalogRows} from './transit-catalog.mjs';
 import {matchSubwayIdentity} from './subway-catalog.mjs';
+import {fetchTimetableSubwayArrival, parseTimetableBinding, timetableSubwayDirections} from './subway-timetable.mjs';
+import {linesCompatible} from '../logic/station-search.js';
+
+// Lines whose names place them outside the Seoul real-time API. Same-named
+// stations (부평, 시청 …) must never borrow Seoul trains.
+const OUTSIDE_SEOUL_REALTIME = /부산|대구|광주|대전|김해|인천|의정부|용인|김포|동해선|대경선|경전철/;
 
 const LINES = {1001:"1호선",1002:"2호선",1003:"3호선",1004:"4호선",1005:"5호선",1006:"6호선",1007:"7호선",1008:"8호선",1009:"9호선",1063:"경의중앙선",1065:"공항철도",1067:"경춘선",1075:"수인분당선",1077:"신분당선",1092:"우이신설선",1032:"GTX-A"};
 const text = value => String(value ?? "").trim();
@@ -93,6 +99,26 @@ export function normalizeSubwayArrival(rows, binding, now = new Date()) {
     direction:selected.label,vehicleType:"SUBWAY",fetchedAt:now.toISOString()};
 }
 
-export async function fetchSubwayArrival(binding) {
+export async function fetchSubwayArrival(binding, deps = {}) {
+  if (parseTimetableBinding(binding.routeId)) return fetchTimetableSubwayArrival(binding, deps);
   return normalizeSubwayArrival(await fetchSubwayRows(binding.stationName),binding);
+}
+
+// Seoul real-time directions where available, otherwise the official TAGO
+// timetable (labelled "시간표 기준"). Never mixes a same-named station.
+export async function subwayStationRoutes(binding, {env = process.env, fetchImpl = fetch, timetable = timetableSubwayDirections, ...deps} = {}) {
+  const lineName = text(binding.lineName);
+  let realtimeError;
+  if (!OUTSIDE_SEOUL_REALTIME.test(lineName.replace(/\s+/g, '')) && text(env.SEOUL_SUBWAY_API_KEY)) {
+    try {
+      const routes = subwayDirections(await fetchSubwayRows(binding.stationName, env, fetchImpl))
+        .filter(route => !lineName || linesCompatible(lineName, route.routeNumber));
+      if (routes.length) return routes.map(route => ({...route, basis: 'realtime', realtime: true}));
+    } catch (error) { realtimeError = error; }
+  }
+  let timetableError;
+  const routes = await timetable(binding, {env, fetchImpl, ...deps, onError: error => { timetableError = error; }}).catch(error => { timetableError = error; return []; });
+  if (routes.length) return routes;
+  if (timetableError?.code === 'KEY_MISSING' && realtimeError) throw realtimeError;
+  throw new Error('이 역의 실시간 도착정보와 공식 시간표를 찾지 못했습니다. 노선 이름을 확인하거나 다른 역을 선택해 주세요.');
 }

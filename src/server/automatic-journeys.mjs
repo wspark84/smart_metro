@@ -1,7 +1,8 @@
 import {lookupBoardingRoutes} from './boarding-routes.mjs';
 import {fetchTransitRoutes} from './transit-providers.mjs';
 import {fetchWithTimeout} from './upstream-fetch.mjs';
-import {parseSubwayRouteId} from '../logic/station-search.js';
+import {parseSubwayRouteId,isTimetableSubwayRoute} from '../logic/station-search.js';
+import {verifyTimetableDirection} from './subway-timetable.mjs';
 import {transitQueryKey} from '../logic/transit-journey.js';
 import {routeRows} from './tago-headway-binding.mjs';
 import {koreanServiceDate} from '../logic/bus-headway.js';
@@ -16,6 +17,7 @@ const list=v=>Array.isArray(v) ? v : v ? [v] : [];
 export async function verifyBoardingDirection(binding,journey,{env=process.env,fetchImpl=fetch}={}) {
   if(binding.provider==='subway') {
     const direction=parseSubwayRouteId(binding.routeId);
+    if(isTimetableSubwayRoute(direction)) return verifyTimetableDirection(binding,journey.nextStation,{env,fetchImpl}).catch(()=>false);
     const stops=journey.steps[0]?.stops || [];
     const terminal=direction ? stops.findIndex(s=>stationSame(s,direction.destination)) : -1;
     return Boolean(direction && stationSame(direction.nextStation,journey.nextStation) &&

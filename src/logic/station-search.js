@@ -36,3 +36,26 @@ export function rankStationCandidates(items, query) {
   const unique = new Map(items.map(item => [String(item.stationId), item]));
   return [...unique.values()].sort((a, b) => score(b) - score(a) || String(a.stationName).localeCompare(String(b.stationName), "ko"));
 }
+
+// Line labels differ between Kakao ("부산 1호선") and TAGO ("부산1호선" or "1호선").
+// Treat lines as different only when a region or line number clearly disagrees.
+const LINE_REGIONS = ["서울", "부산", "대구", "광주", "대전", "인천", "김해", "의정부", "용인", "김포", "경기"];
+export function normalizeLineName(value) {
+  return String(value || "").normalize("NFKC").replace(/\s+/g, "").replace(/도시철도|지하철/g, "").replace(/선$/, "");
+}
+export function linesCompatible(first, second) {
+  const a = normalizeLineName(first), b = normalizeLineName(second);
+  if (!a || !b || a === b) return true;
+  const ra = LINE_REGIONS.filter((region) => a.includes(region)), rb = LINE_REGIONS.filter((region) => b.includes(region));
+  if (ra.length && rb.length && !ra.some((region) => rb.includes(region))) return false;
+  const da = a.match(/\d+/)?.[0], db = b.match(/\d+/)?.[0];
+  if (da && db) return da === db;
+  if (da || db) return false;
+  return a.includes(b) || b.includes(a);
+}
+
+// Timetable-based subway directions reuse the six-part route id with this marker.
+export const SUBWAY_TIMETABLE_TRAIN_TYPE = "시간표";
+export function isTimetableSubwayRoute(direction) {
+  return direction?.trainType === SUBWAY_TIMETABLE_TRAIN_TYPE && String(direction?.stationId || "").startsWith("tago:");
+}

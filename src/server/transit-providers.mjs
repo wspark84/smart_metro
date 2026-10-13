@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { isValidLocation } from "../logic/commute.js";
 import { transitQueryKey, transitQueryForState } from "../logic/transit-journey.js";
 import { fetchWithTimeout } from "./upstream-fetch.mjs";
-import { parseSubwayRouteId } from "../logic/station-search.js";
+import { parseSubwayRouteId, isTimetableSubwayRoute, linesCompatible } from "../logic/station-search.js";
 
 // Official contract: https://developers.kakao.com/docs/ko/kakaomap/rest-api
 const PUBLIC_TRANSIT_URL = "https://dapi.kakao.com/v2/routing/publictraffic";
@@ -42,12 +42,15 @@ export function normalizeTransitRoutes(payload, query, fetchedAt = new Date().to
     const subway = query.provider === "subway" ? parseSubwayRouteId(query.routeId) : null;
     const stationEqual = (a,b) => sameName(clean(a).replace(/\([^)]*\)/g, "").replace(/역$/, ""),clean(b).replace(/\([^)]*\)/g, "").replace(/역$/, ""));
     const stationMatches = Boolean(query.stationName && first.stops[0] && (subway ? stationEqual(query.stationName, first.stops[0]) : sameName(query.stationName, first.stops[0])));
-    const lineMatches = Boolean(query.routeNumber && first.vehicles.some((vehicle) => sameName(vehicle.name, query.routeNumber)));
+    const timetable = isTimetableSubwayRoute(subway);
+    // Kakao and TAGO label regional lines differently ("부산 1호선" / "1호선").
+    const lineMatches = Boolean(query.routeNumber && first.vehicles.some((vehicle) => timetable ? linesCompatible(vehicle.name, query.routeNumber) : sameName(vehicle.name, query.routeNumber)));
     const bindingReady = query.provider === "seoul" ? Boolean(query.stationId && query.routeId && query.order) :
       query.provider === "gyeonggi" ? Boolean(query.stationId && query.routeId) :
       query.provider === "tago" ? Boolean(query.cityCode && query.nodeId) : Boolean(subway && query.stationId === subway.stationId);
     const endIndex = subway ? first.stops.findIndex(stop => stationEqual(stop,subway.destination)) : -1;
-    const subwayCompatible = Boolean(subway && first.type === "SUBWAY" && stationEqual(subway.nextStation,first.stops[1]) &&
+    // Timetable directions carry no next-station field; the rider chose it by terminal name.
+    const subwayCompatible = timetable ? first.type === "SUBWAY" : Boolean(subway && first.type === "SUBWAY" && stationEqual(subway.nextStation,first.stops[1]) &&
       first.vehicles.some(vehicle => sameName(vehicle.type,subway.trainType)) && (endIndex < 0 || endIndex === first.stops.length - 1));
     const compatible = stationMatches && lineMatches && Boolean(first.stops[1]) && (query.provider === "subway" ? subwayCompatible : first.type === "BUS") && bindingReady;
     return [{ id, queryKey, fetchedAt, provider: "kakao-transit", vehicleType: first.type,

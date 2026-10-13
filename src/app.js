@@ -5182,6 +5182,7 @@ async function previewBoardingStop(stationId) {
   render();
   try {
     const result = await searchLiveStationRoutes({provider,stationName:candidate.stationName,stationId:candidate.stationId,
+      lineName:candidate.lineName || "",tagoStationId:candidate.tagoStationId || "",
       arsId:candidate.arsId || "",cityCode:candidate.cityCode || state.live.cityCode,nodeId:candidate.nodeId || candidate.stationId,
       posX:candidate.posX ?? candidate.lng,posY:candidate.posY ?? candidate.lat});
     if (request !== boardingPreview.request || activeProvider !== state.live.provider || authMeta.user?.id !== userId) return;
@@ -5240,7 +5241,7 @@ function renderHomeDepartureEditor() {
   const searching = state.ui.liveSearchStatus === "loading";
   return `<div class="home-editor field-stack" id="home-departure-editor">
     <div class="boarding-modes" role="group" aria-label="교통수단 선택"><button data-action="set-boarding-mode" data-mode="bus" aria-pressed="${!subway}">버스</button><button data-action="set-boarding-mode" data-mode="subway" aria-pressed="${subway}">지하철</button></div>
-    ${subway ? `<p class="field-help">역명 일부로 검색할 수 있습니다. 실시간 도착정보와 방면은 서울시 API 제공 역에 한해 확인됩니다.</p>
+    ${subway ? `<p class="field-help">역명 일부로 검색할 수 있습니다. 수도권은 실시간 도착정보, 그 밖의 지역은 공식 시간표 기준으로 안내합니다.</p>
     <div class="holiday-form"><input class="text-field-input" aria-label="지하철역 검색" placeholder="역 이름 일부 (예: 광교)" data-field="ui.liveSearchKeyword" value="${escapeHtml(state.ui.liveSearchKeyword)}" />
       <button class="mini-button" data-action="search-live-stops" ${searching ? "disabled" : ""}>${searching ? "검색 중…" : "검색"}</button></div>` : ""}
       ${state.ui.liveSearchError ? `<p role="alert">${escapeHtml(state.ui.liveSearchError)}</p>` : ""}
@@ -5273,7 +5274,7 @@ function renderHomeTimetable(model, lineLabel, direction) {
         const late = known && item.deltaMinutes < 0;
         const cut = known && model.risk.lastChanceConfirmed && item.index === model.risk.targetResult.index;
         return `<tr class="${known ? late || !item.catchable ? "is-late" : "is-ontime" : "is-unknown"} ${cut ? "is-cut" : ""}">
-          <td class="timetable-time">${escapeHtml(formatClock(addMinutes(model.now, item.arrivalMinutes)))}<small style="display:block;font-size:11px;font-weight:400">${model.retainedPrediction ? "이전 정보 · " : ""}${item.estimated ? "배차간격 기준 예상 · 실시간 아님" : model.retainedPrediction ? "당시 실시간 기준" : "실시간"}</small></td>
+          <td class="timetable-time">${escapeHtml(formatClock(addMinutes(model.now, item.arrivalMinutes)))}<small style="display:block;font-size:11px;font-weight:400">${model.retainedPrediction ? "이전 정보 · " : ""}${item.estimated ? "배차간격 기준 예상 · 실시간 아님" : model.timetableBasis ? "시간표 기준 · 실시간 아님" : model.retainedPrediction ? "당시 실시간 기준" : "실시간"}</small></td>
           <td class="timetable-line"><strong>${escapeHtml(item.routeNumber || lineLabel || "선택한 노선")}</strong><span>${escapeHtml(item.direction || direction || model.stop.name)}</span>${item.onboardDurationSec ? `<small>목적지까지 약 ${Math.ceil(item.onboardDurationSec/60)}분 · 환승 ${item.transfers || 0}회</small>` : ""}</td>
           <td class="timetable-arrival">${known ? escapeHtml(formatClock(item.arriveWorkAt)) : "—"}</td>
           <td class="timetable-verdict">${known && !item.catchable ? item.arrivalMinutes > 0 ? "서두르면 가능!" : "출발한 것으로 예상" : known ? late ? `지각${item.estimated ? " 예상" : ""}<br><small>+${Math.abs(item.deltaMinutes)}분</small>` : item.deltaMinutes > 0 ? `${item.deltaMinutes}분 여유${item.estimated ? " 예상" : ""}` : item.estimated ? "정시 예상" : "정시" : "미확인"}</td>
@@ -5322,6 +5323,7 @@ function renderHome(screen, model) {
   } else if (replacementReady) {
     homeDisplayPrediction = {key:displayKey,now:model.now,risk:model.risk,plan,dataSource:model.dataSource};
   }
+  model = {...model,timetableBasis:state.live.snapshot?.basis === "timetable"};
   const tripDraft = getHomeTripDraft();
   const subwayDirection = state.live.provider === "subway" ? parseSubwayRouteId(state.live.routeId) : null;
   const lineLabel = state.live.routeNumber ? `${state.live.routeNumber}${state.live.provider === "subway" ? "" : "번"}${subwayDirection ? ` · ${subwayDirection.direction} · ${subwayDirection.nextStation} 방면` : ""}` : "";

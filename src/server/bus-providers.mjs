@@ -1,7 +1,7 @@
 import { fetchWithTimeout } from "./upstream-fetch.mjs";
 import {loadWithCache,createRequestCache} from './request-cache.mjs';
 const gyeonggiArrivalCaches=new WeakMap();
-import { fetchSubwayArrival, fetchSubwayRows, searchSubwayStations, subwayDirections } from "./subway-providers.mjs";
+import { fetchSubwayArrival, searchSubwayStations, subwayStationRoutes } from "./subway-providers.mjs";
 import { stationSearchQueries, rankStationCandidates } from "../logic/station-search.js";
 import { normalizeGyeonggiCity } from "../logic/gyeonggi-cities.js";
 import { fetchTagoArrivalRows, searchTagoStations, searchTagoStationRoutes } from "./tago-api.mjs";
@@ -707,7 +707,7 @@ async function searchLiveStationsExact(binding) {
 }
 
 export async function searchLiveStationRoutes(binding) {
-  if (binding.provider === "subway") return {provider:"subway",routes:subwayDirections(await fetchSubwayRows(binding.stationName))};
+  if (binding.provider === "subway") return {provider:"subway",routes:await subwayStationRoutes(binding)};
   if (binding.provider === "tago") {
     return { provider: "tago", routes: await searchTagoStationRoutes({ serviceKey: process.env.TAGO_SERVICE_KEY,
       cityCode: binding.cityCode, nodeId: binding.nodeId, routeNumber: binding.routeNumber }) };
