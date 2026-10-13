@@ -209,6 +209,72 @@ class LocalAlarmScheduler {
     );
   }
 
+  static const int _departureBackupId = 92001;
+
+  /// One on-device backup at today's recommended leave time, in case a push
+  /// is delayed. Replaced whenever the forecast changes; cancelled on
+  /// "출발했어요", when today's alarm is turned off, and on sign-out.
+  Future<bool> scheduleDepartureBackup({
+    required DateTime atUtc,
+    required String title,
+    required String body,
+  }) async {
+    if (kIsWeb || ![TargetPlatform.android, TargetPlatform.iOS].contains(defaultTargetPlatform)) {
+      return false;
+    }
+    await initialize();
+    await _notifications.cancel(id: _departureBackupId);
+    final when = tz.TZDateTime.from(atUtc, tz.local);
+    if (!when.isAfter(tz.TZDateTime.now(tz.local).add(const Duration(seconds: 30)))) {
+      return false;
+    }
+    var exact = false;
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      final android = _notifications.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+      exact = await android?.canScheduleExactNotifications() ?? false;
+    }
+    await _notifications.zonedSchedule(
+      id: _departureBackupId,
+      title: title,
+      body: body,
+      scheduledDate: when,
+      notificationDetails: NotificationDetails(
+        android: AndroidNotificationDetails(
+          'buswakeup-critical-song-v1',
+          '출발 알림',
+          channelDescription: '놓치면 늦는 교통편의 출발 시각 알림',
+          icon: 'ic_stat_buswakeup',
+          importance: Importance.max,
+          priority: Priority.max,
+          category: AndroidNotificationCategory.alarm,
+          playSound: true,
+          sound: const RawResourceAndroidNotificationSound('smart_metro_song'),
+          enableVibration: true,
+          vibrationPattern: Int64List.fromList(const <int>[0, 1000, 200, 1000, 200, 1000]),
+          audioAttributesUsage: AudioAttributesUsage.alarm,
+        ),
+        iOS: const DarwinNotificationDetails(
+          presentAlert: true,
+          presentBanner: true,
+          presentList: true,
+          presentSound: true,
+          interruptionLevel: InterruptionLevel.timeSensitive,
+        ),
+      ),
+      androidScheduleMode: exact ? AndroidScheduleMode.alarmClock : AndroidScheduleMode.inexactAllowWhileIdle,
+      payload: 'departure-backup',
+    );
+    return true;
+  }
+
+  Future<void> cancelDepartureBackup() async {
+    if (kIsWeb || ![TargetPlatform.android, TargetPlatform.iOS].contains(defaultTargetPlatform)) {
+      return;
+    }
+    await initialize();
+    await _notifications.cancel(id: _departureBackupId);
+  }
+
   Future<void> cancelLocalBackup() async {
     if (kIsWeb ||
         ![

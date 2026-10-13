@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../features/root/mobile_root_screen.dart';
-import 'bus_wakeup_theme.dart';
+import '../features/root/inochi_root.dart';
+import 'inochi_theme.dart';
 
 class BusWakeUpApp extends StatelessWidget {
   const BusWakeUpApp({super.key});
@@ -11,8 +11,9 @@ class BusWakeUpApp extends StatelessWidget {
     return MaterialApp(
       title: '이노치',
       debugShowCheckedModeBanner: false,
-      theme: buildBusWakeUpTheme(),
-      home: const MobileRootScreen(),
+      theme: buildInochiTheme(Brightness.light),
+      darkTheme: buildInochiTheme(Brightness.dark),
+      home: const InochiRoot(),
     );
   }
 }

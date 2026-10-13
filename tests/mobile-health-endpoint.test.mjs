@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { buildMobileHealthPayload } from "../src/server/mobile-health.mjs";
 
-const SERVER_PATH = "C:\\Users\\User\\.gemini\\AI coding\\smart_bus\\server.mjs";
+const SERVER_PATH = new URL("../server.mjs", import.meta.url);
 
 test("mobile health endpoint is exposed for real-device reachability checks", async () => {
   const serverSource = await readFile(SERVER_PATH, "utf8");
