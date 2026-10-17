@@ -25,7 +25,8 @@
    **현재 8건 모두 "개발계정"(일일 호출 한도 낮음)** → 출시 전 공공데이터포털에서 활용사례 등록 후 **운영계정 전환(트래픽 증가) 신청** 필요. 최소 대상: 버스도착정보, 버스정류소정보, 버스노선정보, 지하철정보
 3. **구글플레이 개발자 계정**: 조직 계정 · 라이프로직스 · D-U-N-S 입력 · 등록비 25달러
 4. **업로드 키 만들기**: `scripts\create-upload-key.cmd` 더블클릭 → 비밀번호 입력 → 생성된 `C:\Users\User\inochi-keys\inochi-upload.jks`와 비밀번호를 **반드시 별도 백업**
-5. **서버 반영 승인**: 코드 배포(Vercel)와 DB 마이그레이션 `202610130001_account_deletion_ledger.sql` 적용 — CTO가 대표님 승인 후 진행
+5. ~~서버 코드 배포~~ → 2026-10-17 운영 반영(b3fb25c), `/privacy`·`/terms`·`/account/delete` 공개 확인.
+   DB 마이그레이션 `202610040001_paid_schedules.sql`·`202610130001_account_deletion_ledger.sql`은 **구독 결제를 켤 때** 대표님 승인 후 적용(운영 DB에 아직 미적용)
 6. **Vercel 환경변수**: `SMART_METRO_OPERATOR_EMAILS`(운영자 이메일), `SUPABASE_SERVICE_ROLE_KEY`(탈퇴 처리에 필수) 확인
 7. **알람 음원** `smart_metro_song` 저작권(직접 제작/구매 라이선스) 확인
 8. **통신판매업 신고 주소**: 신고번호는 용인시 수지구 발급, 사업장 주소는 화성시 동탄 → 이전했다면 변경신고 필요 여부 확인
