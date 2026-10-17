@@ -79,7 +79,7 @@ export function privacyPage() {
 <h2>3. 처리 위탁과 국외 이전</h2>
 <p>서비스 제공을 위해 아래 업체에 처리를 맡기며, 일부는 해외에 저장·처리됩니다. 이용자는 회원 탈퇴로 국외 이전을 거부할 수 있으나, 이 경우 서비스를 이용할 수 없습니다.</p>
 <table><thead><tr><th>받는 자 (국가)</th><th>항목</th><th>목적</th><th>이전 방법·시점</th><th>보유 기간</th></tr></thead><tbody>
-<tr><td>Supabase Inc. (미국, 저장 지역은 운영 설정에 따름)</td><td>1항의 회원·알람·구독 정보</td><td>로그인, 데이터 저장</td><td>서비스 이용 시 네트워크 전송</td><td>탈퇴 시까지</td></tr>
+<tr><td>Supabase Inc. (미국 법인, 데이터 저장 위치: 대한민국 서울 리전)</td><td>1항의 회원·알람·구독 정보</td><td>로그인, 데이터 저장</td><td>서비스 이용 시 네트워크 전송</td><td>탈퇴 시까지</td></tr>
 <tr><td>Vercel Inc. (미국, 서버 실행 지역 서울)</td><td>요청 처리 중의 정보, 접속 기록</td><td>서버 운영</td><td>서비스 이용 시 네트워크 전송</td><td>처리 후 즉시 또는 로그 보관 기간</td></tr>
 <tr><td>Google LLC (미국)</td><td>푸시 토큰, 알람 내용, 구매 토큰, 구글 로그인 정보</td><td>푸시 전송(Firebase), 구독 결제 확인(Google Play), 로그인</td><td>알람·결제·로그인 시 네트워크 전송</td><td>각 서비스 정책에 따름</td></tr>
 <tr><td>Apple Inc. (미국)</td><td>푸시 토큰, 알람 내용, 애플 로그인 정보, 구매 정보</td><td>iPhone 알림, 애플 로그인, App Store 결제</td><td>알람·결제·로그인 시 네트워크 전송</td><td>각 서비스 정책에 따름</td></tr>
