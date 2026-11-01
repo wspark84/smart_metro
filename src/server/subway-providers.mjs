@@ -14,6 +14,21 @@ const LINES = {1001:"1호선",1002:"2호선",1003:"3호선",1004:"4호선",1005:
 const text = value => String(value ?? "").trim();
 const ALIASES = {"서울역":"서울","응암":"응암순환(상선)","공릉":"공릉(서울산업대입구)","대모산입구":"대모산","천호":"천호(풍납토성)","몽촌토성":"몽촌토성(평화의문)","남한산성입구":"남한산성입구(성남법원, 검찰청)"};
 
+// One Kakao SW8 place → station candidate. Splits the station/line boundary,
+// not a Seoul-specific list of line names, so 부산 1호선, 동해선, 대경선 and
+// 경전철 labels stay verbatim.
+export function kakaoSubwayStation(item) {
+  if (item?.category_group_code !== "SW8") return null;
+  const display=text(item.place_name);
+  const stationPrefix=display.match(/^(.+?역)\s+(.+)$/);
+  const name = stationPrefix ? stationPrefix[1] : display.replace(/\s+[^\s]*(?:호선|분당선|중앙선|철도|신설선|경춘선|GTX-A).*$/i, "");
+  const stationName = name.replace(/역$/, "");
+  const station = {stationId:`kakao:${text(item.id)}`, stationName, displayName:display,
+    address:text(item.road_address_name || item.address_name), posX:text(item.x), posY:text(item.y),
+    stationNumber:"", category:text(item.category_name), lineName:display.slice(name.length).trim()};
+  return station.stationId !== "kakao:" && station.stationName && isValidLocation({lat:station.posY,lng:station.posX}) ? station : null;
+}
+
 export async function searchSubwayStations(keyword, env = process.env, fetchImpl = fetch) {
   if (!text(env.KAKAO_LOCAL_REST_API_KEY)) throw new Error("지하철역 검색에 카카오 장소 검색 키가 필요합니다.");
   let stations = [];
@@ -27,17 +42,7 @@ export async function searchSubwayStations(keyword, env = process.env, fetchImpl
     const response = await fetchWithTimeout(`https://dapi.kakao.com/v2/local/search/keyword.json?${params}`, {headers:{Authorization:`KakaoAK ${env.KAKAO_LOCAL_REST_API_KEY}`}}, {fetchImpl,timeoutMs:remaining});
     if (!response.ok) throw new Error(`지하철역 검색 실패 (${response.status}).`);
     const payload = await response.json();
-    const batch = (payload.documents || []).filter(item => item.category_group_code === "SW8").map(item => {
-      // Split the station/line boundary, not a Seoul-specific list of line names.
-      // Preserves 부산 1호선, 동해선, 대경선 and 경전철 labels verbatim.
-      const display=text(item.place_name);
-      const stationPrefix=display.match(/^(.+?역)\s+(.+)$/);
-      const name = stationPrefix ? stationPrefix[1] : display.replace(/\s+[^\s]*(?:호선|분당선|중앙선|철도|신설선|경춘선|GTX-A).*$/i, "");
-      const stationName = name.replace(/역$/, "");
-      return {stationId:`kakao:${text(item.id)}`, stationName, displayName:text(item.place_name),
-        address:text(item.road_address_name || item.address_name), posX:text(item.x), posY:text(item.y),
-        stationNumber:"", category:text(item.category_name), lineName:text(item.place_name).slice(name.length).trim()};
-    }).filter(item => item.stationId !== "kakao:" && item.stationName && isValidLocation({lat:item.posY,lng:item.posX}));
+    const batch = (payload.documents || []).map(kakaoSubwayStation).filter(Boolean);
     stations.push(...batch);
     if(payload.meta?.is_end!==false) break;
     }

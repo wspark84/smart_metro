@@ -92,6 +92,7 @@ test("parseSeoulStationRoutesXml extracts routeId and station order for a stop",
           <rtNm>753</rtNm>
           <staOrd>12</staOrd>
           <adirection>To Eunpyeong</adirection>
+          <nxtStn>Seoul Station</nxtStn>
           <routeType>3</routeType>
           <term>10</term>
         </itemList>
@@ -108,6 +109,7 @@ test("parseSeoulStationRoutesXml extracts routeId and station order for a stop",
       routeName: "753",
       order: "12",
       direction: "To Eunpyeong",
+      nextStationName: "Seoul Station",
       routeType: "3",
       term: "10",
       stationId: "100000001",

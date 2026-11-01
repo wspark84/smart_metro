@@ -6,6 +6,8 @@ import { normalizeBoardingAccessMin, isValidLocation, dateOnlyKey } from "../log
 import { transitQueryForState } from "../logic/transit-journey.js";
 import { normalizeTripSchedules, scheduleValidation } from "../logic/trip-schedules.js";
 import { parseSubwayRouteId, isTimetableSubwayRoute } from "../logic/station-search.js";
+import { findNearbyStops, describeStop } from "./stop-finder.mjs";
+import { createUserThrottle } from "./ops-access.mjs";
 
 const PROVIDERS = new Set(["seoul", "gyeonggi", "tago", "subway"]);
 const TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -76,16 +78,77 @@ export function setupSummary(state) {
     boardingAccessMin: access, destination, boarding, complete: missing.length === 0, missing };
 }
 
+// ---- Repeat (paid) ----------------------------------------------------------
+// "매일 자동 알림" is one trip schedule that mirrors the home setup. The alarm
+// engine already runs trips only for subscribers, so the home one-day alarm
+// is switched off while it is on (no duplicate alarms).
+export const REPEAT_TRIP_ID = "inochi-repeat";
+const DEFAULT_DAYS = [1, 2, 3, 4, 5];
+const repeatTrip = (state) => (Array.isArray(state?.tripSchedules) ? state.tripSchedules : []).find((trip) => trip?.id === REPEAT_TRIP_ID) || null;
+const weekday = (dateKey) => new Date(`${dateKey}T00:00:00Z`).getUTCDay();
+const holidayKeys = (state) => new Set([...(state?.holidayDates || []), ...(state?.officialHolidays || []).map((item) => item?.date)].filter(Boolean));
+
+export function repeatSummary(state) {
+  const trip = repeatTrip(state);
+  return { enabled: trip?.enabled === true, days: trip?.daysOfWeek?.length ? [...trip.daysOfWeek].sort() : DEFAULT_DAYS,
+    skipHolidays: trip ? trip.skipHolidays !== false : true };
+}
+
+function normalizeDays(days) {
+  if (days === undefined) return undefined;
+  if (!Array.isArray(days)) throw fail(400, "반복할 요일을 다시 선택해 주세요.");
+  const unique = [...new Set(days.map(Number))].filter((day) => Number.isInteger(day) && day >= 0 && day <= 6).sort();
+  if (!unique.length) throw fail(400, "반복할 요일을 하나 이상 선택해 주세요.");
+  return unique;
+}
+
+// Rebuilds the repeat trip from the home setup; `change` toggles/edits it.
+export function applyRepeat(previous, change) {
+  const state = clone(previous);
+  const existing = repeatTrip(state);
+  if (!existing && !change?.enabled) return state;
+  const current = repeatSummary(state);
+  const enabled = change?.enabled === undefined ? current.enabled : change.enabled === true;
+  const days = normalizeDays(change?.days) || current.days;
+  const skipHolidays = change?.skipHolidays === undefined ? current.skipHolidays : change.skipHolidays !== false;
+  const setup = setupSummary(state);
+  if (enabled && !setup.complete) throw fail(400, "출근길 설정을 먼저 마쳐 주세요.");
+  const trip = {
+    id: REPEAT_TRIP_ID, name: "출근", enabled, requiredArrivalTime: setup.requiredArrivalTime,
+    boardingAccessMin: setup.boardingAccessMin ?? 0,
+    departure: setup.boarding ? { location: { lat: setup.boarding.lat, lng: setup.boarding.lng },
+      live: Object.fromEntries(["provider", "stationId", "stationName", "arsId", "cityCode", "nodeId", "lineName"].map((key) => [key, setup.boarding[key] || ""])) } : null,
+    destination: setup.destination ? { address: setup.destination.address || setup.destination.label, location: { lat: setup.destination.lat, lng: setup.destination.lng } } : null,
+    daysOfWeek: days, skipHolidays, snoozeDate: existing?.snoozeDate || null, alarmStartLeadMin: existing?.alarmStartLeadMin ?? 30, repeatIntervalMin: existing?.repeatIntervalMin ?? 5,
+  };
+  const others = (Array.isArray(state.tripSchedules) ? state.tripSchedules : []).filter((item) => item?.id !== REPEAT_TRIP_ID);
+  state.tripSchedules = normalizeTripSchedules([trip, ...others]);
+  state.schedule = { ...(state.schedule || {}), enabled: !enabled };
+  return state;
+}
+
 export function todayAlarmStatus(state, now = new Date()) {
   const today = dateOnlyKey(now), schedule = state?.schedule || {};
+  const trip = repeatTrip(state);
+  if (trip?.enabled) {
+    const repeatDay = trip.daysOfWeek.includes(weekday(today)) && !(trip.skipHolidays !== false && holidayKeys(state).has(today));
+    return { armed: repeatDay && trip.snoozeDate !== today, date: today, departedToday: trip.snoozeDate === today, repeat: true, repeatDay };
+  }
   const armed = schedule.enabled !== false && schedule.oneTimeDate === today && schedule.snoozeDate !== today;
-  return { armed, date: today, departedToday: schedule.snoozeDate === today && schedule.oneTimeDate === today };
+  return { armed, date: today, departedToday: schedule.snoozeDate === today && schedule.oneTimeDate === today, repeat: false, repeatDay: false };
 }
 
 // Free home alarm: arm for today only (server enforces the one-day window).
 export function applyTodayAlarm(previous, enabled, now = new Date()) {
   const state = clone(previous), today = dateOnlyKey(now);
   state.schedule = { ...(state.schedule || {}) };
+  const trip = repeatTrip(state);
+  if (trip?.enabled) {
+    // Pausing or resuming today's repeat alarm never needs a subscription check.
+    state.tripSchedules = state.tripSchedules.map((item) => item?.id === REPEAT_TRIP_ID ? { ...item, snoozeDate: enabled ? null : today } : item);
+    if (!enabled) state.schedule.snoozeDate = today;
+    return state;
+  }
   if (enabled) {
     state.schedule.enabled = true;
     state.schedule.repeatPreset = "DAILY";
@@ -152,7 +215,26 @@ export function buildHomeForecast({ state, automatic, now = new Date() }) {
 const ROUTES = {
   "GET /api/mobile/home": "home", "POST /api/mobile/setup": "setup", "POST /api/mobile/today": "today",
   "GET /api/mobile/trips": "trips", "PUT /api/mobile/trips": "saveTrips",
+  "GET /api/mobile/stops/nearby": "nearbyStops", "GET /api/mobile/stops/describe": "describeStop",
 };
+// Lookups spend public-data quota; keep one person from draining it.
+const lookupThrottle = createUserThrottle({ minIntervalMs: 400, dailyMax: 600 });
+
+export function subscriptionRequiredError() {
+  return fail(402, "매일 자동 알림은 구독 후 사용할 수 있어요.", "SUBSCRIPTION_REQUIRED");
+}
+
+// Applies setup and repeat changes, enforcing the paid repeat rule.
+export function applySetupRequest(state, input, subscription) {
+  const { repeat, ...patch } = input || {};
+  let next = applyCommuteSetup(state, patch);
+  const before = repeatSummary(state);
+  const wantsOn = repeat?.enabled === true && !before.enabled;
+  if (wantsOn && subscription?.active !== true) throw subscriptionRequiredError();
+  const lapsed = before.enabled && subscription?.active === false && !subscription?.unknown;
+  next = applyRepeat(next, lapsed ? { ...(repeat || {}), enabled: false } : repeat);
+  return next;
+}
 
 export async function handleMobileApi(request, response, deps) {
   const url = new URL(request.url, "http://internal");
@@ -161,6 +243,20 @@ export async function handleMobileApi(request, response, deps) {
   if (request.method !== "GET" && !deps.isTrustedMutation(request)) { deps.sendJson(response, 403, { error: "허용되지 않은 요청입니다." }); return; }
   const auth = await deps.authenticate(request, response);
   if (!auth) { deps.sendJson(response, 401, { error: "로그인이 필요합니다.", code: "LOGIN_REQUIRED" }); return; }
+  if (action === "nearbyStops" || action === "describeStop") {
+    const allowed = (deps.lookupThrottle || lookupThrottle)(auth.user.id);
+    if (!allowed.ok) { deps.sendJson(response, 429, { error: "조회가 너무 잦습니다. 잠시 후 다시 시도해 주세요.", code: "RATE_LIMITED" }); return; }
+    try {
+      const input = Object.fromEntries(url.searchParams);
+      const result = action === "nearbyStops"
+        ? await (deps.findNearbyStops || findNearbyStops)({ lat: input.lat, lng: input.lng })
+        : await (deps.describeStop || describeStop)(input);
+      deps.sendJson(response, 200, result);
+    } catch (error) {
+      deps.sendJson(response, error?.statusCode === 400 ? 400 : 503, { error: error?.statusCode === 400 ? error.message : "정류장 정보를 가져오지 못했습니다. 잠시 후 다시 시도해 주세요.", code: error?.code || "LOOKUP_FAILED" });
+    }
+    return;
+  }
   try {
     const input = request.method === "GET" ? {} : await deps.readJsonBody(request);
     const now = deps.now ? deps.now() : new Date();
@@ -174,13 +270,13 @@ export async function handleMobileApi(request, response, deps) {
           try { automatic = await docs.loadOptions(transitQueryForState(current), { requiredArrivalTime: setup.requiredArrivalTime, boardingAccessMin: setup.boardingAccessMin }); }
           catch (error) { forecastError = error?.routeFailureCode ? "경로·도착정보를 가져오지 못했습니다. 잠시 후 다시 시도해 주세요." : "도착정보 확인이 지연되고 있습니다."; }
         }
-        return { setup, today: todayAlarmStatus(current, now), forecast: buildHomeForecast({ state: current, automatic, now }),
+        return { setup, repeat: repeatSummary(current), today: todayAlarmStatus(current, now), forecast: buildHomeForecast({ state: current, automatic, now }),
           forecastError, trips: current.tripSchedules || [], subscription: await subscription(), ...extra };
       };
       if (action === "home") return view(state);
       if (action === "trips") return { trips: state.tripSchedules || [], subscription: await subscription() };
       let next;
-      if (action === "setup") next = applyCommuteSetup(state, input);
+      if (action === "setup") next = applySetupRequest(state, input, input?.repeat?.enabled === true || repeatSummary(state).enabled ? await subscription() : null);
       else if (action === "today") next = applyTodayAlarm(state, input?.enabled === true, now);
       else {
         next = applyTrips(state, input?.trips);

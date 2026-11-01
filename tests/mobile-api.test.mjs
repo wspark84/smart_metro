@@ -114,3 +114,60 @@ test("mobile HTTP layer enforces auth, origin, subscription and saves through th
   assert.equal(ok.status, 200);
   assert.equal(ok.body.trips.length, 1);
 });
+
+test("repeat is paid, mirrors the home setup and replaces the free home alarm", async () => {
+  const { applySetupRequest, repeatSummary, REPEAT_TRIP_ID } = await import("../src/server/mobile-api.mjs");
+  const ready = applyCommuteSetup(base(), setupPatch);
+  assert.throws(() => applySetupRequest(ready, { repeat: { enabled: true } }, { active: false }), (error) => error.code === "SUBSCRIPTION_REQUIRED" && error.statusCode === 402);
+  assert.throws(() => applySetupRequest(base(), { repeat: { enabled: true } }, { active: true }), /출근길 설정/);
+  const on = applySetupRequest(ready, { repeat: { enabled: true, days: [5, 1, 1, 3] } }, { active: true });
+  const trip = on.tripSchedules.find((item) => item.id === REPEAT_TRIP_ID);
+  assert.equal(trip.enabled, true);
+  assert.deepEqual(trip.daysOfWeek, [1, 3, 5]);
+  assert.equal(trip.skipHolidays, true, "holidays are skipped by default");
+  assert.equal(trip.departure.live.lineName, "부산 1호선");
+  assert.equal(on.schedule.enabled, false, "free home alarm off while repeat is on");
+  assert.deepEqual(repeatSummary(on), { enabled: true, days: [1, 3, 5], skipHolidays: true });
+  // Later setup edits keep the repeat trip in step without a new purchase check.
+  const moved = applySetupRequest(on, { requiredArrivalTime: "09:30" }, { active: true });
+  assert.equal(moved.tripSchedules.find((item) => item.id === REPEAT_TRIP_ID).requiredArrivalTime, "09:30");
+  // A lapsed subscription turns repeat off instead of blocking the edit.
+  const lapsed = applySetupRequest(on, { requiredArrivalTime: "09:10" }, { active: false });
+  assert.equal(repeatSummary(lapsed).enabled, false);
+  assert.equal(lapsed.schedule.enabled, true);
+  // Unknown status (lookup failed) never silently disables it.
+  assert.equal(repeatSummary(applySetupRequest(on, { requiredArrivalTime: "09:10" }, { active: false, unknown: true })).enabled, true);
+  assert.throws(() => applySetupRequest(ready, { repeat: { enabled: true, days: [] } }, { active: true }), /요일/);
+});
+
+test("today status and departed follow the repeat days, holidays and pause", async () => {
+  const { applySetupRequest } = await import("../src/server/mobile-api.mjs");
+  const on = applySetupRequest(applyCommuteSetup(base(), setupPatch), { repeat: { enabled: true, days: [1, 2, 3, 4, 5] } }, { active: true });
+  const monday = new Date("2026-10-12T07:00:00+09:00"), saturday = new Date("2026-10-17T07:00:00+09:00");
+  assert.equal(todayAlarmStatus(on, monday).armed, true);
+  assert.equal(todayAlarmStatus(on, saturday).armed, false);
+  assert.equal(todayAlarmStatus({ ...on, officialHolidays: [{ date: "2026-10-12" }] }, monday).armed, false, "공휴일에는 쉬어요");
+  const paused = applyTodayAlarm(on, false, monday);
+  assert.equal(todayAlarmStatus(paused, monday).armed, false);
+  assert.equal(todayAlarmStatus(paused, monday).departedToday, true);
+  assert.equal(todayAlarmStatus(paused, new Date("2026-10-13T07:00:00+09:00")).armed, true, "pause lasts one day");
+  assert.equal(todayAlarmStatus(applyTodayAlarm(paused, true, monday), monday).armed, true);
+});
+
+test("stop lookups require login, are throttled and hide upstream errors", async () => {
+  const sent = [];
+  const deps = { sendJson: (_res, status, body) => sent.push({ status, body }), isTrustedMutation: () => true,
+    authenticate: async () => ({ user: { id: "u1" } }), lookupThrottle: () => ({ ok: true }),
+    findNearbyStops: async ({ lat, lng }) => ({ stops: [{ key: "seoul:1", lat: Number(lat), lng: Number(lng) }] }),
+    describeStop: async () => { throw new Error("raw upstream secret"); } };
+  await handleMobileApi({ method: "GET", url: "/api/mobile/stops/nearby?lat=37.5&lng=127.0" }, {}, deps);
+  assert.equal(sent[0].status, 200);
+  assert.equal(sent[0].body.stops[0].key, "seoul:1");
+  await handleMobileApi({ method: "GET", url: "/api/mobile/stops/describe?provider=seoul&arsId=1" }, {}, deps);
+  assert.equal(sent[1].status, 503);
+  assert.doesNotMatch(sent[1].body.error, /secret/);
+  await handleMobileApi({ method: "GET", url: "/api/mobile/stops/nearby?lat=37.5&lng=127.0" }, {}, { ...deps, lookupThrottle: () => ({ ok: false }) });
+  assert.equal(sent[2].status, 429);
+  await handleMobileApi({ method: "GET", url: "/api/mobile/stops/nearby?lat=37.5&lng=127.0" }, {}, { ...deps, authenticate: async () => null });
+  assert.equal(sent[3].status, 401);
+});

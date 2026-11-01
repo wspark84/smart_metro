@@ -199,6 +199,7 @@ export function parseSeoulStationRoutesXml(xml) {
       routeName: getXmlValue(block, "rtNm"),
       order: getXmlValue(block, "staOrd"),
       direction: getXmlValue(block, "adirection"),
+      nextStationName: getXmlValue(block, "nxtStn"),
       routeType: getXmlValue(block, "routeType"),
       term: getXmlValue(block, "term"),
     }))
@@ -244,6 +245,7 @@ export function normalizeSeoulStationRoutes(rows) {
       routeName: String(row.routeName || "").trim(),
       order: String(row.order || "").trim(),
       direction: String(row.direction || "").trim(),
+      nextStationName: String(row.nextStationName || "").trim(),
       routeType: String(row.routeType || "").trim(),
       term: String(row.term || "").trim(),
       stationId: String(row.stationId || "").trim(),
