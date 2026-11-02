@@ -6,17 +6,17 @@ class SubscriptionScreen extends StatelessWidget {
   const SubscriptionScreen({super.key, required this.billing});
   final PlayBilling billing;
   @override Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('일정 자동 알림 구독')),
+    appBar: AppBar(title: const Text('매일 자동 알림 구독')),
     body: ListenableBuilder(listenable: billing, builder: (context, _) => ListView(
       padding: const EdgeInsets.all(24), children: [
         const Text('출근 준비에 집중하세요', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
         const SizedBox(height: 16),
-        const Text('출발지, 도착 시간과 반복 요일을 일정에 등록하면 지정한 날마다 출발 시간에 맞춰 자동으로 알려드려요.'),
+        const Text('고른 요일마다 아침에 따로 켜지 않아도 나갈 시각에 맞춰 자동으로 알려 드려요. 공휴일에는 쉬어요.'),
         const SizedBox(height: 16),
-        const Text('홈의 일회성 알림은 로그인만 하면 무료입니다.'),
+        const Text('오늘 하루 알림은 로그인만 하면 무료예요.'),
         const SizedBox(height: 24),
         if (billing.active) ...[
-          const Text('일정 자동 알림 구독 중'),
+          const Text('매일 자동 알림 구독 중'),
           Text('이용 기한: ${billing.status['expiresAt'] ?? ''}'),
         ] else ...[
           Text('월 ${billing.product?.price ?? '5,000원'}'),

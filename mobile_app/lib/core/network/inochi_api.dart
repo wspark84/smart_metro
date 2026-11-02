@@ -55,6 +55,21 @@ class InochiApi {
   Future<Map<String, dynamic>> searchSubwayStations(String keyword) =>
       _send('GET', '/api/bus/stations', query: {'provider': 'subway', 'keyword': keyword});
 
+  /// Every bus stop and subway station around a map point (about 400 m),
+  /// with opposite-side stops paired by `oppositeKey`.
+  Future<Map<String, dynamic>> nearbyStops(double lat, double lng) => _send('GET', '/api/mobile/stops/nearby',
+      query: {'lat': lat.toStringAsFixed(6), 'lng': lng.toStringAsFixed(6)}, timeout: const Duration(seconds: 30));
+
+  /// Which way a stop goes: `nextStop`, `heading`, `routes`, `directions`.
+  Future<Map<String, dynamic>> describeStop(Map<String, dynamic> stop) {
+    final query = <String, String>{};
+    for (final key in ['provider', 'stationId', 'stationName', 'arsId', 'cityCode', 'nodeId', 'lineName', 'lat', 'lng']) {
+      final value = '${stop[key] ?? ''}'.trim();
+      if (value.isNotEmpty) query[key] = value;
+    }
+    return _send('GET', '/api/mobile/stops/describe', query: query, timeout: const Duration(seconds: 30));
+  }
+
   /// Routes (bus) or directions (subway) passing the chosen stop.
   Future<Map<String, dynamic>> stopRoutes(Map<String, dynamic> stop) {
     final query = <String, String>{};

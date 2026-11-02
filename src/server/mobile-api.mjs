@@ -218,7 +218,9 @@ const ROUTES = {
   "GET /api/mobile/stops/nearby": "nearbyStops", "GET /api/mobile/stops/describe": "describeStop",
 };
 // Lookups spend public-data quota; keep one person from draining it.
-const lookupThrottle = createUserThrottle({ minIntervalMs: 400, dailyMax: 600 });
+// Nearby is per map move; describe runs for each listed stop in turn.
+const nearbyThrottle = createUserThrottle({ minIntervalMs: 400, dailyMax: 300 });
+const describeThrottle = createUserThrottle({ minIntervalMs: 0, dailyMax: 1500 });
 
 export function subscriptionRequiredError() {
   return fail(402, "매일 자동 알림은 구독 후 사용할 수 있어요.", "SUBSCRIPTION_REQUIRED");
@@ -244,7 +246,7 @@ export async function handleMobileApi(request, response, deps) {
   const auth = await deps.authenticate(request, response);
   if (!auth) { deps.sendJson(response, 401, { error: "로그인이 필요합니다.", code: "LOGIN_REQUIRED" }); return; }
   if (action === "nearbyStops" || action === "describeStop") {
-    const allowed = (deps.lookupThrottle || lookupThrottle)(auth.user.id);
+    const allowed = (deps.lookupThrottle || (action === "nearbyStops" ? nearbyThrottle : describeThrottle))(auth.user.id);
     if (!allowed.ok) { deps.sendJson(response, 429, { error: "조회가 너무 잦습니다. 잠시 후 다시 시도해 주세요.", code: "RATE_LIMITED" }); return; }
     try {
       const input = Object.fromEntries(url.searchParams);

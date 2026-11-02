@@ -1,5 +1,5 @@
 name: buswakeup_mobile
-description: BusWakeUp cross-platform mobile shell for Seoul and Gyeonggi launch.
+description: 이노치(이거 놓치면 지각) 출근 알림 앱.
 publish_to: "none"
 version: 0.1.0+1
 
@@ -11,6 +11,7 @@ dependencies:
   app_links: ^7.2.1
   in_app_purchase: ^3.3.1
   in_app_purchase_android: ^0.5.3
+  kakao_map_sdk: ^1.2.0
   url_launcher: ^6.3.2
   supabase_flutter: ^2.10.0
   audioplayers: ^6.8.1
@@ -36,3 +37,8 @@ flutter:
   uses-material-design: true
   assets:
     - assets/audio/
+  fonts:
+    # SIL Open Font License 1.1 (assets/fonts/BlackHanSans-OFL.txt)
+    - family: BlackHanSans
+      fonts:
+        - asset: assets/fonts/BlackHanSans-Regular.ttf

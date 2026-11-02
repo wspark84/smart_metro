@@ -10,12 +10,10 @@ import '../../core/network/mobile_api_client.dart';
 import '../../core/network/mobile_social_auth.dart';
 import '../../core/network/play_billing.dart';
 import '../auth/social_login_screen.dart';
-import '../home/home_screen.dart';
-import '../settings/settings_screen.dart';
 import '../subscription/subscription_screen.dart';
-import '../trips/trips_screen.dart';
+import '../today/today_screen.dart';
 
-/// Signs the user in, then shows the three consumer tabs.
+/// Signs the user in, then shows the 오늘 screen (settings open from its gear).
 class InochiRoot extends StatefulWidget {
   const InochiRoot({super.key});
 
@@ -32,7 +30,6 @@ class _InochiRootState extends State<InochiRoot> {
   bool _checking = true;
   bool _signedIn = false;
   String _error = '';
-  int _tab = 0;
   bool _subscriptionRequested = false;
 
   @override
@@ -134,10 +131,7 @@ class _InochiRootState extends State<InochiRoot> {
     _billing?.dispose();
     _billing = null;
     if (mounted) {
-      setState(() {
-        _signedIn = false;
-        _tab = 0;
-      });
+      setState(() => _signedIn = false);
     }
   }
 
@@ -149,22 +143,6 @@ class _InochiRootState extends State<InochiRoot> {
     if (!_signedIn) {
       return SocialLoginScreen(error: _error, onRetry: _bootstrap);
     }
-    final pages = <Widget>[
-      HomeScreen(api: _api, onOpenTrips: () => setState(() => _tab = 1)),
-      TripsScreen(api: _api, billing: _billing, onOpenSubscription: openSubscription),
-      SettingsScreen(api: _api, billing: _billing, onOpenSubscription: openSubscription, onSignedOut: signOut),
-    ];
-    return Scaffold(
-      body: IndexedStack(index: _tab, children: pages),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _tab,
-        onDestinationSelected: (index) => setState(() => _tab = index),
-        destinations: const [
-          NavigationDestination(icon: Icon(Icons.directions_bus_outlined), selectedIcon: Icon(Icons.directions_bus), label: '오늘'),
-          NavigationDestination(icon: Icon(Icons.event_repeat_outlined), selectedIcon: Icon(Icons.event_repeat), label: '반복 일정'),
-          NavigationDestination(icon: Icon(Icons.settings_outlined), selectedIcon: Icon(Icons.settings), label: '설정'),
-        ],
-      ),
-    );
+    return TodayScreen(api: _api, billing: _billing, onOpenSubscription: openSubscription, onSignedOut: signOut);
   }
 }

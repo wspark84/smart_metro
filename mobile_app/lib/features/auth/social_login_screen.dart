@@ -45,7 +45,7 @@ class _SocialLoginScreenState extends State<SocialLoginScreen> {
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 420),
               child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                const Icon(Icons.directions_run, size: 56, color: InochiColors.accent),
+                Icon(Icons.directions_run, size: 56, color: InochiPalette.of(context).ink),
                 const SizedBox(height: 16),
                 const Text('이거 놓치면 지각', textAlign: TextAlign.center, style: TextStyle(fontSize: 30, fontWeight: FontWeight.w900)),
                 const SizedBox(height: 8),

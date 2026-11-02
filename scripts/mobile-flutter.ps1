@@ -22,6 +22,10 @@ $env:JAVA_HOME = $javaHome
 $env:ANDROID_HOME = $androidSdk
 $env:Path = "$flutterSdk\bin;$javaHome\bin;$androidSdk\platform-tools;$androidSdk\cmdline-tools\latest\bin;$env:Path"
 
+# Build-time keys (e.g. KAKAO_NATIVE_APP_KEY) live in an untracked file.
+$defines = @()
+if (Test-Path (Join-Path $mobileRoot "dart_defines.json")) { $defines = @("--dart-define-from-file=dart_defines.json") }
+
 Push-Location $mobileRoot
 try {
   switch ($Task) {
@@ -34,7 +38,7 @@ try {
       break
     }
     "build-aab" {
-      & $flutterBin build appbundle --release
+      & $flutterBin build appbundle --release @defines
       break
     }
     "analyze" {
@@ -46,11 +50,11 @@ try {
       break
     }
     "build-web" {
-      & $flutterBin build web
+      & $flutterBin build web @defines
       break
     }
     "build-apk-debug" {
-      & $flutterBin build apk --debug
+      & $flutterBin build apk --debug @defines
       break
     }
     default {
