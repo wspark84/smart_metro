@@ -179,7 +179,8 @@ export async function fetchTimetableSubwayArrival(binding, deps = {}) {
       if (delta > 0 && delta <= 8 * 60) minutes.push(delta);
     }
   }
-  const arrivalsMin = [...new Set(minutes.map((value) => Math.round(value * 100) / 100))].sort((a, b) => a - b).slice(0, 12);
+  // Enough departures to plan an arrival several hours ahead.
+  const arrivalsMin = [...new Set(minutes.map((value) => Math.round(value * 100) / 100))].sort((a, b) => a - b).slice(0, 60);
   if (!arrivalsMin.length) throw new Error("이 방향은 앞으로 몇 시간 안에 출발하는 열차가 시간표에 없습니다.");
   return { provider: "subway", stopName: text(binding.stationName), lineNumber: parsed.lineId, arrivalsMin,
     direction: `${parsed.direction} · ${parsed.destination} 방면 · 시간표 기준`, vehicleType: "SUBWAY",

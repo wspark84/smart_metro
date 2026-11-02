@@ -171,3 +171,26 @@ test("stop lookups require login, are throttled and hide upstream errors", async
   await handleMobileApi({ method: "GET", url: "/api/mobile/stops/nearby?lat=37.5&lng=127.0" }, {}, { ...deps, authenticate: async () => null });
   assert.equal(sent[3].status, 401);
 });
+
+test("rows centre on the recommended train and keep the timetable label of a fallback", () => {
+  const now = new Date("2026-11-02T19:27:00+09:00");
+  const state = applyCommuteSetup(base(), { ...setupPatch, requiredArrivalTime: "22:07",
+    boarding: { provider: "subway", stationId: "kakao:1", stationName: "광교중앙", lineName: "신분당선", lat: 37.288, lng: 127.051 },
+    destination: { address: "판교역", label: "판교역", lat: 37.394, lng: 127.111 } });
+  const routeId = JSON.stringify(["1077", "상행", "1077006818", "상현", "신사", "일반"]);
+  const arrivals = Array.from({ length: 30 }, (_, i) => 3 + i * 6);
+  const automatic = { unverifiedCount: 0, options: [{ id: "o1", fetchedAt: now.toISOString(), verified: true, onboardDurationSec: 21 * 60,
+    dailyMetadataDate: "2026-11-02", direction: "상행 · 상현 방면", binding: { provider: "subway", routeNumber: "신분당선", routeId },
+    snapshot: { arrivalsMin: arrivals, fetchedAt: now.toISOString(), liveStatus: "ready", cacheStatus: "live", basis: "timetable" } }] };
+  const forecast = buildHomeForecast({ state, automatic, now });
+  assert.equal(forecast.status, "ready");
+  assert.equal(forecast.basis, "timetable");
+  assert.ok(forecast.leaveInMinutes > 60, "a 22:07 arrival does not make you leave now");
+  const targetIndex = forecast.rows.findIndex((row) => row.target);
+  assert.equal(targetIndex, 1, "one train before the recommended one, then later ones");
+  assert.equal(forecast.rows[2].onTime, false);
+  assert.ok(forecast.rows.every((row) => row.basis === "timetable"));
+  assert.ok(forecast.slackMinutes >= 0 && forecast.slackMinutes < 6, "arrives a few minutes before 22:07");
+  assert.ok(Date.parse(forecast.arriveAt) <= Date.parse("2026-11-02T22:07:00+09:00"));
+  assert.ok(forecast.rows[0].slackMinutes > forecast.slackMinutes, "earlier train leaves more slack");
+});

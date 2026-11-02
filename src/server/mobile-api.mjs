@@ -175,8 +175,10 @@ export function applyTrips(previous, trips) {
   return state;
 }
 
-function rowBasis(row) {
+function rowBasis(row, options = []) {
   if (row.estimated) return "estimate";
+  // Real-time subway answered from the timetable when its countdown was unavailable.
+  if (options.find((option) => option.id === row.optionId)?.snapshot?.basis === "timetable") return "timetable";
   const direction = row.binding?.provider === "subway" ? parseSubwayRouteId(row.binding.routeId) : null;
   return isTimetableSubwayRoute(direction) ? "timetable" : "realtime";
 }
@@ -190,10 +192,15 @@ export function buildHomeForecast({ state, automatic, now = new Date() }) {
     holidays, incomplete: Boolean(automatic?.unverifiedCount), options });
   const at = (minutes) => Number.isFinite(minutes) ? new Date(now.getTime() + minutes * 60_000).toISOString() : null;
   const target = plan.risk.targetResult;
-  const rows = plan.rows.filter((row) => row.arrivalMinutes >= 0).slice(0, 8).map((row) => ({
+  // Show the trains around the recommended one, not just the next few.
+  const upcoming = plan.rows.filter((row) => row.arrivalMinutes >= 0);
+  const targetIndex = upcoming.findIndex((row) => row.optionId === target?.optionId && row.arrivalMinutes === target?.arrivalMinutes);
+  const iso = (value) => value instanceof Date && Number.isFinite(value.getTime()) ? value.toISOString() : null;
+  const slack = (value) => Number.isFinite(value) ? Math.floor(value) : null;
+  const rows = upcoming.slice(Math.max(0, targetIndex - 1), Math.max(0, targetIndex - 1) + 20).map((row) => ({
     routeNumber: str(row.routeNumber, 40), direction: str(row.direction, 80), boardingAt: at(row.arrivalMinutes),
     minutes: Math.max(0, Math.floor(row.arrivalMinutes)), onTime: row.level !== "UNKNOWN" && row.deltaMinutes >= 0,
-    catchable: Boolean(row.catchable), basis: rowBasis(row), target: row.optionId === target?.optionId && row.arrivalMinutes === target?.arrivalMinutes,
+    catchable: Boolean(row.catchable), basis: rowBasis(row, options), arriveAt: iso(row.arriveWorkAt), slackMinutes: slack(row.deltaMinutes), target: row.optionId === target?.optionId && row.arrivalMinutes === target?.arrivalMinutes,
   }));
   const departure = plan.risk.departure;
   return {
@@ -202,8 +209,10 @@ export function buildHomeForecast({ state, automatic, now = new Date() }) {
     leaveInMinutes: departure ? departure.minutes : null,
     overdue: Boolean(departure && departure.remainingMin < 0),
     boardingAt: at(target?.arrivalMinutes),
+    arriveAt: Number.isFinite(target?.arrivalMinutes) ? iso(target.arriveWorkAt) : null,
+    slackMinutes: Number.isFinite(target?.arrivalMinutes) ? slack(target.deltaMinutes) : null,
     routeNumber: str(target?.routeNumber, 40), direction: str(target?.direction, 80),
-    basis: target && Number.isFinite(target.arrivalMinutes) ? rowBasis(target) : null,
+    basis: target && Number.isFinite(target.arrivalMinutes) ? rowBasis(target, options) : null,
     urgent: Boolean(plan.urgentBoarding), message: str(plan.risk.message, 300), rows,
     unverifiedCount: Number(automatic?.unverifiedCount) || 0, warning: str(automatic?.warning, 300),
     checkedAt: now.toISOString(),

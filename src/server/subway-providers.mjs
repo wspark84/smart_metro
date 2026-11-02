@@ -3,7 +3,8 @@ import { isValidLocation } from "../logic/commute.js";
 import { rankStationCandidates, stationSearchQueries } from "../logic/station-search.js";
 import {readCatalogRows} from './transit-catalog.mjs';
 import {matchSubwayIdentity} from './subway-catalog.mjs';
-import {fetchTimetableSubwayArrival, parseTimetableBinding, timetableSubwayDirections} from './subway-timetable.mjs';
+import {fetchTimetableSubwayArrival, parseTimetableBinding, timetableSubwayDirections, findTagoSubwayStations, verifyTimetableDirection} from './subway-timetable.mjs';
+import {parseSubwayRouteId, SUBWAY_TIMETABLE_TRAIN_TYPE} from '../logic/station-search.js';
 import {linesCompatible} from '../logic/station-search.js';
 
 // Lines whose names place them outside the Seoul real-time API. Same-named
@@ -104,9 +105,44 @@ export function normalizeSubwayArrival(rows, binding, now = new Date()) {
     direction:selected.label,vehicleType:"SUBWAY",fetchedAt:now.toISOString()};
 }
 
+// Which official timetable direction (U/D) matches a Seoul real-time
+// direction, decided once per day from the next station on that route.
+const timetableTwins = new Map();
+export async function timetableTwinOf(binding, deps = {}) {
+  const realtime = parseSubwayRouteId(binding.routeId);
+  if (!realtime || parseTimetableBinding(binding.routeId)) return null;
+  const lineName = text(binding.lineName) || LINES[realtime.lineId] || text(binding.routeNumber);
+  const day = new Date((deps.now || new Date()).getTime() + 9 * 3600_000).toISOString().slice(0, 10);
+  const key = JSON.stringify([day, lineName, text(binding.stationName), realtime.direction, realtime.nextStation]);
+  if (!deps.noCache && timetableTwins.has(key)) return timetableTwins.get(key);
+  let twin = null;
+  const stations = (await (deps.findStations || findTagoSubwayStations)(binding.stationName, lineName, deps)).slice(0, 2);
+  for (const station of stations) {
+    for (const upDown of ["U", "D"]) {
+      const candidate = {...binding, routeId: JSON.stringify([lineName, realtime.direction, `tago:${station.stationId}:${upDown}`,
+        realtime.destination, realtime.destination, SUBWAY_TIMETABLE_TRAIN_TYPE])};
+      try { if (await (deps.verifyDirection || verifyTimetableDirection)(candidate, realtime.nextStation, deps)) { twin = candidate; break; } } catch {}
+    }
+    if (twin) break;
+  }
+  timetableTwins.set(key, twin);
+  if (timetableTwins.size > 2000) timetableTwins.delete(timetableTwins.keys().next().value);
+  return twin;
+}
+
+// Seoul real-time first. When it has no usable train (some lines publish no
+// countdown, the daily quota ran out, or it is down) the official timetable
+// for the same station and direction answers instead, labelled as such.
 export async function fetchSubwayArrival(binding, deps = {}) {
   if (parseTimetableBinding(binding.routeId)) return fetchTimetableSubwayArrival(binding, deps);
-  return normalizeSubwayArrival(await fetchSubwayRows(binding.stationName),binding);
+  try {
+    return normalizeSubwayArrival(await (deps.fetchRows || fetchSubwayRows)(binding.stationName), binding, deps.now || new Date());
+  } catch (realtimeError) {
+    let twin = null;
+    try { twin = await timetableTwinOf(binding, deps); } catch {}
+    if (!twin) throw realtimeError;
+    return {...await (deps.fetchTimetable || fetchTimetableSubwayArrival)(twin, deps), fallbackFrom: "realtime"};
+  }
 }
 
 // Seoul real-time directions where available, otherwise the official TAGO
