@@ -31,17 +31,17 @@ function buildTestNotificationPayload({
   spokenText = "",
 }) {
   const safeRisk = String(riskLevel || "RED").toUpperCase();
-  const resolvedTitle = title || `[Test] ${routeNumber} push path check`;
+  const resolvedTitle = title || "[시험] 이노치 알람 점검";
   const resolvedBody =
     body ||
     (safeRisk === "RED"
-      ? "테스트 푸시입니다. 실제 지각 경고 전송 경로를 점검합니다."
-      : "테스트 푸시입니다. 일반 알림 전송 경로를 점검합니다.");
+      ? "알람 소리와 음성 안내가 들리면 정상이에요."
+      : "알람 소리와 음성 안내가 들리면 정상이에요.");
   const resolvedSpeech =
     spokenText ||
     (safeRisk === "RED"
-      ? "테스트 푸시입니다. 이 버스 놓치면 지각이다. 전송 경로를 점검합니다."
-      : "테스트 푸시입니다. 일반 출근 알림 전송 경로를 점검합니다.");
+      ? "시험 알람입니다. 출발 시각이 되면 이렇게 남은 시간을 읽어 드려요."
+      : "시험 알람입니다. 출발 시각이 되면 이렇게 남은 시간을 읽어 드려요.");
 
   return {
     riskLevel: safeRisk,

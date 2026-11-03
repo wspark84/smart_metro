@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 import '../../firebase_options.dart';
+import 'alarm_voice.dart';
 import 'push_alarm_payload.dart';
 
 class MobilePushRuntimeStatus {
@@ -103,7 +104,7 @@ class MobilePushRuntime {
           await FirebaseMessaging.instance.getNotificationSettings();
       _foregroundMessageSubscription ??=
           FirebaseMessaging.onMessage.listen((message) {
-        unawaited(_display.showMessage(message));
+        unawaited(_display.alarm(message, foreground: true));
       });
       _tokenRefreshSubscription ??=
           FirebaseMessaging.instance.onTokenRefresh.listen((token) {
@@ -269,21 +270,18 @@ Future<void> busWakeUpFirebaseMessagingBackgroundHandler(
         options: DefaultFirebaseOptions.currentPlatform,
       );
     }
-    // Notification payloads are shown by Android/iOS system UI in the
-    // background. Only data-only payloads need a local notification here.
-    if (message.notification == null) {
-      final display = _PushNotificationDisplay();
-      await display.initialize();
-      await display.showMessage(message);
-    }
+    // Android alarms arrive data-only: show the alarm, ring on the alarm
+    // volume and read the time left aloud. iPhone shows its own alert.
+    final display = _PushNotificationDisplay();
+    await display.initialize();
+    await display.alarm(message, foreground: false);
   } catch (_) {
     // The OS may stop the background isolate quickly; avoid crashing it.
   }
 }
 
 class _PushNotificationDisplay {
-  static const String _criticalChannelId = 'buswakeup-critical-song-v1';
-  static const String _morningChannelId = 'buswakeup-morning-song-v1';
+  static const AndroidNotificationSound _tone = RawResourceAndroidNotificationSound('inochi_ring');
   final FlutterLocalNotificationsPlugin _notifications =
       FlutterLocalNotificationsPlugin();
   bool _initialized = false;
@@ -304,8 +302,8 @@ class _PushNotificationDisplay {
     if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
       final android = _notifications.resolvePlatformSpecificImplementation<
           AndroidFlutterLocalNotificationsPlugin>();
-      await android?.createNotificationChannel(_criticalChannel());
-      await android?.createNotificationChannel(_morningChannel());
+      await android?.createNotificationChannel(_urgentChannel());
+      await android?.createNotificationChannel(_alarmChannel());
     }
     _initialized = true;
   }
@@ -314,6 +312,22 @@ class _PushNotificationDisplay {
     final android = _notifications.resolvePlatformSpecificImplementation<
         AndroidFlutterLocalNotificationsPlugin>();
     await android?.requestNotificationsPermission();
+  }
+
+  /// Shows the alarm and, on Android, rings and reads the time left aloud.
+  /// In the background the system already shows payloads that carry a
+  /// notification (iPhone, or an older server), so only data-only ones are
+  /// shown here.
+  Future<void> alarm(RemoteMessage message, {required bool foreground}) async {
+    final show = foreground || message.notification == null;
+    if (show) await showMessage(message);
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
+    final payload = PushAlarmPayload.fromRemoteFields(
+      title: message.notification?.title,
+      body: message.notification?.body,
+      data: Map<String, dynamic>.from(message.data),
+    );
+    await AlarmVoice.ring(payload, skipFirstTone: show);
   }
 
   Future<void> showMessage(RemoteMessage message) async {
@@ -327,15 +341,15 @@ class _PushNotificationDisplay {
     final notificationDetails = NotificationDetails(
       android: AndroidNotificationDetails(
         payload.androidChannelId,
-        payload.isCritical ? 'Urgent commute alarms' : 'Morning commute alarms',
+        payload.isCritical ? '지금 출발·지각 위험 알람' : '출발 전 알람',
         channelDescription: payload.isCritical
-            ? 'High-priority BusWakeUp late-risk alarms.'
-            : 'BusWakeUp morning commute arrival alarms.',
+            ? '나갈 시각과 지각 위험 알람. 무음 모드에서도 알람 음량으로 울려요.'
+            : '나갈 시각 전 알람. 무음 모드에서도 알람 음량으로 울려요.',
         icon: 'ic_stat_buswakeup',
-        importance: payload.isCritical ? Importance.max : Importance.high,
-        priority: payload.isCritical ? Priority.max : Priority.high,
+        importance: Importance.max,
+        priority: Priority.max,
         playSound: true,
-        sound: const RawResourceAndroidNotificationSound('smart_metro_song'),
+        sound: _tone,
         enableVibration: true,
         vibrationPattern: Int64List.fromList(
           payload.isCritical
@@ -368,31 +382,30 @@ class _PushNotificationDisplay {
     );
   }
 
-  AndroidNotificationChannel _criticalChannel() {
+  AndroidNotificationChannel _urgentChannel() {
     return AndroidNotificationChannel(
-      _criticalChannelId,
-      'Urgent commute alarms',
-      description: 'High-priority BusWakeUp late-risk alarms.',
+      urgentAlarmChannelId,
+      '지금 출발·지각 위험 알람',
+      description: '나갈 시각과 지각 위험 알람. 무음 모드에서도 알람 음량으로 울려요.',
       importance: Importance.max,
       playSound: true,
-      sound: const RawResourceAndroidNotificationSound('smart_metro_song'),
+      sound: _tone,
       enableVibration: true,
       vibrationPattern: Int64List.fromList(
         const <int>[0, 1000, 200, 1000, 200, 1000],
       ),
       audioAttributesUsage: AudioAttributesUsage.alarm,
-      bypassDnd: false,
     );
   }
 
-  AndroidNotificationChannel _morningChannel() {
+  AndroidNotificationChannel _alarmChannel() {
     return AndroidNotificationChannel(
-      _morningChannelId,
-      'Morning commute alarms',
-      description: 'BusWakeUp morning commute arrival alarms.',
-      importance: Importance.high,
+      alarmChannelId,
+      '출발 전 알람',
+      description: '나갈 시각 전 알람. 무음 모드에서도 알람 음량으로 울려요.',
+      importance: Importance.max,
       playSound: true,
-      sound: const RawResourceAndroidNotificationSound('smart_metro_song'),
+      sound: _tone,
       enableVibration: true,
       vibrationPattern: Int64List.fromList(const <int>[0, 400, 200, 400]),
       audioAttributesUsage: AudioAttributesUsage.alarm,

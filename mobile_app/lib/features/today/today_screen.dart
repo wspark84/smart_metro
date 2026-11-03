@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../app/inochi_theme.dart';
+import '../../core/device/alarm_voice.dart';
 import '../../core/device/local_alarm_scheduler.dart';
 import '../../core/format/kst_format.dart';
 import '../../core/network/inochi_api.dart';
@@ -134,7 +135,11 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) unawaited(_load());
+    if (state == AppLifecycleState.resumed) {
+      // Opening the app answers a ringing alarm.
+      AlarmVoice.stop();
+      unawaited(_load());
+    }
   }
 
   Future<void> _load() async {
@@ -229,6 +234,7 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _departed() async {
+    AlarmVoice.stop();
     await LocalAlarmScheduler.instance.cancelDepartureBackup();
     await _run(() async {
       try {

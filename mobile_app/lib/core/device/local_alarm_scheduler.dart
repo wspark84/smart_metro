@@ -3,6 +3,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/data/latest.dart' as tz_data;
 import 'package:timezone/timezone.dart' as tz;
 import 'backup_alarm_calendar.dart';
+import 'push_alarm_payload.dart';
 
 class LocalAlarmScheduleResult {
   const LocalAlarmScheduleResult({
@@ -240,15 +241,15 @@ class LocalAlarmScheduler {
       scheduledDate: when,
       notificationDetails: NotificationDetails(
         android: AndroidNotificationDetails(
-          'buswakeup-critical-song-v1',
-          '출발 알림',
-          channelDescription: '놓치면 늦는 교통편의 출발 시각 알림',
+          urgentAlarmChannelId,
+          '지금 출발·지각 위험 알람',
+          channelDescription: '나갈 시각과 지각 위험 알람. 무음 모드에서도 알람 음량으로 울려요.',
           icon: 'ic_stat_buswakeup',
           importance: Importance.max,
           priority: Priority.max,
           category: AndroidNotificationCategory.alarm,
           playSound: true,
-          sound: const RawResourceAndroidNotificationSound('smart_metro_song'),
+          sound: const RawResourceAndroidNotificationSound('inochi_ring'),
           enableVibration: true,
           vibrationPattern: Int64List.fromList(const <int>[0, 1000, 200, 1000, 200, 1000]),
           audioAttributesUsage: AudioAttributesUsage.alarm,

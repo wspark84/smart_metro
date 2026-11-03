@@ -164,11 +164,14 @@ function buildFcmRequest(preview, gatewayConfig, authorizationToken) {
     body: {
       message: {
         token: envelope.targetToken,
-        notification: {
+        // Android: data only, so the app itself shows the alarm, rings on the
+        // alarm volume (also in silent mode) and reads the time left aloud.
+        // iPhone: the alert below is shown by the system.
+        data: {
           title: String(message.title || ""),
           body: String(message.body || ""),
-        },
-        data: {
+          departureAt: String(data.departureAt || ""),
+          triggerKind: String(data.triggerKind || ""),
           dispatchKey: String(data.dispatchKey || ""),
           alertTriggerKey: String(data.alertTriggerKey || ""),
           routeNumber: String(data.routeNumber || ""),
@@ -186,11 +189,8 @@ function buildFcmRequest(preview, gatewayConfig, authorizationToken) {
           spokenText: String(message.speech?.text || ""),
         },
         android: {
-          priority: envelope.platformHints?.priority === "max" ? "HIGH" : "NORMAL",
-          notification: {
-            channel_id: `${String(envelope.platformHints?.channelId || "buswakeup-morning").replace(/-song-v1$/, "")}-song-v1`,
-            sound: "smart_metro_song",
-          },
+          priority: "HIGH",
+          ttl: "600s",
         },
         apns: {
           headers: {
@@ -199,6 +199,10 @@ function buildFcmRequest(preview, gatewayConfig, authorizationToken) {
           },
           payload: {
             aps: {
+              alert: {
+                title: String(message.title || ""),
+                body: String(message.body || ""),
+              },
               sound: message.sound?.mechanicalTone ? "mechanical_alarm.wav" : "default",
               "interruption-level": envelope.platformHints?.interruptionLevel || "active",
             },

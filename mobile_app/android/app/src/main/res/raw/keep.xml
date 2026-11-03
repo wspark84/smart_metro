@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Alarm sounds are referenced by name from notification channels, not from code. -->
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@raw/inochi_ring,@raw/mechanical_alarm,@raw/smart_metro_song" />

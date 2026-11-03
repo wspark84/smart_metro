@@ -105,8 +105,13 @@ test("buildPushGatewayPlan creates a redacted FCM request preview", () => {
   assert.equal(plan.request.method, "POST");
   assert.match(plan.request.url, /fcm\.googleapis\.com/);
   assert.match(plan.request.headers.Authorization, /\.\.\./);
-  assert.equal(plan.request.body.message.android.notification.channel_id, "buswakeup-critical-song-v1");
-  assert.equal(plan.request.body.message.android.notification.sound, "smart_metro_song");
+  // Android gets a data-only alarm so the app rings on the alarm volume and
+  // speaks the time left; iPhone keeps a system alert.
+  assert.equal(plan.request.body.message.notification, undefined);
+  assert.equal(plan.request.body.message.android.priority, "HIGH");
+  assert.equal(plan.request.body.message.android.notification, undefined);
+  assert.ok(plan.request.body.message.data.title);
+  assert.equal(plan.request.body.message.apns.payload.aps.alert.title, plan.request.body.message.data.title);
   assert.equal(plan.request.body.message.apns.payload.aps.sound, "mechanical_alarm.wav");
 });
 

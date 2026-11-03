@@ -212,6 +212,7 @@ function buildDispatchBundle(alert, deviceProfile, notificationSettings, now) {
     id: `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
     dispatchKey: buildDispatchKey(alert, notificationSpec),
     alertTriggerKey: alert.triggerKey,
+    triggerKind: String(alert.triggerKind || ""),
     routeNumber: alert.routeNumber || "",
     stopName: alert.stopName || "",
     riskLevel: alert.riskLevel || "",

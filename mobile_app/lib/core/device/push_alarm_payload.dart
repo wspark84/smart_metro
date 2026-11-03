@@ -8,6 +8,9 @@ class PushAlarmPayload {
     required this.stage,
     required this.dispatchKey,
     required this.deliveryPriorityClass,
+    this.spokenText = '',
+    this.departureAt = '',
+    this.triggerKind = '',
   });
 
   final String title;
@@ -18,14 +21,20 @@ class PushAlarmPayload {
   final String stage;
   final String dispatchKey;
   final String deliveryPriorityClass;
+  final String spokenText;
+  final String departureAt;
+  final String triggerKind;
 
   bool get isCritical {
     return riskLevel.toUpperCase() == 'RED' ||
-        deliveryPriorityClass.toLowerCase() == 'boosted';
+        deliveryPriorityClass.toLowerCase() == 'boosted' ||
+        triggerKind == 'leave-now' ||
+        triggerKind == 'late';
   }
 
-  String get androidChannelId =>
-      isCritical ? 'buswakeup-critical-song-v1' : 'buswakeup-morning-song-v1';
+  /// v2 channels ring on the alarm volume (also in silent mode) with a short
+  /// tone; the app then reads the time left aloud.
+  String get androidChannelId => isCritical ? urgentAlarmChannelId : alarmChannelId;
 
   int get notificationId {
     var hash = 17;
@@ -41,19 +50,18 @@ class PushAlarmPayload {
     required Map<String, dynamic> data,
   }) {
     final routeNumber = _read(data, 'routeNumber');
-    final riskLevel = _read(data, 'riskLevel');
-    final fallbackTitle = routeNumber.isEmpty
-        ? 'BusWakeUp commute alarm'
-        : '$routeNumber bus commute alarm';
     return PushAlarmPayload(
-      title: _prefer(title, fallbackTitle),
-      body: _prefer(body, _read(data, 'spokenText')),
+      title: _prefer(title, _prefer(_read(data, 'title'), '이노치 출근 알림')),
+      body: _prefer(body, _prefer(_read(data, 'body'), _read(data, 'spokenText'))),
       routeNumber: routeNumber,
       stopName: _read(data, 'stopName'),
-      riskLevel: riskLevel,
+      riskLevel: _read(data, 'riskLevel'),
       stage: _read(data, 'stage'),
       dispatchKey: _read(data, 'dispatchKey'),
       deliveryPriorityClass: _read(data, 'deliveryPriorityClass'),
+      spokenText: _read(data, 'spokenText'),
+      departureAt: _read(data, 'departureAt'),
+      triggerKind: _read(data, 'triggerKind'),
     );
   }
 
@@ -64,4 +72,46 @@ class PushAlarmPayload {
     final safe = (value ?? '').trim();
     return safe.isEmpty ? fallback : safe;
   }
+}
+
+const alarmChannelId = 'inochi-alarm-v2';
+const urgentAlarmChannelId = 'inochi-urgent-v2';
+
+/// "오후 8시 55분" in Korea time, written the way it should be read aloud.
+String spokenClock(DateTime at) {
+  final kst = at.toUtc().add(const Duration(hours: 9));
+  final hour = kst.hour % 12 == 0 ? 12 : kst.hour % 12;
+  final noon = kst.hour < 12 ? '오전' : '오후';
+  return kst.minute == 0 ? '$noon $hour시' : '$noon $hour시 ${kst.minute}분';
+}
+
+/// "7번 버스", "신분당선"; empty when unknown.
+String spokenVehicle(String route) {
+  final name = route.trim();
+  if (name.isEmpty) return '';
+  if (name.endsWith('선') || name.contains('호선')) return name;
+  return '$name번 버스';
+}
+
+/// What the alarm says, using the time left at the moment it rings.
+String alarmSpeech(PushAlarmPayload payload, DateTime now) {
+  final vehicle = spokenVehicle(payload.routeNumber);
+  final ride = vehicle.isEmpty ? '' : ' $vehicle${objectParticle(vehicle)} 타야 해요.';
+  if (payload.triggerKind == 'late') return '지각 위험! 바로 뛰어나가세요.$ride';
+  final departure = DateTime.tryParse(payload.departureAt);
+  if (departure != null) {
+    final minutes = (departure.difference(now).inSeconds / 60).ceil();
+    if (minutes <= 0) return '지금 집에서 출발하세요!$ride';
+    return '집에서 출발까지 $minutes분 남았습니다. ${spokenClock(departure)}까지 나가세요.$ride';
+  }
+  final text = payload.spokenText.isNotEmpty ? payload.spokenText : payload.title;
+  return text;
+}
+
+/// 을/를 for the last Korean syllable.
+String objectParticle(String word) {
+  if (word.isEmpty) return '를';
+  final code = word.codeUnitAt(word.length - 1);
+  if (code < 0xAC00 || code > 0xD7A3) return '를';
+  return (code - 0xAC00) % 28 == 0 ? '를' : '을';
 }

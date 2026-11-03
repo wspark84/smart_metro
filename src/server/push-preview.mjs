@@ -59,6 +59,8 @@ function buildEnvelope(bundle, profile) {
               : String(bundle.accuracySpreadMin),
           mechanicalLoopBoost: String(notificationSpec.mechanicalLoopBoost ?? 0),
           speechRepeatCount: String(notificationSpec.speechRepeatCount ?? 1),
+          departureAt: String(notificationSpec.departureAt || ""),
+          triggerKind: String(bundle?.triggerKind || ""),
         },
       sound: {
         presetId: String(notificationSpec.soundPresetId || "default"),
