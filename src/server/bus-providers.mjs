@@ -473,7 +473,16 @@ export async function fetchGyeonggiArrival({ serviceKey, stationId, routeId, rou
       throw Object.assign(new Error(`Gyeonggi API request failed with ${response.status}.`),{
         statusCode:response.status,retryAfterMs:Number.isFinite(seconds) && seconds>0 ? seconds : 300000});
     }
-    return response.json();
+    // data.go.kr answers quota/key problems with an XML envelope, not JSON.
+    if(typeof response.text!=='function') return response.json();
+    const body=await response.text();
+    try { return JSON.parse(body); }
+    catch {
+      const apiCode=body.match(/<returnReasonCode>\s*(\d+)\s*</)?.[1] || '';
+      const apiMessage=(body.match(/<returnAuthMsg>([^<]{0,80})</)?.[1] || body.match(/<errMsg>([^<]{0,80})</)?.[1] || '').trim();
+      throw Object.assign(new Error('Gyeonggi API returned a non-JSON response.'),{code:'UPSTREAM_NON_JSON',
+        diagnostics:{apiCode,apiMessage},...(apiCode==='22' ? {statusCode:429,retryAfterMs:30*60_000} : {})});
+    }
   }});
   const normalized=normalizeGyeonggiArrival(result.value,{routeId,routeNumber});
   const elapsed=Math.max(0,(Date.now()-Date.parse(result.fetchedAt))/60000);

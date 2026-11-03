@@ -304,3 +304,11 @@ test("getBusApiConfig uses accuracy-first provider priority and prefers TAGO fir
   assert.equal(config.providers.tago.setup.cityCodeLookupSupported, true);
   assert.match(config.providers.tago.setup.guidance, /자동 입력/);
 });
+
+test("a data.go.kr quota answer becomes a 30-minute cooldown, not a parse error", async () => {
+  const { fetchGyeonggiArrival } = await import("../src/server/bus-providers.mjs");
+  const xml = "<OpenAPI_ServiceResponse><cmmMsgHeader><errMsg>SERVICE ERROR</errMsg><returnAuthMsg>LIMITED_NUMBER_OF_SERVICE_REQUESTS_EXCEEDS_ERROR</returnAuthMsg><returnReasonCode>22</returnReasonCode></cmmMsgHeader></OpenAPI_ServiceResponse>";
+  const fetchImpl = async () => ({ ok: true, status: 200, headers: { get: () => null }, text: async () => xml });
+  await assert.rejects(fetchGyeonggiArrival({ serviceKey: "k", stationId: "1", routeId: "R", fetchImpl }),
+    (error) => error.statusCode === 429 && error.diagnostics.apiCode === "22" && /EXCEEDS/.test(error.diagnostics.apiMessage));
+});

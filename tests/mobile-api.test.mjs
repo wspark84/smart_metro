@@ -222,3 +222,15 @@ test("alarm times: defaults on first setup, chosen times and the late alert are 
   assert.throws(() => applyCommuteSetup(first, { alerts: { minutes: [7] } }), /다시 골라/);
   assert.deepEqual(alertsSummary(base()).minutes, [20, 10, 5, 3], "web users keep their original series");
 });
+
+test("missing arrival information is not reported as no transit", () => {
+  const now = new Date("2026-11-03T11:32:00+09:00");
+  const state = applyCommuteSetup(base(), { ...setupPatch, requiredArrivalTime: "14:00",
+    boarding: { provider: "tago", stationId: "GGB1", nodeId: "GGB1", cityCode: "31010", stationName: "정류장", lat: 37.28, lng: 127.05 } });
+  const option = { id: "o1", fetchedAt: now.toISOString(), verified: true, onboardDurationSec: 2100, dailyMetadataDate: "2026-11-03",
+    binding: { provider: "gyeonggi", routeNumber: "7", routeId: "R7" },
+    snapshot: { liveStatus: "unavailable", arrivalsMin: [], arrivalMessage: "공공데이터 일일 호출 한도를 넘어 도착정보를 받지 못했습니다. 30분 뒤 다시 조회합니다.", lastObservation: null } };
+  const forecast = buildHomeForecast({ state, automatic: { unverifiedCount: 0, options: [option] }, now });
+  assert.equal(forecast.status, "no-live");
+  assert.match(forecast.warning, /조회 한도/);
+});

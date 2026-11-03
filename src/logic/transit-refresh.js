@@ -1,6 +1,8 @@
 // Shared by browser and worker: changing the timer must not multiply upstream calls.
 export function transitRefreshInterval(remainingMin) {
-  if (!Number.isFinite(remainingMin)) return 30_000;
+  // No leave time to protect (none found, or long past): the daily public-data
+  // quota is better spent near a real departure, so check every 5 minutes.
+  if (!Number.isFinite(remainingMin) || remainingMin < -10) return 5 * 60_000;
   if (remainingMin > 60) return 5 * 60_000;
   if (remainingMin > 30) return 60_000;
   return 30_000;

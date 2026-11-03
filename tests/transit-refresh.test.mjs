@@ -10,7 +10,8 @@ test('refresh tiers include exact 60 and 30 minute boundaries',()=>{
   assert.equal(transitRefreshInterval(31),60000);
   assert.equal(transitRefreshInterval(30),30000);
   assert.equal(transitRefreshInterval(-1),30000);
-  assert.equal(transitRefreshInterval(NaN),30000);
+  assert.equal(transitRefreshInterval(NaN),300000,'no leave time: save the daily quota');
+  assert.equal(transitRefreshInterval(-11),300000,'leave time long past');
 });
 test('next check does not skip a faster tier boundary',()=>{
   const checked='2026-09-28T08:00:00+09:00';

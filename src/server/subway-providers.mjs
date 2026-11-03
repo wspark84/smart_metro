@@ -159,7 +159,7 @@ export async function fetchSubwayArrival(binding, deps = {}) {
     try { twin = await timetableTwinOf(binding, deps); } catch {}
     if (!twin) throw realtimeError;
     return {...await (deps.fetchTimetable || fetchTimetableSubwayArrival)(twin, deps), fallbackFrom: "realtime",
-      realtimeFailure: {code: realtimeError?.code || "SUBWAY_REALTIME_FAILED", message: text(realtimeError?.message).slice(0, 160),
+      realtimeFailure: {code: realtimeError?.code || "SUBWAY_REALTIME_FAILED",
         diagnostics: realtimeError?.diagnostics || null, at: (deps.now || new Date()).toISOString()}};
   }
 }

@@ -233,8 +233,12 @@ export function buildHomeForecast({ state, automatic, now = new Date() }) {
     catchable: Boolean(row.catchable), basis: rowBasis(row, options), arriveAt: iso(row.arriveWorkAt), slackMinutes: slack(row.deltaMinutes), target: isTarget(row),
   }));
   const departure = plan.risk.departure;
+  // No vehicle at all because the arrival APIs gave nothing usable is not
+  // "no transit": say that the information is missing.
+  const noLive = options.length > 0 && !plan.rows.length && options.every((option) => option.snapshot?.liveStatus === "unavailable" && !option.snapshot?.lastObservation?.arrivalsMin?.length);
+  const quota = options.some((option) => /호출 한도/.test(String(option.snapshot?.arrivalMessage || "")));
   return {
-    status: options.length ? (Number.isFinite(target?.arrivalMinutes) ? "ready" : "no-catchable") : "no-route",
+    status: options.length ? (Number.isFinite(target?.arrivalMinutes) ? "ready" : noLive ? "no-live" : "no-catchable") : "no-route",
     leaveAt: departure?.leaveAt ? new Date(departure.leaveAt).toISOString() : null,
     leaveInMinutes: departure ? departure.minutes : null,
     overdue: Boolean(departure && departure.remainingMin < 0),
@@ -244,7 +248,9 @@ export function buildHomeForecast({ state, automatic, now = new Date() }) {
     routeNumber: str(target?.routeNumber, 40), direction: str(target?.direction, 80),
     basis: target && Number.isFinite(target.arrivalMinutes) ? rowBasis(target, options) : null,
     urgent: Boolean(plan.urgentBoarding), message: str(plan.risk.message, 300), rows,
-    unverifiedCount: Number(automatic?.unverifiedCount) || 0, warning: str(automatic?.warning, 300),
+    unverifiedCount: Number(automatic?.unverifiedCount) || 0,
+    warning: noLive ? (quota ? "공공 교통정보 일일 조회 한도를 넘어 도착정보를 받지 못하고 있어요. 잠시 후 다시 확인할게요."
+      : "버스·지하철 도착정보를 받지 못하고 있어요. 잠시 후 다시 확인할게요.") : str(automatic?.warning, 300),
     checkedAt: now.toISOString(),
   };
 }

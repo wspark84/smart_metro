@@ -13,6 +13,7 @@ const retryDelay = error => Number.isFinite(Number(error?.retryAfterMs))
 
 function arrivalFailure(error) {
   const message=String(error?.message || '');
+  if(error?.diagnostics?.apiCode==='22') return '공공데이터 일일 호출 한도를 넘어 도착정보를 받지 못했습니다. 30분 뒤 다시 조회합니다.';
   if(error?.statusCode===429 || /request failed with 429/.test(message)) return '공식 도착정보 API가 요청을 제한했습니다(429). 반복 호출을 잠시 중지하고 재조회 대기 중입니다.';
   if (['Gyeonggi API returned no arrival rows.','Gyeonggi API returned no arrivals for the selected route.'].includes(message))
     return '공식 API에서 선택한 노선의 도착 예정 차량을 반환하지 않았습니다. 운행 종료를 의미하는 것은 아닙니다.';
@@ -44,6 +45,8 @@ export async function loadStoredTransit(binding,{cache={},loadArrival,loadHeadwa
   const arrivalTask = Date.parse(cooldown?.retryAt || '')>now.getTime()
     ? Promise.resolve({value:null,error:arrivalFailure({statusCode:429}),retryAt:cooldown.retryAt})
     : Promise.resolve().then(loadArrival).then(value=>({value}),error=>({value:null,error:arrivalFailure(error),
+      diagnostics:{code:String(error?.code || '').slice(0,40),statusCode:Number.isInteger(error?.statusCode) ? error.statusCode : null,
+        detail:error?.diagnostics || null},
       retryAt:error?.statusCode===429 || /request failed with 429/.test(String(error?.message))
         ? new Date(now.getTime()+retryDelay(error)).toISOString() : null}));
   const failedRetryDue = stored?.refreshFailed && (stored.retryPolicy !== 5 ||
@@ -60,7 +63,7 @@ export async function loadStoredTransit(binding,{cache={},loadArrival,loadHeadwa
     next.headways = replace(next.headways,stored);
     dirty = true;
   }
-  const {value:result,error:arrivalError,retryAt} = await arrivalTask;
+  const {value:result,error:arrivalError,retryAt,diagnostics:arrivalDiagnostics} = await arrivalTask;
   if(retryAt && cooldown?.retryAt!==retryAt) {
     next.arrivalCooldowns=replace(next.arrivalCooldowns,{key:cooldownKey,retryAt});dirty=true;
   }
@@ -91,6 +94,8 @@ export async function loadStoredTransit(binding,{cache={},loadArrival,loadHeadwa
     stopName:real ? payload.stopName || binding.stationName : binding.stationName,
     arrivalsMin:real ? minutes : [],liveStatus:real ? 'ready' : 'unavailable',headway,
     arrivalMessage:real ? '' : arrivalError || '공식 API에서 현재 사용할 수 있는 도착 예정 차량 정보를 확인하지 못했습니다.',
+    // Why it failed (official result code, HTTP status), for diagnosis. Never the key.
+    arrivalDiagnostics:real ? null : arrivalDiagnostics || null,
     retryAt:retryAt || null,
     lastObservation:observation,
     messages:real ? payload.messages || [] : ['실시간 정보 없음 · 저장한 도착시각과 배차간격으로 예상합니다.']};
