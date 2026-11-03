@@ -67,9 +67,12 @@ export async function fetchSubwayRows(stationName, env = process.env, fetchImpl 
   const apiName = ALIASES[name] || name;
   // The official TOPIS endpoint is HTTP; the key stays on the server and is never returned.
   const response = await fetchWithTimeout(`http://swopenapi.seoul.go.kr/api/subway/${encodeURIComponent(key)}/json/realtimeStationArrival/0/100/${encodeURIComponent(apiName)}`, {}, {fetchImpl});
-  if (!response.ok) throw new Error(`지하철 도착정보 조회 실패 (${response.status}).`);
+  if (!response.ok) throw Object.assign(new Error(`지하철 도착정보 조회 실패 (${response.status}).`), {code:"SUBWAY_HTTP", diagnostics:{httpStatus:response.status}});
   const payload = await response.json();
-  if (payload.errorMessage?.code && payload.errorMessage.code !== "INFO-000") throw new Error("지하철 정보를 제공받지 못했습니다. 인증키·지원 역·운행 시간을 확인해 주세요.");
+  // Keep the official result code (e.g. quota or "no data") for diagnosis; never the key.
+  const resultCode = text(payload.errorMessage?.code || payload.code);
+  if (resultCode && resultCode !== "INFO-000") throw Object.assign(new Error("지하철 정보를 제공받지 못했습니다. 인증키·지원 역·운행 시간을 확인해 주세요."),
+    {code:"SUBWAY_API_RESULT", diagnostics:{apiCode:resultCode, apiMessage:text(payload.errorMessage?.message || payload.message).slice(0,120), station:apiName}});
   return Array.isArray(payload.realtimeArrivalList) ? payload.realtimeArrivalList : [];
 }
 
@@ -88,9 +91,21 @@ export function subwayDirections(rows) {
   return [...routes.values()];
 }
 
+// What the official rows actually said, for diagnosing a missing countdown.
+function subwayRowSamples(rows, now) {
+  return rows.slice(0, 6).map(row => {
+    const received = text(row.recptnDt);
+    const at = Date.parse(received.replace(" ", "T") + (/Z$|[+-]\d\d:\d\d$/.test(received) ? "" : "+09:00"));
+    return {subwayId:text(row.subwayId), updnLine:text(row.updnLine), trainLineNm:text(row.trainLineNm).slice(0,40), bstatnNm:text(row.bstatnNm),
+      btrainSttus:text(row.btrainSttus), barvlDt:text(row.barvlDt), arvlCd:text(row.arvlCd), arvlMsg2:text(row.arvlMsg2).slice(0,40),
+      recptnDt:received, ageSec:Number.isFinite(at) ? Math.round((now.getTime() - at) / 1000) : null};
+  });
+}
+
 export function normalizeSubwayArrival(rows, binding, now = new Date()) {
   const selected = subwayDirections(rows).find(route => route.routeId === binding.routeId);
-  if (!selected) throw new Error("선택한 역·노선·방향의 열차 정보가 없습니다. 운행 중인 방향을 다시 확인해 주세요.");
+  if (!selected) throw Object.assign(new Error("선택한 역·노선·방향의 열차 정보가 없습니다. 운행 중인 방향을 다시 확인해 주세요."),
+    {code:"SUBWAY_NO_DIRECTION", diagnostics:{rows:rows.length, wanted:binding.routeId, samples:subwayRowSamples(rows, now)}});
   const arrivals = rows.filter(row => subwayDirections([row])[0]?.routeId === selected.routeId).flatMap(row => {
     const seconds = text(row.barvlDt), received = text(row.recptnDt);
     const at = Date.parse(received.replace(" ", "T") + (/Z$|[+-]\d\d:\d\d$/.test(received) ? "" : "+09:00"));
@@ -100,7 +115,9 @@ export function normalizeSubwayArrival(rows, binding, now = new Date()) {
     const minutes = (Number(seconds) - age / 1000) / 60;
     return minutes > 0 ? [minutes] : [];
   }).sort((a,b) => a-b);
-  if (!arrivals.length) throw new Error("이 방향의 유효한 도착 예정시간이 없습니다. 잠시 후 다시 조회해 주세요.");
+  if (!arrivals.length) throw Object.assign(new Error("이 방향의 유효한 도착 예정시간이 없습니다. 잠시 후 다시 조회해 주세요."),
+    {code:"SUBWAY_NO_COUNTDOWN", diagnostics:{rows:rows.length,
+      samples:subwayRowSamples(rows.filter(row => subwayDirections([row])[0]?.routeId === selected.routeId), now)}});
   return {provider:"subway",stopName:selected.stationName,lineNumber:selected.routeNumber,arrivalsMin:arrivals,
     direction:selected.label,vehicleType:"SUBWAY",fetchedAt:now.toISOString()};
 }
@@ -141,7 +158,9 @@ export async function fetchSubwayArrival(binding, deps = {}) {
     let twin = null;
     try { twin = await timetableTwinOf(binding, deps); } catch {}
     if (!twin) throw realtimeError;
-    return {...await (deps.fetchTimetable || fetchTimetableSubwayArrival)(twin, deps), fallbackFrom: "realtime"};
+    return {...await (deps.fetchTimetable || fetchTimetableSubwayArrival)(twin, deps), fallbackFrom: "realtime",
+      realtimeFailure: {code: realtimeError?.code || "SUBWAY_REALTIME_FAILED", message: text(realtimeError?.message).slice(0, 160),
+        diagnostics: realtimeError?.diagnostics || null, at: (deps.now || new Date()).toISOString()}};
   }
 }
 

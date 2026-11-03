@@ -116,7 +116,9 @@ export async function refreshJourneyOptions(query,{loadArrival,discover=discover
     const id=JSON.stringify([option.binding.provider,option.binding.cityCode,option.binding.stationId || option.binding.nodeId,option.binding.routeId,option.binding.order]);
     if(!snapshots.has(id)) {
       try { const result=await loadArrival(option.binding);snapshots.set(id,{...result.value,fetchedAt:result.fetchedAt,cacheStatus:result.cacheStatus}); }
-      catch { snapshots.set(id,{liveStatus:'unavailable',arrivalsMin:[]}); }
+      // Keep why it failed (official result code / row samples) for diagnosis.
+      catch(error) { snapshots.set(id,{liveStatus:'unavailable',arrivalsMin:[],failure:{code:String(error?.code || error?.routeFailureCode || 'ARRIVAL_FAILED').slice(0,40),
+        message:String(error?.message || '').slice(0,160),diagnostics:error?.diagnostics || null,at:now.toISOString()}}); }
     }
     options.push({...option,snapshot:snapshots.get(id)});
   }
