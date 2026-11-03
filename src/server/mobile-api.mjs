@@ -244,7 +244,11 @@ export function buildHomeForecast({ state, automatic, now = new Date() }) {
   const targetIndex = upcoming.findIndex(isTarget);
   const iso = (value) => value instanceof Date && Number.isFinite(value.getTime()) ? value.toISOString() : null;
   const slack = (value) => Number.isFinite(value) ? Math.floor(value) : null;
-  const rows = upcoming.slice(Math.max(0, targetIndex - 1), Math.max(0, targetIndex - 1) + 20).map((row) => ({
+  // From the first vehicle you can still reach (walk included) through the
+  // recommended one and a few after it, so every on-time option is visible.
+  const firstReachable = Math.max(0, upcoming.findIndex((row) => row.catchable));
+  const lastShown = Math.max(firstReachable + 8, targetIndex + 6);
+  const rows = upcoming.slice(firstReachable, Math.min(lastShown, firstReachable + 40)).map((row) => ({
     routeNumber: str(row.routeNumber, 40), direction: str(row.direction, 80), boardingAt: at(row.arrivalMinutes),
     minutes: Math.max(0, Math.floor(row.arrivalMinutes)), onTime: row.level !== "UNKNOWN" && row.deltaMinutes >= 0,
     catchable: Boolean(row.catchable), basis: rowBasis(row, options), arriveAt: iso(row.arriveWorkAt), slackMinutes: slack(row.deltaMinutes), target: isTarget(row),

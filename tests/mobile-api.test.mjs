@@ -173,7 +173,7 @@ test("stop lookups require login, are throttled and hide upstream errors", async
   assert.equal(sent[3].status, 401);
 });
 
-test("rows centre on the recommended train and keep the timetable label of a fallback", () => {
+test("rows start at the first reachable train and keep the timetable label of a fallback", () => {
   const now = new Date("2026-11-02T19:27:00+09:00");
   const state = applyCommuteSetup(base(), { ...setupPatch, requiredArrivalTime: "22:07",
     boarding: { provider: "subway", stationId: "kakao:1", stationName: "광교중앙", lineName: "신분당선", lat: 37.288, lng: 127.051 },
@@ -188,12 +188,12 @@ test("rows centre on the recommended train and keep the timetable label of a fal
   assert.equal(forecast.basis, "timetable");
   assert.ok(forecast.leaveInMinutes > 60, "a 22:07 arrival does not make you leave now");
   const targetIndex = forecast.rows.findIndex((row) => row.target);
-  assert.equal(targetIndex, 1, "one train before the recommended one, then later ones");
-  assert.equal(forecast.rows[2].onTime, false);
+  assert.equal(forecast.rows[0].minutes, 9, "starts at the first train reachable after the 7-minute walk (3 is too soon)");
+  assert.ok(forecast.rows.slice(0, targetIndex).every((row) => row.onTime && row.slackMinutes > forecast.slackMinutes), "earlier trains with more slack are listed");
+  assert.equal(forecast.rows[targetIndex + 1].onTime, false);
   assert.ok(forecast.rows.every((row) => row.basis === "timetable"));
   assert.ok(forecast.slackMinutes >= 0 && forecast.slackMinutes < 6, "arrives a few minutes before 22:07");
   assert.ok(Date.parse(forecast.arriveAt) <= Date.parse("2026-11-02T22:07:00+09:00"));
-  assert.ok(forecast.rows[0].slackMinutes > forecast.slackMinutes, "earlier train leaves more slack");
 });
 
 test("the same bus under two route options is listed once, on the fastest path", () => {
