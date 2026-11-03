@@ -136,8 +136,9 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      // Opening the app answers a ringing alarm.
+      // Opening the app answers a ringing alarm and puts the volume back.
       AlarmVoice.stop();
+      unawaited(Future<void>.delayed(const Duration(seconds: 1), AlarmVoice.restoreVolume));
       unawaited(_load());
     }
   }

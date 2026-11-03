@@ -320,6 +320,8 @@ class _PushNotificationDisplay {
   /// shown here.
   Future<void> alarm(RemoteMessage message, {required bool foreground}) async {
     final show = foreground || message.notification == null;
+    // Loud before the notification's own tone plays.
+    await AlarmVoice.maxVolume();
     if (show) await showMessage(message);
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
     final payload = PushAlarmPayload.fromRemoteFields(
