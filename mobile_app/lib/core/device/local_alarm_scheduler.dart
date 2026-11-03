@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/data/latest.dart' as tz_data;
 import 'package:timezone/timezone.dart' as tz;
+import 'alarm_style.dart';
 import 'backup_alarm_calendar.dart';
 import 'push_alarm_payload.dart';
 
@@ -234,13 +235,24 @@ class LocalAlarmScheduler {
       final android = _notifications.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
       exact = await android?.canScheduleExactNotifications() ?? false;
     }
+    final vibrateOnly = await AlarmStyleStore.read() == AlarmStyle.vibrate;
     await _notifications.zonedSchedule(
       id: _departureBackupId,
       title: title,
       body: body,
       scheduledDate: when,
       notificationDetails: NotificationDetails(
-        android: AndroidNotificationDetails(
+        android: vibrateOnly ? const AndroidNotificationDetails(
+          vibrateAlarmChannelId,
+          '진동 알람 (소리 없음)',
+          channelDescription: '알람 방식이 진동만일 때: 소리 없이 길게 진동하고 글로 알려요.',
+          icon: 'ic_stat_buswakeup',
+          importance: Importance.max,
+          priority: Priority.max,
+          category: AndroidNotificationCategory.alarm,
+          playSound: false,
+          enableVibration: true,
+        ) : AndroidNotificationDetails(
           urgentAlarmChannelId,
           '지금 출발·지각 위험 알람',
           channelDescription: '나갈 시각과 지각 위험 알람. 무음 모드에서도 알람 음량으로 울려요.',

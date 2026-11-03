@@ -5,6 +5,9 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 import '../../firebase_options.dart';
+import 'package:vibration/vibration.dart';
+
+import 'alarm_style.dart';
 import 'alarm_voice.dart';
 import 'push_alarm_payload.dart';
 
@@ -303,6 +306,7 @@ class _PushNotificationDisplay {
       final android = _notifications.resolvePlatformSpecificImplementation<
           AndroidFlutterLocalNotificationsPlugin>();
       await android?.createNotificationChannel(_urgentChannel());
+      await android?.createNotificationChannel(_vibrateChannel());
       await android?.createNotificationChannel(_alarmChannel());
     }
     _initialized = true;
@@ -320,10 +324,20 @@ class _PushNotificationDisplay {
   /// shown here.
   Future<void> alarm(RemoteMessage message, {required bool foreground}) async {
     final show = foreground || message.notification == null;
+    final android = !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+    final style = android ? await AlarmStyleStore.read() : AlarmStyle.sound;
+    if (style == AlarmStyle.vibrate) {
+      // 진동만: a text pop-up and one long vibration, no sound.
+      if (show) await showMessage(message, vibrateOnly: true);
+      try {
+        await Vibration.vibrate(duration: vibrateOnlyMs, amplitude: 255);
+      } catch (_) {}
+      return;
+    }
     // Loud before the notification's own tone plays.
     await AlarmVoice.maxVolume();
     if (show) await showMessage(message);
-    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
+    if (!android) return;
     final payload = PushAlarmPayload.fromRemoteFields(
       title: message.notification?.title,
       body: message.notification?.body,
@@ -332,7 +346,7 @@ class _PushNotificationDisplay {
     await AlarmVoice.ring(payload, skipFirstTone: show);
   }
 
-  Future<void> showMessage(RemoteMessage message) async {
+  Future<void> showMessage(RemoteMessage message, {bool vibrateOnly = false}) async {
     await initialize();
     final notification = message.notification;
     final payload = PushAlarmPayload.fromRemoteFields(
@@ -341,7 +355,7 @@ class _PushNotificationDisplay {
       data: Map<String, dynamic>.from(message.data),
     );
     final notificationDetails = NotificationDetails(
-      android: AndroidNotificationDetails(
+      android: vibrateOnly ? _vibrateDetails() : AndroidNotificationDetails(
         payload.androidChannelId,
         payload.isCritical ? '지금 출발·지각 위험 알람' : '출발 전 알람',
         channelDescription: payload.isCritical
@@ -381,6 +395,36 @@ class _PushNotificationDisplay {
       body: payload.body,
       notificationDetails: notificationDetails,
       payload: payload.dispatchKey,
+    );
+  }
+
+  static const String _vibrateName = '진동 알람 (소리 없음)';
+  static const String _vibrateDescription = '알람 방식이 진동만일 때: 소리 없이 길게 진동하고 글로 알려요.';
+
+  AndroidNotificationChannel _vibrateChannel() {
+    return AndroidNotificationChannel(
+      vibrateAlarmChannelId,
+      _vibrateName,
+      description: _vibrateDescription,
+      importance: Importance.max,
+      playSound: false,
+      enableVibration: true,
+      vibrationPattern: Int64List.fromList(const <int>[0, vibrateOnlyMs]),
+    );
+  }
+
+  AndroidNotificationDetails _vibrateDetails() {
+    return AndroidNotificationDetails(
+      vibrateAlarmChannelId,
+      _vibrateName,
+      channelDescription: _vibrateDescription,
+      icon: 'ic_stat_buswakeup',
+      importance: Importance.max,
+      priority: Priority.max,
+      playSound: false,
+      enableVibration: true,
+      vibrationPattern: Int64List.fromList(const <int>[0, vibrateOnlyMs]),
+      category: AndroidNotificationCategory.alarm,
     );
   }
 

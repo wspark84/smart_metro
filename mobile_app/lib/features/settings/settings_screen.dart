@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../app/inochi_theme.dart';
 import '../../app/theme_mode_store.dart';
+import '../../core/device/alarm_style.dart';
 import '../../core/device/push_registration.dart';
 import '../../core/format/kst_format.dart';
 import '../../core/network/inochi_api.dart';
@@ -289,6 +290,38 @@ class _SettingsScreenState extends State<SettingsScreen> {
           lateAlert: _lateAlert,
           busy: _busy,
           onChanged: (minutes, lateAlert) => _saveAlerts(minutes, lateAlert),
+        ),
+        const _Header('알람 방식'),
+        ValueListenableBuilder<AlarmStyle>(
+          valueListenable: AlarmStyleStore.instance.style,
+          builder: (context, style, _) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            SegmentedButton<AlarmStyle>(
+              showSelectedIcon: false,
+              style: SegmentedButton.styleFrom(
+                minimumSize: const Size.fromHeight(48),
+                selectedBackgroundColor: p.ink,
+                selectedForegroundColor: p.ground,
+                foregroundColor: p.ink,
+                backgroundColor: p.card,
+                side: BorderSide(color: p.line),
+              ),
+              segments: const [
+                ButtonSegment(value: AlarmStyle.sound, label: Text('소리 + 음성 안내')),
+                ButtonSegment(value: AlarmStyle.vibrate, label: Text('진동만')),
+              ],
+              selected: {style},
+              onSelectionChanged: (value) => unawaited(AlarmStyleStore.instance.set(value.first)),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(4, 10, 4, 0),
+              child: Text(
+                style == AlarmStyle.sound
+                    ? '알람 음량을 최대로 올려 울리고 남은 시간을 읽어 드려요. 무음 모드에서도 울려요.'
+                    : '소리 없이 3초 동안 길게 진동하고, 남은 시간은 알림 글로 보여 드려요.',
+                style: TextStyle(fontSize: 13, color: p.muted),
+              ),
+            ),
+          ]),
         ),
         const _Header('알림'),
         _Group(children: [
