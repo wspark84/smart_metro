@@ -21,7 +21,15 @@ function point(lat, lng) {
   return isValidLocation({ lat, lng }) && value.lat >= 33 && value.lat <= 39 && value.lng >= 124 && value.lng <= 132 ? value : null;
 }
 
-export function applyCommuteSetup(previous, patch = {}) {
+// Changing where/when you commute is a new plan for today: alarms that were
+// stopped with 출발했어요 (or switched off) come back on.
+function commuteChanged(previous, next) {
+  const pick = (state) => JSON.stringify([state?.user?.requiredArrivalTime, state?.user?.workLocation?.lat, state?.user?.workLocation?.lng,
+    state?.live?.provider, state?.live?.stationId, state?.live?.nodeId, state?.live?.lineName, state?.commute?.boardingAccessMin]);
+  return pick(previous) !== pick(next);
+}
+
+export function applyCommuteSetup(previous, patch = {}, now = new Date()) {
   const state = clone(previous);
   state.user ||= {}; state.commute ||= {}; state.live ||= {}; state.meta ||= {};
   if (patch.requiredArrivalTime !== undefined) {
@@ -70,6 +78,13 @@ export function applyCommuteSetup(previous, patch = {}) {
     if (!minutes.length && !late) throw fail(400, "알림을 하나 이상 골라 주세요.");
     state.schedule.reminderMinutes = minutes;
     state.schedule.lateAlert = late;
+  }
+  if (commuteChanged(previous, state)) {
+    const today = dateOnlyKey(now);
+    if (state.schedule.snoozeDate === today) state.schedule.snoozeDate = null;
+    if (Array.isArray(state.tripSchedules)) {
+      state.tripSchedules = state.tripSchedules.map((trip) => trip?.snoozeDate === today ? { ...trip, snoozeDate: null } : trip);
+    }
   }
   state.commute.routingMode = "all-routes";
   state.commute.planningHeadwayMin = null;
@@ -206,6 +221,8 @@ function rowBasis(row, options = []) {
 export function buildHomeForecast({ state, automatic, now = new Date() }) {
   const setup = setupSummary(state);
   if (!setup.complete) return { status: "setup-required", missing: setup.missing, rows: [] };
+  // Nothing checked yet today (automatic checks only run near the leave time).
+  if (automatic === null) return { status: "not-checked", rows: [], warning: "현재 시간이 조회되지 않습니다.", checkedAt: null };
   const holidays = [...(state.holidayDates || []), ...(state.officialHolidays || []).map((item) => item?.date).filter(Boolean)];
   const options = Array.isArray(automatic?.options) ? automatic.options : [];
   const plan = buildJourneyOptionsPlan({ now, requiredArrivalTime: setup.requiredArrivalTime, boardingAccessMin: setup.boardingAccessMin,
@@ -261,7 +278,19 @@ const ROUTES = {
   "GET /api/mobile/home": "home", "POST /api/mobile/setup": "setup", "POST /api/mobile/today": "today",
   "GET /api/mobile/trips": "trips", "PUT /api/mobile/trips": "saveTrips",
   "GET /api/mobile/stops/nearby": "nearbyStops", "GET /api/mobile/stops/describe": "describeStop",
+  "POST /api/mobile/refresh": "refresh",
 };
+export const MANUAL_REFRESH_GAP_MS = 3 * 60_000;
+
+// How arrivals are being checked, for the app: scheduled (automatic, by time
+// left), departed (stopped after the leave time), unknown (stopped: no leave
+// time) or none (not checked today). Manual refresh: once every 3 minutes.
+export function refreshSummary(automatic) {
+  const manual = Date.parse(automatic?.manualRefreshAt || "");
+  return { state: automatic?.autoRefresh || "none", checkedAt: automatic?.updatedAt || null,
+    nextAt: automatic?.autoRefresh === "scheduled" ? automatic.nextRefreshAt || null : null,
+    manualAvailableAt: Number.isFinite(manual) ? new Date(manual + MANUAL_REFRESH_GAP_MS).toISOString() : null };
+}
 // Lookups spend public-data quota; keep one person from draining it.
 // Nearby is per map move; describe runs for each listed stop in turn.
 const nearbyThrottle = createUserThrottle({ minIntervalMs: 400, dailyMax: 300 });
@@ -272,9 +301,9 @@ export function subscriptionRequiredError() {
 }
 
 // Applies setup and repeat changes, enforcing the paid repeat rule.
-export function applySetupRequest(state, input, subscription) {
+export function applySetupRequest(state, input, subscription, now = new Date()) {
   const { repeat, ...patch } = input || {};
-  let next = applyCommuteSetup(state, patch);
+  let next = applyCommuteSetup(state, patch, now);
   const before = repeatSummary(state);
   const wantsOn = repeat?.enabled === true && !before.enabled;
   if (wantsOn && subscription?.active !== true) throw subscriptionRequiredError();
@@ -304,37 +333,66 @@ export async function handleMobileApi(request, response, deps) {
     }
     return;
   }
+  let input = {}, now = new Date();
   try {
-    const input = request.method === "GET" ? {} : await deps.readJsonBody(request);
-    const now = deps.now ? deps.now() : new Date();
-    const result = await deps.withUserDocuments(auth, async (docs) => {
+    input = request.method === "GET" ? {} : await deps.readJsonBody(request);
+    now = deps.now ? deps.now() : new Date();
+    // The background alarm job writes the same runtime document; a person's
+    // refresh or setup retries once instead of failing on that race.
+    const attempts = action === "refresh" || action === "setup" ? 2 : 1;
+    let result;
+    for (let attempt = 1; ; attempt++) {
+      try { result = await runOnce(); break; }
+      catch (error) { if (error?.code !== "DOCUMENT_CONFLICT" || attempt >= attempts) throw error; }
+    }
+    deps.sendJson(response, 200, result);
+  } catch (error) {
+    const known = ["INVALID_INPUT", "SUBSCRIPTION_REQUIRED", "BILLING_NOT_READY", "DOCUMENT_CONFLICT", "REFRESH_TOO_SOON"].includes(error?.code);
+    deps.sendJson(response, error?.statusCode || 503, { error: known ? error.message : "요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.",
+      code: error?.code || "MOBILE_API_ERROR", ...(error?.retryAt ? { retryAt: error.retryAt } : {}) });
+  }
+
+  function runOnce() {
+    return deps.withUserDocuments(auth, async (docs) => {
       const state = await docs.readState();
       const subscription = async () => { try { return await deps.subscriptionStatus(auth.user.id); } catch { return { active: false, available: false, unknown: true }; } };
-      const view = async (current, extra = {}) => {
+      // mode: "cached" reads only what was already checked; "force" (setup
+      // changed) and "manual" (refresh button) call the providers and save it.
+      const view = async (current, mode = "cached") => {
         const setup = setupSummary(current);
         let automatic = null, forecastError = "";
-        if (setup.complete && action !== "trips" && action !== "saveTrips") {
-          try { automatic = await docs.loadOptions(transitQueryForState(current), { requiredArrivalTime: setup.requiredArrivalTime, boardingAccessMin: setup.boardingAccessMin }); }
+        if (setup.complete) {
+          try {
+            automatic = await docs.loadOptions(transitQueryForState(current), { requiredArrivalTime: setup.requiredArrivalTime, boardingAccessMin: setup.boardingAccessMin },
+              { cachedOnly: mode === "cached", force: mode === "force", manual: mode === "manual" });
+            if (mode !== "cached" && automatic) await docs.saveOptions(automatic);
+          }
           catch (error) { forecastError = error?.routeFailureCode ? "경로·도착정보를 가져오지 못했습니다. 잠시 후 다시 시도해 주세요." : "도착정보 확인이 지연되고 있습니다."; }
         }
         return { setup, repeat: repeatSummary(current), alerts: alertsSummary(current), today: todayAlarmStatus(current, now), forecast: buildHomeForecast({ state: current, automatic, now }),
-          forecastError, trips: current.tripSchedules || [], subscription: await subscription(), ...extra };
+          forecastError, refresh: refreshSummary(automatic), trips: current.tripSchedules || [], subscription: await subscription() };
       };
       if (action === "home") return view(state);
+      if (action === "refresh") {
+        const previous = docs.lastOptions?.();
+        const last = Date.parse(previous?.manualRefreshAt || "");
+        if (Number.isFinite(last) && now.getTime() - last < MANUAL_REFRESH_GAP_MS) {
+          throw Object.assign(fail(429, "도착정보는 3분에 한 번 확인할 수 있어요.", "REFRESH_TOO_SOON"), { retryAt: new Date(last + MANUAL_REFRESH_GAP_MS).toISOString() });
+        }
+        return { ok: true, ...(await view(state, "manual")) };
+      }
       if (action === "trips") return { trips: state.tripSchedules || [], subscription: await subscription() };
       let next;
-      if (action === "setup") next = applySetupRequest(state, input, input?.repeat?.enabled === true || repeatSummary(state).enabled ? await subscription() : null);
+      if (action === "setup") next = applySetupRequest(state, input, input?.repeat?.enabled === true || repeatSummary(state).enabled ? await subscription() : null, now);
       else if (action === "today") next = applyTodayAlarm(state, input?.enabled === true, now);
       else {
         next = applyTrips(state, input?.trips);
         deps.assertTripScheduleChange(state, next, (await subscription()).active === true);
       }
       const saved = await docs.saveState(next);
-      return action === "saveTrips" ? { ok: true, trips: saved.tripSchedules || [] } : { ok: true, ...(await view(saved)) };
+      if (action === "saveTrips") return { ok: true, trips: saved.tripSchedules || [] };
+      // A changed commute is checked right away; other edits reuse what is saved.
+      return { ok: true, ...(await view(saved, action === "setup" && commuteChanged(state, saved) ? "force" : "cached")) };
     });
-    deps.sendJson(response, 200, result);
-  } catch (error) {
-    const known = ["INVALID_INPUT", "SUBSCRIPTION_REQUIRED", "BILLING_NOT_READY", "DOCUMENT_CONFLICT"].includes(error?.code);
-    deps.sendJson(response, error?.statusCode || 503, { error: known ? error.message : "요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.", code: error?.code || "MOBILE_API_ERROR" });
   }
 }

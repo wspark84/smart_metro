@@ -1,3 +1,4 @@
+import {combineDateAndTime} from '../logic/commute.js';
 import {lookupBoardingRoutes} from './boarding-routes.mjs';
 import {fetchTransitRoutes} from './transit-providers.mjs';
 import {fetchWithTimeout} from './upstream-fetch.mjs';
@@ -7,7 +8,7 @@ import {transitQueryKey} from '../logic/transit-journey.js';
 import {routeRows} from './tago-headway-binding.mjs';
 import {koreanServiceDate} from '../logic/bus-headway.js';
 import {buildJourneyOptionsPlan} from '../logic/journey-options.js';
-import {nextTransitRefreshAt} from '../logic/transit-refresh.js';
+import {nextTransitRefreshAt,nextServiceDayStart} from '../logic/transit-refresh.js';
 
 const name=v=>String(v || '').replace(/[\s.,·]/g,'');
 const same=(a,b)=>Boolean(name(a)) && name(a)===name(b);
@@ -99,13 +100,20 @@ export async function discoverJourneyOptions(query,{lookup=lookupBoardingRoutes,
     warning:'조회 제공처가 반환하고 탑승 위치·방향을 확인한 경로를 비교합니다. 환승 대기 및 운행 지연은 예상과 다를 수 있습니다.'};
 }
 
-export async function refreshJourneyOptions(query,{loadArrival,discover=discoverJourneyOptions,previous=null,now=new Date(),planning=null}={}) {
+// force: the setup changed; manual: a person pressed refresh. cachedOnly: read the
+// saved result without calling any provider (the app's periodic screen refresh).
+export async function refreshJourneyOptions(query,{loadArrival,discover=discoverJourneyOptions,previous=null,now=new Date(),planning=null,force=false,manual=false,cachedOnly=false}={}) {
   const key=transitQueryKey(query);
   const age=now-Date.parse(previous?.fetchedAt || '');
   const planningKey=planning ? JSON.stringify([planning.requiredArrivalTime,planning.boardingAccessMin]) : null;
   const sameDay=age>=0 && koreanServiceDate(previous?.fetchedAt)===koreanServiceDate(now);
-  if(planning && previous?.queryKey===key && previous.planningKey===planningKey && sameDay &&
-    Date.parse(previous.nextRefreshAt)>now.getTime()) return previous;
+  if(cachedOnly) return previous?.queryKey===key && sameDay ? previous : null;
+  const samePlan=planning && previous?.queryKey===key && previous.planningKey===planningKey && sameDay;
+  if(!force && !manual && samePlan && Date.parse(previous.nextRefreshAt)>now.getTime()) return previous;
+  // Once the leave time the person was given has passed, stop for the day:
+  // later checks would only move the plan to the next bus.
+  if(!force && !manual && samePlan && Date.parse(previous.departureAt)<now.getTime())
+    return {...previous,autoRefresh:'departed',nextRefreshAt:nextServiceDayStart(now.toISOString())};
   const reused=previous?.queryKey===key && sameDay && previous.options?.length;
   const metadata=reused ? previous : await discover(query);
   metadata.options=metadata.options.map(option=>({...option,
@@ -127,6 +135,18 @@ export async function refreshJourneyOptions(query,{loadArrival,discover=discover
     const plan=buildJourneyOptionsPlan({...planning,options,now,incomplete:Boolean(metadata.unverifiedCount)});
     departureAt=plan.risk.departure?.leaveAt?.toISOString() || null;
   }
-  return {...metadata,options,updatedAt:now.toISOString(),planningKey,
-    nextRefreshAt:planning ? nextTransitRefreshAt(now.toISOString(),departureAt) : null};
+  // No leave time yet. Far from the expected one (route time from the saved paths),
+  // e.g. a 3 a.m. check before buses run, simply wait for the 2-hour mark; close
+  // to it, stop and leave it to the person's refresh button.
+  let waitUntil=null;
+  if(planning && !departureAt) {
+    const minutes=Math.min(...metadata.options.map(option=>Number(option.onboardDurationSec)/60).filter(Number.isFinite));
+    const goal=combineDateAndTime(now,planning.requiredArrivalTime);
+    const expected=Number.isFinite(minutes) && Number.isFinite(goal?.getTime?.()) ? goal.getTime()-(minutes+Number(planning.boardingAccessMin || 0)+10)*60_000 : NaN;
+    if(Number.isFinite(expected) && expected-120*60_000>now.getTime()) waitUntil=new Date(expected-120*60_000).toISOString();
+  }
+  return {...metadata,options,updatedAt:now.toISOString(),planningKey,departureAt,
+    autoRefresh:!planning ? null : waitUntil ? 'scheduled' : !departureAt ? 'unknown' : Date.parse(departureAt)<now.getTime() ? 'departed' : 'scheduled',
+    manualRefreshAt:manual ? now.toISOString() : previous?.queryKey===key && sameDay ? previous.manualRefreshAt || null : null,
+    nextRefreshAt:planning ? waitUntil || nextTransitRefreshAt(now.toISOString(),departureAt) : null};
 }

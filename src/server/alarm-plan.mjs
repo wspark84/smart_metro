@@ -364,17 +364,29 @@ function buildDepartureAlarmPlan(state, today, options) {
   // "지금 출발" at the leave time and "지각 위험" shortly after it. Each stays
   // deliverable until its own expiry, after the regular stages stop.
   const timedTriggers = [];
-  if (scheduleState.firing && valid) {
-    const leaveAt = new Date(departureAt);
-    const boardAt = addMinutes(today, boarding.risk.targetResult.arrivalMinutes);
-    const route = line.number ? `${line.number} ` : '';
+  // Arrivals are not fetched after the leave time, so the leave time the
+  // person was last told is kept ("committed") and the 지금 출발 / 지각 위험
+  // alerts use it once it has passed, instead of drifting to a later bus.
+  const nowBoardAt = valid ? addMinutes(today, boarding.risk.targetResult.arrivalMinutes) : null;
+  const priorCommit = prior?.stageKey===stageKey && prior.committed ? prior.committed : null;
+  const committed = valid && Date.parse(departureAt) >= today.getTime()
+    ? {leaveAt:departureAt,boardAt:nowBoardAt.toISOString(),route:line.number || ''}
+    : priorCommit;
+  const usePrior = Boolean(priorCommit && Date.parse(priorCommit.leaveAt) < today.getTime() &&
+    today.getTime() - Date.parse(priorCommit.leaveAt) <= 15*60_000 &&
+    (!valid || Date.parse(departureAt) > Date.parse(priorCommit.leaveAt)));
+  if (scheduleState.firing && (valid || usePrior)) {
+    const leaveAt = new Date(usePrior ? priorCommit.leaveAt : departureAt);
+    const boardAt = usePrior ? new Date(priorCommit.boardAt) : nowBoardAt;
+    const routeNumber = usePrior ? priorCommit.route : line.number;
+    const route = routeNumber ? `${routeNumber} ` : '';
     const timed = (kind, triggerAt, expiresAt, title, body, label) => ({triggerAt:triggerAt.toISOString(),triggerKind:kind,triggerLabel:label,
       reminderKey:`${kind}:${stageKey}`,leadMinutes:0,source:'live-snapshot',arrivalsMin:[boarding.risk.targetResult.arrivalMinutes],
-      riskLevel:'RED',urgency:'HURRY',departureAt,departureEstimated:Boolean(boarding.risk.targetResult.estimated),message:body,
-      arrivalAtWork:boarding.risk.targetResult.arriveWorkAt.toISOString(),
+      riskLevel:'RED',urgency:'HURRY',departureAt:leaveAt.toISOString(),departureEstimated:Boolean(boarding.risk.targetResult.estimated),message:body,
+      arrivalAtWork:boarding.risk.targetResult.arriveWorkAt?.toISOString?.() || null,
       notificationSpec:{...getNotificationSpec({riskLevel:'RED',urgency:'HURRY',routeNumber:line.number,escalationEnabled:false,
         preferredSoundPresetId:state.notification.soundPresetId}),title,body,spokenText:body,alertPhraseKo:body,
-        departureAt,expiresAt:expiresAt.toISOString(),fullScreen:true,volumePercent:100,vibrationRepeats:5,riskLevel:'RED'}});
+        departureAt:leaveAt.toISOString(),expiresAt:expiresAt.toISOString(),fullScreen:true,volumePercent:100,vibrationRepeats:5,riskLevel:'RED'}});
     if (chosenLeads.includes(0)) timedTriggers.push(timed('leave-now',leaveAt,addMinutes(leaveAt,5),'지금 집에서 출발하세요',
       `지금 나가야 ${route}${formatClock(boardAt)} 탑승에 맞출 수 있어요.`,'집 출발 시각'));
     if (state.schedule.lateAlert === true) timedTriggers.push(timed('late',addMinutes(leaveAt,2),
@@ -386,7 +398,7 @@ function buildDepartureAlarmPlan(state, today, options) {
   const triggers = allTriggers.filter(t=>Date.parse(t.triggerAt)>=today.getTime());
   return {generatedAt:today.toISOString(),dateKey:dateOnlyKey(today),todayStatus:scheduleState,
     mode:'departure-deadline',tripId:state.tripId || null,departureAt:valid ? departureAt : null,
-    planningObservation:{binding,snapshot,headway,gap,gapAt,stageKey,prediction:departurePrediction(boarding,today)},
+    planningObservation:{binding,snapshot,headway,gap,gapAt,stageKey,prediction:departurePrediction(boarding,today),committed},
     emergencyTrigger,emergencyContextKey:stageKey,
     stop:{id:stop.id,name:state.live.stationName || stop.name,stopCode:stop.stopCode},
     route:{id:line.id,number:line.number,label:line.label,destination:line.destination},

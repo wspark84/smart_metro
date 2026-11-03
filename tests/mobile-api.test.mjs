@@ -77,7 +77,8 @@ test("forecast reports leave time and timetable basis from route options", () =>
   assert.equal(forecast.leaveInMinutes, 13);
   assert.equal(forecast.rows.find((row) => row.target).minutes, 20);
   assert.equal(buildHomeForecast({ state: base(), automatic, now }).status, "setup-required");
-  assert.equal(buildHomeForecast({ state, automatic: null, now }).status, "no-route");
+  assert.equal(buildHomeForecast({ state, automatic: null, now }).status, "not-checked", "nothing checked yet today");
+  assert.equal(buildHomeForecast({ state, automatic: { options: [] }, now }).status, "no-route");
 });
 
 function harness({ state = base(), subscription = { active: false } } = {}) {
@@ -233,4 +234,52 @@ test("missing arrival information is not reported as no transit", () => {
   const forecast = buildHomeForecast({ state, automatic: { unverifiedCount: 0, options: [option] }, now });
   assert.equal(forecast.status, "no-live");
   assert.match(forecast.warning, /조회 한도/);
+});
+
+test("changing the commute brings back alarms stopped with 출발했어요", async () => {
+  const { applySetupRequest } = await import("../src/server/mobile-api.mjs");
+  const now = new Date("2026-11-03T08:10:00+09:00");
+  const ready = applyCommuteSetup(base(), setupPatch, now);
+  const departed = applyTodayAlarm({ ...ready, schedule: { ...ready.schedule, oneTimeDate: "2026-11-03" } }, false, now);
+  assert.equal(departed.schedule.snoozeDate, "2026-11-03");
+  assert.equal(applyCommuteSetup(departed, { alerts: { late: false } }, now).schedule.snoozeDate, "2026-11-03", "alarm settings alone do not re-arm");
+  for (const patch of [{ requiredArrivalTime: "09:10" }, { destination: { address: "x", label: "x", lat: 35.2, lng: 129.1 } },
+    { boarding: { ...setupPatch.boarding, stationId: "kakao:999", stationName: "범내골" } }]) {
+    assert.equal(applyCommuteSetup(departed, patch, now).schedule.snoozeDate, null, JSON.stringify(Object.keys(patch)));
+  }
+  const repeat = applySetupRequest(ready, { repeat: { enabled: true, days: [0, 1, 2, 3, 4, 5, 6] } }, { active: true }, now);
+  const paused = applyTodayAlarm(repeat, false, now);
+  assert.equal(todayAlarmStatus(paused, now).armed, false);
+  assert.equal(todayAlarmStatus(applySetupRequest(paused, { requiredArrivalTime: "09:20" }, { active: true }, now), now).armed, true, "repeat re-armed too");
+});
+
+test("manual refresh: checks once, then only after 3 minutes; the screen refresh never calls providers", async () => {
+  const sent = [];
+  let calls = 0, saved = null;
+  let stored = { queryKey: "q", fetchedAt: "2026-11-03T08:00:00+09:00", options: [], manualRefreshAt: null };
+  const ready = applyCommuteSetup(base(), setupPatch);
+  let clock = new Date("2026-11-03T08:00:00+09:00");
+  const deps = { sendJson: (_res, status, body) => sent.push({ status, body }), isTrustedMutation: () => true, readJsonBody: async () => ({}),
+    authenticate: async () => ({ user: { id: "u1" } }), subscriptionStatus: async () => ({ active: false }), now: () => clock,
+    withUserDocuments: async (_auth, work) => work({ readState: async () => ready, saveState: async (s) => s,
+      lastOptions: () => stored,
+      loadOptions: async (_q, _p, mode) => { if (mode.cachedOnly) return null; calls++; return { ...stored, options: [], autoRefresh: "unknown", updatedAt: clock.toISOString(), manualRefreshAt: mode.manual ? clock.toISOString() : null }; },
+      saveOptions: async (value) => { saved = value; stored = value; } }) };
+  await handleMobileApi({ method: "GET", url: "/api/mobile/home" }, {}, deps);
+  assert.equal(calls, 0);
+  assert.equal(sent[0].body.forecast.status, "not-checked");
+  await handleMobileApi({ method: "POST", url: "/api/mobile/refresh" }, {}, deps);
+  assert.equal(sent[1].status, 200);
+  assert.equal(calls, 1);
+  assert.equal(saved.manualRefreshAt, clock.toISOString());
+  assert.equal(sent[1].body.refresh.manualAvailableAt, new Date(clock.getTime() + 180_000).toISOString());
+  clock = new Date(clock.getTime() + 60_000);
+  await handleMobileApi({ method: "POST", url: "/api/mobile/refresh" }, {}, deps);
+  assert.equal(sent[2].status, 429);
+  assert.equal(sent[2].body.code, "REFRESH_TOO_SOON");
+  assert.equal(calls, 1);
+  clock = new Date(clock.getTime() + 120_000);
+  await handleMobileApi({ method: "POST", url: "/api/mobile/refresh" }, {}, deps);
+  assert.equal(sent[3].status, 200);
+  assert.equal(calls, 2);
 });

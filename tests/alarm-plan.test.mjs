@@ -302,3 +302,31 @@ test("chosen alarm times add 지금 출발 and 지각 위험 alerts that outlive
   const atLate = reconcileAlarmRuntime(at(lateTime), atLeave.runtime, lateTime);
   assert.deepEqual(atLate.dueEvents.map((e) => e.triggerKind), ["late"]);
 });
+
+test("지각 위험 still rings after the leave time without fetching arrivals again", async () => {
+  const { buildAlarmPlan } = await import("../src/server/alarm-plan.mjs");
+  const { reconcileAlarmRuntime, createAlarmRuntimeState } = await import("../src/server/alarm-runtime.mjs");
+  const { applyCommuteSetup } = await import("../src/server/mobile-api.mjs");
+  const { transitQueryForState, transitQueryKey } = await import("../src/logic/transit-journey.js");
+  const now = new Date("2026-11-03T08:00:00+09:00");
+  const state = applyCommuteSetup({ user: { requiredArrivalTime: "09:00" }, commute: {}, live: { provider: "none" },
+    schedule: { enabled: true, repeatPreset: "DAILY", daysOfWeek: [0,1,2,3,4,5,6], oneTimeDate: "2026-11-03", snoozeDate: null },
+    notification: {}, holidayDates: [], officialHolidays: [], tripSchedules: [] }, {
+    requiredArrivalTime: "09:00", boardingAccessMin: 5,
+    destination: { address: "판교역", label: "판교역", lat: 37.394, lng: 127.111 },
+    boarding: { provider: "tago", stationId: "GGB1", nodeId: "GGB1", cityCode: "31010", stationName: "정류장", lat: 37.28, lng: 127.05 } });
+  const before = new Date("2026-11-03T08:14:30+09:00");
+  // Last fetch, 30 seconds before the leave time (08:15): bus 7 at 08:20.
+  state.commute.automaticOptions = { queryKey: transitQueryKey(transitQueryForState(state)), options: [{ id: "o1", fetchedAt: before.toISOString(), verified: true,
+    onboardDurationSec: 30 * 60, dailyMetadataDate: "2026-11-03", direction: "판교 방면", binding: { provider: "tago", routeNumber: "7", routeId: "R7" },
+    snapshot: { arrivalsMin: [5.5, 25.5], fetchedAt: before.toISOString(), liveStatus: "ready", cacheStatus: "live" } }] };
+  const first = reconcileAlarmRuntime(state, createAlarmRuntimeState(), before);
+  assert.equal(first.plan.planningObservation.committed.leaveAt, "2026-11-02T23:15:00.000Z");
+  // No new fetch afterwards; at 08:17:10 the stale snapshot alone would point at a later bus.
+  const lateTime = new Date("2026-11-03T08:17:10+09:00");
+  const later = reconcileAlarmRuntime(state, first.runtime, lateTime);
+  const late = later.plan.allTriggers.find((t) => t.triggerKind === "late");
+  assert.equal(late.triggerAt, "2026-11-02T23:17:00.000Z", "two minutes after the committed 08:15");
+  assert.match(late.notificationSpec.body, /08:15이 지났어요/);
+  assert.deepEqual(later.dueEvents.map((e) => e.triggerKind), ["late"]);
+});

@@ -56,7 +56,7 @@ test("the store build opens the consumer app, not developer tools", async () => 
 
 test("consumer app uses the server app API and store-required account features", async () => {
   const api = await read("lib/core/network/inochi_api.dart");
-  for (const path of ["/api/mobile/home", "/api/mobile/setup", "/api/mobile/today", "/api/mobile/stops/nearby", "/api/mobile/stops/describe", "/api/account/delete",
+  for (const path of ["/api/mobile/home", "/api/mobile/setup", "/api/mobile/today", "/api/mobile/stops/nearby", "/api/mobile/stops/describe", "/api/mobile/refresh", "/api/account/delete",
     "/api/device-profile/register-token", "/api/alarm-delivery/actions", "/api/bus/station-routes", "/api/places/search"]) {
     assert.ok(api.includes(path), path);
   }

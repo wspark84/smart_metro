@@ -234,8 +234,14 @@ function mobileApiDeps() {
           await Promise.all([writeAppState(state, files.appState), writeDomainSnapshot(projectDomainSnapshot(state), files.domain)]);
           return state;
         },
-        loadOptions: (query, planning) => refreshJourneyOptions(query, {
-          previous: runtime?.automaticOptions, planning,
+        lastOptions: () => runtime?.automaticOptions || null,
+        // Shared with the background alarm job, so a person's check is not repeated.
+        async saveOptions(automaticOptions) {
+          const latest = await readAlarmRuntimeState(files.alarmRuntime);
+          await writeAlarmRuntimeState({ ...(latest || runtime || createAlarmRuntimeState()), automaticOptions }, files.alarmRuntime);
+        },
+        loadOptions: (query, planning, mode = {}) => refreshJourneyOptions(query, {
+          previous: runtime?.automaticOptions, planning, ...mode,
           loadArrival: (binding) => loadStoredTransit(binding, {
             now: new Date(), cache: runtime?.transitCache,
             loadArrival: () => loadWithCache({ key: ["live-arrivals", binding], ttlMs: LIVE_ARRIVAL_CACHE_TTL_MS,
