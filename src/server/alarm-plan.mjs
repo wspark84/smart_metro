@@ -1,11 +1,12 @@
 import { STOP_LIBRARY } from "../mock-data.js";
-import { scheduledReminderMinutes } from '../logic/trip-schedules.js';
+import { alarmLeadMinutes } from '../logic/trip-schedules.js';
 import {
   addMinutes,
   combineDateAndTime,
   dateOnlyKey,
   describeScheduleState,
   evaluateLateRisk,
+  formatClock,
   mergeHolidayDates,
 } from "../logic/commute.js";
 import { buildLiveEtaGuard } from "../logic/live-eta-guard.js";
@@ -337,8 +338,9 @@ function buildDepartureAlarmPlan(state, today, options) {
       title:emergency.title,body:emergency.body,spokenText:emergency.body,emergencyKey,
       emergencyContextKey:stageKey,expiresAt:emergency.boardingAt,departureAt:emergency.leaveAt,
       fullScreen:true,volumePercent:100,vibrationRepeats:5}} : null;
-  const selectedReminders = state.tripId ? scheduledReminderMinutes(state.schedule) : DEPARTURE_REMINDER_MINUTES.filter(lead => !Array.isArray(state.schedule.reminderMinutes) || state.schedule.reminderMinutes.includes(lead));
-  const allTriggers = scheduleState.firing && valid ? selectedReminders.map(lead => {
+  const chosenLeads = alarmLeadMinutes(state.schedule, Boolean(state.tripId));
+  const selectedReminders = chosenLeads.filter(lead => lead > 0);
+  const regularTriggers = scheduleState.firing && valid ? selectedReminders.map(lead => {
     const triggerAt = addMinutes(new Date(departureAt),-lead);
     const level = lead <= 3 ? 'RED' : lead <= 5 ? 'ORANGE' : lead <= 10 ? 'YELLOW' : 'GREEN';
     const evaluatedAt = triggerAt > today ? triggerAt : today;
@@ -359,6 +361,28 @@ function buildDepartureAlarmPlan(state, today, options) {
       escalationTimeline:buildEscalationTimeline(context).map(({secondsSinceTrigger,escalationLabel,volumePercent,fullScreen,vibrationRepeats})=>
         ({secondsSinceTrigger,escalationLabel,volumePercent,fullScreen,vibrationRepeats}))};
   }) : [];
+  // "지금 출발" at the leave time and "지각 위험" shortly after it. Each stays
+  // deliverable until its own expiry, after the regular stages stop.
+  const timedTriggers = [];
+  if (scheduleState.firing && valid) {
+    const leaveAt = new Date(departureAt);
+    const boardAt = addMinutes(today, boarding.risk.targetResult.arrivalMinutes);
+    const route = line.number ? `${line.number} ` : '';
+    const timed = (kind, triggerAt, expiresAt, title, body, label) => ({triggerAt:triggerAt.toISOString(),triggerKind:kind,triggerLabel:label,
+      reminderKey:`${kind}:${stageKey}`,leadMinutes:0,source:'live-snapshot',arrivalsMin:[boarding.risk.targetResult.arrivalMinutes],
+      riskLevel:'RED',urgency:'HURRY',departureAt,departureEstimated:Boolean(boarding.risk.targetResult.estimated),message:body,
+      arrivalAtWork:boarding.risk.targetResult.arriveWorkAt.toISOString(),
+      notificationSpec:{...getNotificationSpec({riskLevel:'RED',urgency:'HURRY',routeNumber:line.number,escalationEnabled:false,
+        preferredSoundPresetId:state.notification.soundPresetId}),title,body,spokenText:body,alertPhraseKo:body,
+        departureAt,expiresAt:expiresAt.toISOString(),fullScreen:true,volumePercent:100,vibrationRepeats:5,riskLevel:'RED'}});
+    if (chosenLeads.includes(0)) timedTriggers.push(timed('leave-now',leaveAt,addMinutes(leaveAt,5),'지금 집에서 출발하세요',
+      `지금 나가야 ${route}${formatClock(boardAt)} 탑승에 맞출 수 있어요.`,'집 출발 시각'));
+    if (state.schedule.lateAlert === true) timedTriggers.push(timed('late',addMinutes(leaveAt,2),
+      new Date(Math.max(boardAt.getTime(),addMinutes(leaveAt,3).getTime())),'지각 위험! 바로 뛰어나가세요',
+      `출발 시각 ${formatClock(leaveAt)}이 지났어요. 지금 뛰어나가야 ${route}${formatClock(boardAt)} 탑승을 노릴 수 있어요.`,'지각 위험 알림'));
+  }
+  const allTriggers = [...regularTriggers, ...timedTriggers].sort((a,b)=>Date.parse(a.triggerAt)-Date.parse(b.triggerAt));
+  const lateUntil = timedTriggers.length ? timedTriggers.map(t=>t.notificationSpec.expiresAt).sort().at(-1) : null;
   const triggers = allTriggers.filter(t=>Date.parse(t.triggerAt)>=today.getTime());
   return {generatedAt:today.toISOString(),dateKey:dateOnlyKey(today),todayStatus:scheduleState,
     mode:'departure-deadline',tripId:state.tripId || null,departureAt:valid ? departureAt : null,
@@ -366,7 +390,7 @@ function buildDepartureAlarmPlan(state, today, options) {
     emergencyTrigger,emergencyContextKey:stageKey,
     stop:{id:stop.id,name:state.live.stationName || stop.name,stopCode:stop.stopCode},
     route:{id:line.id,number:line.number,label:line.label,destination:line.destination},
-    window:{startAt:allTriggers[0]?.triggerAt || goalAt.toISOString(),endAt:boarding.urgentBoarding ? addMinutes(today,boarding.risk.targetResult.arrivalMinutes).toISOString() : departureAt || goalAt.toISOString(),repeatIntervalMin:null},
+    window:{startAt:allTriggers[0]?.triggerAt || goalAt.toISOString(),endAt:boarding.urgentBoarding ? addMinutes(today,boarding.risk.targetResult.arrivalMinutes).toISOString() : departureAt || goalAt.toISOString(),repeatIntervalMin:null,alertUntil:lateUntil},
     totalTriggers:allTriggers.length,baseTriggerCount:allTriggers.length,precheckTriggerCount:0,
     remainingTriggers:triggers.length,remainingPrecheckTriggers:0,nextTrigger:triggers[0] || null,
     stabilityWatch:{level:'none',precheckLeadMin:0,precheckTriggerAt:null},triggers,allTriggers};

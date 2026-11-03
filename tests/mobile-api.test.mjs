@@ -209,3 +209,16 @@ test("the same bus under two route options is listed once, on the fastest path",
   assert.equal(at1046[0].arriveAt, forecast.arriveAt);
   assert.equal(Date.parse(forecast.arriveAt), Date.parse(forecast.boardingAt) + 34 * 60_000, "fastest path (34 min), not 35");
 });
+
+test("alarm times: defaults on first setup, chosen times and the late alert are saved", async () => {
+  const { alertsSummary } = await import("../src/server/mobile-api.mjs");
+  const first = applyCommuteSetup(base(), setupPatch);
+  assert.deepEqual(alertsSummary(first), { minutes: [10, 5, 0], late: true, choices: [30, 20, 15, 10, 5, 3, 1, 0] });
+  const changed = applyCommuteSetup(first, { alerts: { minutes: [0, 15, 3], late: false } });
+  assert.deepEqual(alertsSummary(changed).minutes, [15, 3, 0]);
+  assert.equal(alertsSummary(changed).late, false);
+  assert.deepEqual(alertsSummary(applyCommuteSetup(changed, { alerts: { late: true } })).minutes, [15, 3, 0], "only the late switch changes");
+  assert.throws(() => applyCommuteSetup(first, { alerts: { minutes: [], late: false } }), /하나 이상/);
+  assert.throws(() => applyCommuteSetup(first, { alerts: { minutes: [7] } }), /다시 골라/);
+  assert.deepEqual(alertsSummary(base()).minutes, [20, 10, 5, 3], "web users keep their original series");
+});

@@ -260,3 +260,45 @@ test("buildAlarmPlan becomes conservative even on a mild live split when recent 
   assert.equal(plan.triggers[0].notificationSpec.accuracyRiskBufferMin, 1);
   assert.match(plan.triggers[0].notificationSpec.body, /평소에도 흔들리는 구간이라 지금은 더 보수적으로 보고 있습니다/);
 });
+
+test("chosen alarm times add 지금 출발 and 지각 위험 alerts that outlive the leave time", async () => {
+  const { buildAlarmPlan } = await import("../src/server/alarm-plan.mjs");
+  const { reconcileAlarmRuntime, createAlarmRuntimeState } = await import("../src/server/alarm-runtime.mjs");
+  const { applyCommuteSetup } = await import("../src/server/mobile-api.mjs");
+  const now = new Date("2026-11-03T08:00:00+09:00");
+  const state = applyCommuteSetup({ user: { requiredArrivalTime: "09:00" }, commute: {}, live: { provider: "none" },
+    schedule: { enabled: true, repeatPreset: "DAILY", daysOfWeek: [0,1,2,3,4,5,6], oneTimeDate: "2026-11-03", snoozeDate: null },
+    notification: {}, holidayDates: [], officialHolidays: [], tripSchedules: [] }, {
+    requiredArrivalTime: "09:00", boardingAccessMin: 5,
+    destination: { address: "판교역", label: "판교역", lat: 37.394, lng: 127.111 },
+    boarding: { provider: "tago", stationId: "GGB1", nodeId: "GGB1", cityCode: "31010", stationName: "정류장", lat: 37.28, lng: 127.05 } });
+  const routeId = "R7";
+  const options = [{ id: "o1", fetchedAt: now.toISOString(), verified: true, onboardDurationSec: 30 * 60, dailyMetadataDate: "2026-11-03",
+    direction: "판교 방면", binding: { provider: "tago", routeNumber: "7", routeId },
+    snapshot: { arrivalsMin: [20, 40], fetchedAt: now.toISOString(), liveStatus: "ready", cacheStatus: "live" } }];
+  const { transitQueryForState, transitQueryKey } = await import("../src/logic/transit-journey.js");
+  state.commute.automaticOptions = { queryKey: transitQueryKey(transitQueryForState(state)), options };
+  const plan = buildAlarmPlan(state, now);
+  const kinds = plan.allTriggers.map((t) => [t.triggerKind, t.leadMinutes]);
+  assert.deepEqual(kinds, [["departure", 10], ["departure", 5], ["leave-now", 0], ["late", 0]]);
+  const leaveNow = plan.allTriggers.find((t) => t.triggerKind === "leave-now");
+  const late = plan.allTriggers.find((t) => t.triggerKind === "late");
+  assert.equal(Date.parse(leaveNow.triggerAt), Date.parse(plan.departureAt));
+  assert.equal(Date.parse(late.triggerAt), Date.parse(plan.departureAt) + 2 * 60_000);
+  assert.match(late.notificationSpec.title, /바로 뛰어나가세요/);
+  // The server refreshes arrivals every tick; replay that with a fresh snapshot.
+  const at = (time) => {
+    const elapsed = (time.getTime() - now.getTime()) / 60_000;
+    const fresh = structuredClone(state);
+    fresh.commute.automaticOptions.options[0].snapshot = { arrivalsMin: [20 - elapsed, 40 - elapsed], fetchedAt: time.toISOString(), liveStatus: "ready", cacheStatus: "live" };
+    fresh.commute.automaticOptions.options[0].fetchedAt = time.toISOString();
+    return fresh;
+  };
+  // At the leave time the regular stages have stopped, but 지금 출발 still rings.
+  const leaveTime = new Date(Date.parse(plan.departureAt) + 10_000);
+  const atLeave = reconcileAlarmRuntime(at(leaveTime), createAlarmRuntimeState(), leaveTime);
+  assert.deepEqual(atLeave.dueEvents.map((e) => e.triggerKind), ["leave-now"]);
+  const lateTime = new Date(Date.parse(late.triggerAt) + 10_000);
+  const atLate = reconcileAlarmRuntime(at(lateTime), atLeave.runtime, lateTime);
+  assert.deepEqual(atLate.dueEvents.map((e) => e.triggerKind), ["late"]);
+});

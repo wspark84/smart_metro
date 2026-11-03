@@ -4,7 +4,7 @@
 import { buildJourneyOptionsPlan } from "../logic/journey-options.js";
 import { normalizeBoardingAccessMin, isValidLocation, dateOnlyKey } from "../logic/commute.js";
 import { transitQueryForState } from "../logic/transit-journey.js";
-import { normalizeTripSchedules, scheduleValidation } from "../logic/trip-schedules.js";
+import { normalizeTripSchedules, scheduleValidation, normalizeAlarmLeads, ALARM_LEAD_CHOICES, DEFAULT_ALARM_LEADS, REMINDER_CHOICES } from "../logic/trip-schedules.js";
 import { parseSubwayRouteId, isTimetableSubwayRoute } from "../logic/station-search.js";
 import { findNearbyStops, describeStop } from "./stop-finder.mjs";
 import { createUserThrottle } from "./ops-access.mjs";
@@ -55,6 +55,21 @@ export function applyCommuteSetup(previous, patch = {}) {
     state.commute.selectedStopId = str(b.stationId) || nodeId;
     state.commute.transitJourney = null;
     state.commute.planningOfficialHeadwayMin = null;
+  }
+  state.schedule = { ...(state.schedule || {}) };
+  // First app setup: 10분 전 · 5분 전 · 지금 출발 · 지각 위험.
+  if (!Array.isArray(state.schedule.reminderMinutes)) {
+    state.schedule.reminderMinutes = [...DEFAULT_ALARM_LEADS];
+    state.schedule.lateAlert = true;
+  }
+  if (patch.alerts !== undefined) {
+    const minutes = patch.alerts?.minutes === undefined ? state.schedule.reminderMinutes : normalizeAlarmLeads(patch.alerts.minutes);
+    if (!minutes || (Array.isArray(patch.alerts?.minutes) && minutes.length !== new Set(patch.alerts.minutes.map(Number)).size))
+      throw fail(400, "알림 시간을 다시 골라 주세요.");
+    const late = patch.alerts?.late === undefined ? state.schedule.lateAlert === true : patch.alerts.late === true;
+    if (!minutes.length && !late) throw fail(400, "알림을 하나 이상 골라 주세요.");
+    state.schedule.reminderMinutes = minutes;
+    state.schedule.lateAlert = late;
   }
   state.commute.routingMode = "all-routes";
   state.commute.planningHeadwayMin = null;
@@ -125,6 +140,11 @@ export function applyRepeat(previous, change) {
   state.tripSchedules = normalizeTripSchedules([trip, ...others]);
   state.schedule = { ...(state.schedule || {}), enabled: !enabled };
   return state;
+}
+
+export function alertsSummary(state) {
+  const minutes = normalizeAlarmLeads(state?.schedule?.reminderMinutes);
+  return { minutes: minutes || [...REMINDER_CHOICES], late: state?.schedule?.lateAlert === true, choices: ALARM_LEAD_CHOICES };
 }
 
 export function todayAlarmStatus(state, now = new Date()) {
@@ -291,7 +311,7 @@ export async function handleMobileApi(request, response, deps) {
           try { automatic = await docs.loadOptions(transitQueryForState(current), { requiredArrivalTime: setup.requiredArrivalTime, boardingAccessMin: setup.boardingAccessMin }); }
           catch (error) { forecastError = error?.routeFailureCode ? "경로·도착정보를 가져오지 못했습니다. 잠시 후 다시 시도해 주세요." : "도착정보 확인이 지연되고 있습니다."; }
         }
-        return { setup, repeat: repeatSummary(current), today: todayAlarmStatus(current, now), forecast: buildHomeForecast({ state: current, automatic, now }),
+        return { setup, repeat: repeatSummary(current), alerts: alertsSummary(current), today: todayAlarmStatus(current, now), forecast: buildHomeForecast({ state: current, automatic, now }),
           forecastError, trips: current.tripSchedules || [], subscription: await subscription(), ...extra };
       };
       if (action === "home") return view(state);

@@ -8,6 +8,19 @@ export function scheduledReminderMinutes(schedule) {
   const interval = ALARM_INTERVAL_CHOICES.includes(Number(schedule.repeatIntervalMin)) ? Number(schedule.repeatIntervalMin) : 5;
   return Array.from({length:Math.ceil(start / interval)}, (_, index) => start - index * interval);
 }
+// User-chosen alarm times (minutes before the leave time). 0 = "지금 출발".
+export const ALARM_LEAD_CHOICES = [30, 20, 15, 10, 5, 3, 1, 0];
+export const DEFAULT_ALARM_LEADS = [10, 5, 0];
+export function normalizeAlarmLeads(values) {
+  return Array.isArray(values) ? ALARM_LEAD_CHOICES.filter(value => values.map(Number).includes(value)) : null;
+}
+// The home alarm keeps its original 20·10·5·3 until the user picks times;
+// a trip without a pick keeps its start/interval series.
+export function alarmLeadMinutes(schedule, trip = false) {
+  const chosen = normalizeAlarmLeads(schedule?.reminderMinutes);
+  if (chosen) return chosen;
+  return trip ? scheduledReminderMinutes(schedule) : REMINDER_CHOICES;
+}
 export function reminderMinutes(values) {
   return REMINDER_CHOICES.filter(value => (Array.isArray(values) ? values : REMINDER_CHOICES).includes(value));
 }

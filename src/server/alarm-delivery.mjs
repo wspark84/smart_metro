@@ -51,14 +51,17 @@ export function reconcileAlarmDelivery(deliveryState = createAlarmDeliveryState(
     if (next.currentAlert.triggerKey) next.handledTriggerKeys.push(next.currentAlert.triggerKey);
     next.currentAlert=null;
   }
+  const timedAlive = ['leave-now','late'].includes(next.currentAlert?.triggerKind) &&
+    currentNow.getTime() < Date.parse(next.currentAlert.notificationSpec?.expiresAt);
   if (plan?.mode === 'departure-deadline' && next.currentAlert &&
-      !emergency &&
+      !emergency && !timedAlive &&
       (next.currentAlert.notificationSpec?.departureAt !== plan.departureAt ||
         (plan.tripId ? currentNow.getTime() >= Date.parse(plan.departureAt) : currentNow.getTime() > Date.parse(plan.departureAt) - 2*60_000))) {
     if (next.currentAlert.triggerKey) next.handledTriggerKeys.push(next.currentAlert.triggerKey);
     next.currentAlert = null;
   }
-  if (plan && (!plan.todayStatus?.firing || currentNow.getTime() > Date.parse(plan.window?.endAt) + 90_000)) {
+  const windowEnd = Math.max(Date.parse(plan?.window?.endAt) || 0, Date.parse(plan?.window?.alertUntil) || 0);
+  if (plan && (!plan.todayStatus?.firing || currentNow.getTime() > windowEnd + 90_000)) {
     if (next.currentAlert?.triggerKey) next.handledTriggerKeys.push(next.currentAlert.triggerKey);
     next.currentAlert = null;
     return next;
