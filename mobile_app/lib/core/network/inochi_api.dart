@@ -6,10 +6,12 @@ import 'mobile_social_auth.dart';
 
 /// Error shown to the user. [message] is already Korean user-facing text.
 class InochiApiException implements Exception {
-  InochiApiException(this.statusCode, this.message, {this.code = ''});
+  InochiApiException(this.statusCode, this.message, {this.code = '', this.retryAt});
   final int statusCode;
   final String message;
   final String code;
+  /// When the server says "too soon", the moment it can be tried again.
+  final DateTime? retryAt;
   bool get subscriptionRequired => code == 'SUBSCRIPTION_REQUIRED' || statusCode == 402;
   bool get loginRequired => statusCode == 401;
   @override
@@ -30,6 +32,9 @@ class InochiApi {
       _send('POST', '/api/mobile/setup', body: patch, timeout: const Duration(seconds: 45));
   Future<Map<String, dynamic>> setToday(bool enabled) =>
       _send('POST', '/api/mobile/today', body: {'enabled': enabled}, timeout: const Duration(seconds: 45));
+  /// A person asked to check arrivals now (allowed once every 3 minutes).
+  Future<Map<String, dynamic>> refresh() =>
+      _send('POST', '/api/mobile/refresh', body: const {}, timeout: const Duration(seconds: 45));
   Future<Map<String, dynamic>> departed() =>
       _send('POST', '/api/alarm-delivery/actions', body: {'type': 'ACK_DEPARTED'});
 
@@ -119,7 +124,8 @@ class InochiApi {
       final payload = decoded is Map ? Map<String, dynamic>.from(decoded) : <String, dynamic>{'data': decoded};
       if (response.statusCode < 200 || response.statusCode >= 300) {
         throw InochiApiException(response.statusCode,
-            '${payload['error'] ?? _statusMessage(response.statusCode)}', code: '${payload['code'] ?? ''}');
+            '${payload['error'] ?? _statusMessage(response.statusCode)}', code: '${payload['code'] ?? ''}',
+            retryAt: DateTime.tryParse('${payload['retryAt'] ?? ''}'));
       }
       return payload;
     } on InochiApiException {

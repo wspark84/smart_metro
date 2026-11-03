@@ -102,6 +102,10 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
   Map<String, dynamic>? _data;
   String _error = '';
   bool _busy = false;
+  // Manual arrival check (no automatic checks when the leave time is unknown).
+  bool _checking = false;
+  DateTime? _manualAvailableAt;
+  Timer? _manualTimer;
   Timer? _refresh;
   Timer? _tick;
   DateTime _now = DateTime.now();
@@ -124,6 +128,7 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     _refresh?.cancel();
     _tick?.cancel();
+    _manualTimer?.cancel();
     super.dispose();
   }
 
@@ -144,6 +149,7 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
   }
 
   void _apply(Map<String, dynamic> data) {
+    _setManualAvailable(DateTime.tryParse('${asMap(data['refresh'])['manualAvailableAt'] ?? ''}'));
     setState(() {
       _data = data;
       _error = '';
@@ -191,6 +197,34 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
       }
     } finally {
       if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  void _setManualAvailable(DateTime? at) {
+    _manualAvailableAt = at;
+    _manualTimer?.cancel();
+    final wait = at?.difference(DateTime.now());
+    if (wait != null && !wait.isNegative) {
+      _manualTimer = Timer(wait + const Duration(seconds: 1), () {
+        if (mounted) setState(() {});
+      });
+    }
+  }
+
+  Future<void> _manualRefresh() async {
+    if (_checking) return;
+    setState(() => _checking = true);
+    try {
+      final data = await widget.api.refresh();
+      if (mounted) _apply(data);
+    } on InochiApiException catch (error) {
+      if (!mounted) return;
+      if (error.code == 'REFRESH_TOO_SOON') setState(() => _setManualAvailable(error.retryAt));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message)));
+    } catch (_) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('확인하지 못했습니다. 잠시 후 다시 눌러 주세요.')));
+    } finally {
+      if (mounted) setState(() => _checking = false);
     }
   }
 
@@ -274,14 +308,21 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
       Urgency.now => (p.nowGround, p.nowTone),
       Urgency.idle => (p.ground, p.ink),
     };
+    final status = '${forecast['status'] ?? ''}';
+    // Leave time unknown and no automatic checks: the person refreshes.
+    final needsManual = !ready && !departed &&
+        (status == 'not-checked' || status == 'no-live' || asMap(data['refresh'])['state'] == 'unknown');
     final label = departed
         ? '오늘은 출발했어요'
-        : !ready
-            ? '오늘 출발 시각'
+        : needsManual
+            ? '현재 시간이 조회되지 않습니다'
+            : !ready
+            ? (status == 'no-catchable' ? '제시간 도착이 어려워요' : '경로를 확인하고 있어요')
             : urgency == Urgency.now
                 ? '지금 나가야 해요'
                 : '출발까지';
-    final count = departed ? '완료' : minutes == null ? '--' : countdownText(minutes);
+    // No number at all beats a placeholder that looks like a value.
+    final count = departed ? '완료' : minutes == null ? '' : countdownText(minutes);
     final route = '${forecast['routeNumber'] ?? ''}'.trim();
     final subwayMode = boarding['mode'] == 'subway';
     final slack = forecast['slackMinutes'] is num ? (forecast['slackMinutes'] as num).toInt() : null;
@@ -303,7 +344,7 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
           bottom: false,
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(20, 12, 8, 0),
+              padding: const EdgeInsets.fromLTRB(24, 12, 8, 0),
               child: Row(children: [
                 Text('이거 놓치면 지각', style: textTheme.copyWith(fontSize: 18, fontWeight: FontWeight.w700)),
                 const SizedBox(width: 8),
@@ -328,7 +369,7 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
                   container: true,
                   label: '출발까지 남은 시간',
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text(label, style: textTheme.copyWith(fontSize: 17, fontWeight: FontWeight.w700)),
+                    Text(label, style: textTheme.copyWith(fontSize: count.isEmpty ? 26 : 17, fontWeight: FontWeight.w700)),
                     const SizedBox(height: 4),
                     Flexible(
                       child: Align(
@@ -349,7 +390,11 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
                         key: ValueKey(count),
                         fit: BoxFit.scaleDown,
                         alignment: Alignment.centerLeft,
-                        child: CountdownNumber(text: count, color: tone),
+                        // The display font's digits sit slightly left of their box; nudge them onto the text edge.
+                        child: count.isEmpty ? const SizedBox(height: 24) : Padding(
+                          padding: const EdgeInsets.only(left: 3),
+                          child: CountdownNumber(text: count, color: tone),
+                        ),
                       ),
                     ),
                     ),
@@ -370,9 +415,15 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
                         (kstClock(forecast['arriveAt']), true),
                         if (slack != null) (slack > 0 ? '$slack분 여유' : '딱 맞게 도착', false),
                       ]),
-                    ] else
-                      Text(_notReadyText(forecast, '${data['forecastError'] ?? ''}'),
-                          style: textTheme.copyWith(fontSize: 15, fontWeight: FontWeight.w500)),
+                    ] else ...[
+                      if (!needsManual || status == 'no-live')
+                        Text(_notReadyText(forecast, '${data['forecastError'] ?? ''}'),
+                            style: textTheme.copyWith(fontSize: 15, fontWeight: FontWeight.w500)),
+                      if (needsManual) ...[
+                        const SizedBox(height: 12),
+                        _ManualRefresh(checking: _checking, availableAt: _manualAvailableAt, onPressed: _manualRefresh),
+                      ],
+                    ],
                     if (ready && forecast['urgent'] == true && !departed) ...[
                       const SizedBox(height: 8),
                       Text('이 차가 제시간에 도착하는 마지막 교통편이에요.', style: textTheme.copyWith(fontSize: 14, fontWeight: FontWeight.w700)),
@@ -477,54 +528,26 @@ class _Sheet extends StatefulWidget {
 
 class _SheetState extends State<_Sheet> {
   static const _rowHeight = 48.0;
-  bool _expanded = false;
-
-  void _setExpanded(bool value) {
-    if (value != _expanded && widget.rows.length > 3) setState(() => _expanded = value);
-  }
 
   @override
   Widget build(BuildContext context) {
     final p = InochiPalette.of(context);
     final rows = widget.rows;
-    final maxRows = math.max(3, math.min(20, (MediaQuery.sizeOf(context).height * 0.45 / _rowHeight).floor()));
-    final int visible = math.min(rows.length, _expanded ? maxRows : 3);
+    // Fixed height for three rows; scroll inside it for later vehicles.
+    final int visible = math.min(rows.length, 3);
     return Container(
       decoration: BoxDecoration(
         color: p.sheet,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
         boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.10), blurRadius: 24, offset: const Offset(0, -6))],
       ),
-      padding: EdgeInsets.fromLTRB(20, 8, 20, MediaQuery.paddingOf(context).bottom + 16),
+      // Same 24dp left edge as the text above.
+      padding: EdgeInsets.fromLTRB(24, 20, 24, MediaQuery.paddingOf(context).bottom + 16),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
-        GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: () => _setExpanded(!_expanded),
-          onVerticalDragEnd: (details) {
-            final velocity = details.primaryVelocity ?? 0;
-            if (velocity < -100) _setExpanded(true);
-            if (velocity > 100) _setExpanded(false);
-          },
-          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Center(
-              child: Container(
-                width: 36,
-                height: 4,
-                margin: const EdgeInsets.only(bottom: 12),
-                decoration: BoxDecoration(color: p.line, borderRadius: BorderRadius.circular(2)),
-              ),
-            ),
-            Row(children: [
-              Expanded(child: Text(widget.title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700))),
-              if (rows.length > 3)
-                Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: Text(_expanded ? '접기' : '${rows.length - 3}대 더 보기', style: TextStyle(fontSize: 13, color: p.muted)),
-                ),
-              BasisChip(basis: widget.basis),
-            ]),
-          ]),
-        ),
+        Row(children: [
+          Expanded(child: Text(widget.title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700))),
+          BasisChip(basis: widget.basis),
+        ]),
         const SizedBox(height: 6),
         if (rows.isEmpty)
           Padding(
@@ -532,27 +555,15 @@ class _SheetState extends State<_Sheet> {
             child: Text('표시할 교통편이 아직 없어요.', style: TextStyle(fontSize: 14, color: p.muted)),
           )
         else
-          AnimatedSize(
-            duration: motion(context, 250),
-            curve: motionCurve,
-            alignment: Alignment.topCenter,
-            child: SizedBox(
-              height: visible * _rowHeight,
-              child: NotificationListener<OverscrollNotification>(
-                // Pulling past the top of the short list opens the full list.
-                onNotification: (note) {
-                  if (note.overscroll > 0 && !_expanded) _setExpanded(true);
-                  return false;
-                },
-                child: ListView.builder(
-                  padding: EdgeInsets.zero,
-                  physics: const ClampingScrollPhysics(),
-                  itemCount: rows.length,
-                  itemExtent: _rowHeight,
-                  itemBuilder: (context, index) =>
-                      _VehicleRow(row: rows[index], subway: widget.subway, last: index == rows.length - 1),
-                ),
-              ),
+          SizedBox(
+            height: visible * _rowHeight,
+            child: ListView.builder(
+              padding: EdgeInsets.zero,
+              physics: const ClampingScrollPhysics(),
+              itemCount: rows.length,
+              itemExtent: _rowHeight,
+              itemBuilder: (context, index) =>
+                  _VehicleRow(row: rows[index], subway: widget.subway, last: index == rows.length - 1),
             ),
           ),
         const SizedBox(height: 14),
@@ -630,5 +641,40 @@ class _VehicleRow extends StatelessWidget {
         Text(status, style: TextStyle(fontSize: 13, fontWeight: weight, color: color)),
       ]),
     );
+  }
+}
+
+/// "새로고침": checks arrivals once on request; then waits 3 minutes.
+class _ManualRefresh extends StatelessWidget {
+  const _ManualRefresh({required this.checking, required this.availableAt, required this.onPressed});
+  final bool checking;
+  final DateTime? availableAt;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = InochiPalette.of(context);
+    final waitSeconds = availableAt?.difference(DateTime.now()).inSeconds ?? 0;
+    final waiting = !checking && waitSeconds > 0;
+    final text = checking
+        ? '지금 확인 중입니다'
+        : waiting
+            ? '${(waitSeconds / 60).ceil()}분 뒤 다시 확인할 수 있어요'
+            : '새로고침';
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      SizedBox(
+        height: 52,
+        child: FilledButton.icon(
+          style: FilledButton.styleFrom(minimumSize: const Size(0, 52), padding: const EdgeInsets.symmetric(horizontal: 20)),
+          onPressed: checking || waiting ? null : onPressed,
+          icon: checking
+              ? SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: p.muted))
+              : const Icon(Icons.refresh),
+          label: Text(text, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+        ),
+      ),
+      const SizedBox(height: 6),
+      Text('누르면 지금 도착정보를 확인해요. 3분에 한 번 확인할 수 있어요.', style: TextStyle(fontSize: 13, color: p.ink)),
+    ]);
   }
 }
