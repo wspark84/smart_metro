@@ -138,6 +138,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }, done: enabled == null ? null : enabled ? '매일 자동 알림을 켰어요.' : '매일 자동 알림을 껐어요. 오늘 하루만 알려 드려요.');
   }
 
+  List<int> get _alertMinutes {
+    final alerts = asMap(_data['alerts']);
+    return (alerts['minutes'] is List ? alerts['minutes'] as List : const [10, 5, 0]).map((m) => m is num ? m.toInt() : -1).where((m) => m >= 0).toList();
+  }
+
+  bool get _lateAlert => asMap(_data['alerts'])['late'] == true;
+
+  Future<void> _saveAlerts(List<int> minutes, bool lateAlert) async {
+    if (minutes.isEmpty && !lateAlert) {
+      _toast('알림을 하나 이상 골라 주세요.');
+      return;
+    }
+    // Show the choice at once; the server answer replaces it.
+    setState(() => _data = {..._data, 'alerts': {...asMap(_data['alerts']), 'minutes': minutes, 'late': lateAlert}});
+    await _save({'alerts': {'minutes': minutes, 'late': lateAlert}});
+  }
+
   Future<void> _open(String path) async {
     final ok = await launchUrl(Uri.parse('${MobileSocialAuth.origin}$path'), mode: LaunchMode.externalApplication);
     if (!ok) _toast('브라우저를 열지 못했습니다.');
@@ -265,6 +282,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
             selected: {mode},
             onSelectionChanged: (value) => unawaited(ThemeModeStore.instance.set(value.first)),
           ),
+        ),
+        const _Header('알림 시간'),
+        _AlarmTimes(
+          minutes: _alertMinutes,
+          lateAlert: _lateAlert,
+          busy: _busy,
+          onChanged: (minutes, lateAlert) => _saveAlerts(minutes, lateAlert),
         ),
         const _Header('알림'),
         _Group(children: [
@@ -439,5 +463,77 @@ class _DayButton extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+/// 알림 시간: minutes before the leave time, the leave time itself, and the
+/// "지각 위험" alert after it.
+class _AlarmTimes extends StatelessWidget {
+  const _AlarmTimes({required this.minutes, required this.lateAlert, required this.busy, required this.onChanged});
+  final List<int> minutes;
+  final bool lateAlert;
+  final bool busy;
+  final void Function(List<int> minutes, bool lateAlert) onChanged;
+
+  static const leads = [30, 20, 15, 10, 5, 3, 1];
+
+  void _toggle(int lead) {
+    final next = {...minutes};
+    if (!next.remove(lead)) next.add(lead);
+    onChanged(next.toList()..sort((a, b) => b.compareTo(a)), lateAlert);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = InochiPalette.of(context);
+    return _Group(children: [
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Text('나갈 시각 전에', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 2),
+          Text('여러 개를 고를 수 있어요', style: TextStyle(fontSize: 13, color: p.muted)),
+          const SizedBox(height: 10),
+          Wrap(spacing: 6, runSpacing: 6, children: [
+            for (final lead in leads)
+              Semantics(
+                button: true,
+                selected: minutes.contains(lead),
+                label: '$lead분 전 알림',
+                child: Pressable(
+                  onTap: busy ? null : () => _toggle(lead),
+                  child: AnimatedContainer(
+                    duration: motion(context, 150),
+                    curve: motionCurve,
+                    constraints: const BoxConstraints(minWidth: 64, minHeight: 44),
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: minutes.contains(lead) ? p.ink : p.card,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: minutes.contains(lead) ? Colors.transparent : p.line),
+                    ),
+                    child: Text('$lead분 전',
+                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, fontFeatures: tabular,
+                            color: minutes.contains(lead) ? p.ground : p.ink)),
+                  ),
+                ),
+              ),
+          ]),
+        ]),
+      ),
+      SwitchListTile(
+        value: minutes.contains(0),
+        onChanged: busy ? null : (_) => _toggle(0),
+        title: const Text('나갈 시각에', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+        subtitle: Text('"지금 집에서 출발하세요"', style: TextStyle(fontSize: 13, color: p.muted)),
+      ),
+      SwitchListTile(
+        value: lateAlert,
+        onChanged: busy ? null : (value) => onChanged(minutes, value),
+        title: const Text('지각 위험 알림', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+        subtitle: Text('나갈 시각이 2분 지나도 출발하지 않으면 "바로 뛰어나가세요"', style: TextStyle(fontSize: 13, color: p.muted)),
+      ),
+    ]);
   }
 }

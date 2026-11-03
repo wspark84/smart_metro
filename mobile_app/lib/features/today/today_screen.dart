@@ -305,7 +305,7 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 12, 8, 0),
               child: Row(children: [
-                Text('이노치', style: textTheme.copyWith(fontSize: 18, fontWeight: FontWeight.w700)),
+                Text('이거 놓치면 지각', style: textTheme.copyWith(fontSize: 18, fontWeight: FontWeight.w700)),
                 const SizedBox(width: 8),
                 Text('지금 ${kstClock(_now.toUtc().toIso8601String())}',
                     style: textTheme.copyWith(fontSize: 13, fontWeight: FontWeight.w500, fontFeatures: tabular)),
@@ -321,15 +321,20 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
             ),
             if (_busy) const LinearProgressIndicator(minHeight: 2),
             Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(24, 28, 24, 24),
+              // No scrolling: the big number shrinks to leave room for the lines below it.
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
                 child: Semantics(
                   container: true,
                   label: '출발까지 남은 시간',
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Text(label, style: textTheme.copyWith(fontSize: 17, fontWeight: FontWeight.w700)),
-                    const SizedBox(height: 6),
-                    AnimatedSwitcher(
+                    const SizedBox(height: 4),
+                    Flexible(
+                      child: Align(
+                      alignment: Alignment.centerLeft,
+                      heightFactor: 1,
+                      child: AnimatedSwitcher(
                       duration: motion(context),
                       switchInCurve: motionCurve,
                       switchOutCurve: motionCurve,
@@ -346,6 +351,8 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
                         alignment: Alignment.centerLeft,
                         child: CountdownNumber(text: count, color: tone),
                       ),
+                    ),
+                    ),
                     ),
                     const SizedBox(height: 8),
                     if (ready && !departed)
