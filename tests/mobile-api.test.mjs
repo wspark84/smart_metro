@@ -194,3 +194,18 @@ test("rows centre on the recommended train and keep the timetable label of a fal
   assert.ok(Date.parse(forecast.arriveAt) <= Date.parse("2026-11-02T22:07:00+09:00"));
   assert.ok(forecast.rows[0].slackMinutes > forecast.slackMinutes, "earlier train leaves more slack");
 });
+
+test("the same bus under two route options is listed once, on the fastest path", () => {
+  const now = new Date("2026-11-03T10:38:00+09:00");
+  const state = applyCommuteSetup(base(), { ...setupPatch, requiredArrivalTime: "11:56",
+    boarding: { provider: "tago", stationId: "GGB1", nodeId: "GGB1", cityCode: "31010", stationName: "정류장", lat: 37.28, lng: 127.05 } });
+  const option = (id, minutes) => ({ id, fetchedAt: now.toISOString(), verified: true, onboardDurationSec: minutes * 60, dailyMetadataDate: "2026-11-03",
+    direction: "수원역 방면", binding: { provider: "tago", routeNumber: "7", routeId: "R7" },
+    snapshot: { arrivalsMin: [8, 45], fetchedAt: now.toISOString(), liveStatus: "ready", cacheStatus: "live" } });
+  const forecast = buildHomeForecast({ state, automatic: { unverifiedCount: 0, options: [option("a", 35), option("b", 34)] }, now });
+  const at1046 = forecast.rows.filter((row) => row.boardingAt === forecast.boardingAt);
+  assert.equal(at1046.length, 1);
+  assert.equal(at1046[0].target, true);
+  assert.equal(at1046[0].arriveAt, forecast.arriveAt);
+  assert.equal(Date.parse(forecast.arriveAt), Date.parse(forecast.boardingAt) + 34 * 60_000, "fastest path (34 min), not 35");
+});

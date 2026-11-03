@@ -193,14 +193,24 @@ export function buildHomeForecast({ state, automatic, now = new Date() }) {
   const at = (minutes) => Number.isFinite(minutes) ? new Date(now.getTime() + minutes * 60_000).toISOString() : null;
   const target = plan.risk.targetResult;
   // Show the trains around the recommended one, not just the next few.
-  const upcoming = plan.rows.filter((row) => row.arrivalMinutes >= 0);
-  const targetIndex = upcoming.findIndex((row) => row.optionId === target?.optionId && row.arrivalMinutes === target?.arrivalMinutes);
+  // One bus can appear under several route options (different onward paths).
+  // Show it once, on the fastest path; the recommendation follows that bus.
+  const vehicleKey = (row) => `${row.routeNumber}|${Math.round(row.arrivalMinutes)}`;
+  const fastest = new Map();
+  for (const row of plan.rows.filter((item) => item.arrivalMinutes >= 0)) {
+    const previous = fastest.get(vehicleKey(row));
+    if (!previous || (row.deltaMinutes ?? -Infinity) > (previous.deltaMinutes ?? -Infinity)) fastest.set(vehicleKey(row), row);
+  }
+  const shown = target && Number.isFinite(target.arrivalMinutes) ? fastest.get(vehicleKey(target)) || target : null;
+  const isTarget = (row) => row === shown;
+  const upcoming = plan.rows.filter((row) => row.arrivalMinutes >= 0 && fastest.get(vehicleKey(row)) === row);
+  const targetIndex = upcoming.findIndex(isTarget);
   const iso = (value) => value instanceof Date && Number.isFinite(value.getTime()) ? value.toISOString() : null;
   const slack = (value) => Number.isFinite(value) ? Math.floor(value) : null;
   const rows = upcoming.slice(Math.max(0, targetIndex - 1), Math.max(0, targetIndex - 1) + 20).map((row) => ({
     routeNumber: str(row.routeNumber, 40), direction: str(row.direction, 80), boardingAt: at(row.arrivalMinutes),
     minutes: Math.max(0, Math.floor(row.arrivalMinutes)), onTime: row.level !== "UNKNOWN" && row.deltaMinutes >= 0,
-    catchable: Boolean(row.catchable), basis: rowBasis(row, options), arriveAt: iso(row.arriveWorkAt), slackMinutes: slack(row.deltaMinutes), target: row.optionId === target?.optionId && row.arrivalMinutes === target?.arrivalMinutes,
+    catchable: Boolean(row.catchable), basis: rowBasis(row, options), arriveAt: iso(row.arriveWorkAt), slackMinutes: slack(row.deltaMinutes), target: isTarget(row),
   }));
   const departure = plan.risk.departure;
   return {
@@ -209,8 +219,8 @@ export function buildHomeForecast({ state, automatic, now = new Date() }) {
     leaveInMinutes: departure ? departure.minutes : null,
     overdue: Boolean(departure && departure.remainingMin < 0),
     boardingAt: at(target?.arrivalMinutes),
-    arriveAt: Number.isFinite(target?.arrivalMinutes) ? iso(target.arriveWorkAt) : null,
-    slackMinutes: Number.isFinite(target?.arrivalMinutes) ? slack(target.deltaMinutes) : null,
+    arriveAt: shown ? iso(shown.arriveWorkAt) : null,
+    slackMinutes: shown ? slack(shown.deltaMinutes) : null,
     routeNumber: str(target?.routeNumber, 40), direction: str(target?.direction, 80),
     basis: target && Number.isFinite(target.arrivalMinutes) ? rowBasis(target, options) : null,
     urgent: Boolean(plan.urgentBoarding), message: str(plan.risk.message, 300), rows,
