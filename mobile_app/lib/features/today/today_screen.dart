@@ -23,8 +23,67 @@ Urgency urgencyFor(int? minutes, {bool overdue = false}) {
   return Urgency.relaxed;
 }
 
-/// "18분", "1시간 5분" → the big countdown text.
-String countdownText(int minutes) => minutes < 100 ? '$minutes분' : '${minutes ~/ 60}시간';
+/// "18분", "1시간 52분" → the big countdown text.
+String countdownText(int minutes) {
+  if (minutes < 60) return '$minutes분';
+  final rest = minutes % 60;
+  return rest == 0 ? '${minutes ~/ 60}시간' : '${minutes ~/ 60}시간 $rest분';
+}
+
+/// The big countdown: digits large, units (시간·분) small, so the number
+/// is what the eye reads first. "1시간 52분" → 1 / 시간 / 52 / 분.
+class CountdownNumber extends StatelessWidget {
+  const CountdownNumber({super.key, required this.text, required this.color});
+  final String text;
+  final Color color;
+
+  static const digitSize = 168.0;
+  static const unitSize = 46.0;
+
+  @override
+  Widget build(BuildContext context) {
+    final parts = RegExp(r'\d+|\D+').allMatches(text).map((m) => m.group(0)!).toList();
+    // The display font has digits and Hangul only; anything else uses the system font.
+    final display = RegExp(r'[0-9가-힣]').hasMatch(text);
+    TextStyle style(double size) => TextStyle(
+          fontFamily: display ? countdownFont : null,
+          fontWeight: FontWeight.w900,
+          fontSize: size,
+          height: 1.0,
+          letterSpacing: size > 100 ? -4 : 0,
+          color: color,
+          fontFeatures: tabular,
+        );
+    // "--" or "완료" (no digits) stays at full size.
+    final hasDigits = RegExp(r'\d').hasMatch(text);
+    return Text.rich(
+      TextSpan(children: [
+        for (var i = 0; i < parts.length; i++)
+          RegExp(r'^\d+$').hasMatch(parts[i]) || !hasDigits
+              ? TextSpan(text: parts[i], style: style(digitSize))
+              : TextSpan(text: ' ${parts[i].trim()}${i < parts.length - 1 ? '  ' : ''}', style: style(unitSize)),
+      ]),
+      maxLines: 1,
+      semanticsLabel: text,
+    );
+  }
+}
+
+/// "1번 버스" / "신분당선" / "대중교통".
+String vehicleLabel(String route, {required bool subway}) {
+  if (route.isEmpty) return '대중교통';
+  if (subway) return route;
+  return RegExp(r'^[0-9A-Za-z-]+$').hasMatch(route) ? '$route번 버스' : route;
+}
+
+/// Row status: 추천 / n분 여유 / 놓쳐요 / n분 늦음.
+String rowStatus(Map<String, dynamic> row) {
+  final slack = row['slackMinutes'] is num ? (row['slackMinutes'] as num).toInt() : null;
+  if (row['onTime'] != true) return slack == null ? '지각' : '${-slack}분 늦음';
+  if (row['target'] == true) return '추천';
+  if (row['catchable'] != true) return '놓쳐요';
+  return slack == null ? '정시' : '$slack분 여유';
+}
 
 /// 오늘 화면 (C안): the colour field and the big number say how long until
 /// the user must leave; the sheet below lists the next vehicles.
@@ -201,7 +260,6 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
     final repeat = asMap(data['repeat']);
     final forecast = asMap(data['forecast']);
     final boarding = asMap(setup['boarding']);
-    final destination = asMap(setup['destination']);
     final ready = forecast['status'] == 'ready';
     final departed = today['departedToday'] == true;
     final armed = today['armed'] == true;
@@ -224,15 +282,10 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
                 ? '지금 나가야 해요'
                 : '출발까지';
     final count = departed ? '완료' : minutes == null ? '--' : countdownText(minutes);
-    final stationLine = [
-      stopTitle(boarding),
-      if ('${boarding['lineName'] ?? ''}'.trim().isNotEmpty) '${boarding['lineName']}',
-    ].join(' ');
     final route = '${forecast['routeNumber'] ?? ''}'.trim();
-    final detail = ready
-        ? '$stationLine ${route.isEmpty ? '' : '$route '}${kstClock(forecast['boardingAt'])} 탑승 · ${destination['label'] ?? '도착지'} ${setup['requiredArrivalTime']}까지'
-        : _notReadyText(forecast, '${data['forecastError'] ?? ''}');
-    final rows = asMapList(forecast['rows']).take(3).toList();
+    final subwayMode = boarding['mode'] == 'subway';
+    final slack = forecast['slackMinutes'] is num ? (forecast['slackMinutes'] as num).toInt() : null;
+    final rows = asMapList(forecast['rows']);
     final basis = '${forecast['basis'] ?? (rows.isNotEmpty ? rows.first['basis'] : '')}';
     final days = (repeat['days'] is List ? repeat['days'] as List : const []).map((d) => d is num ? d.toInt() : -1).toList();
     final repeatLabel = repeat['enabled'] == true ? _daysLabel(days) : '오늘 하루';
@@ -291,26 +344,28 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
                         key: ValueKey(count),
                         fit: BoxFit.scaleDown,
                         alignment: Alignment.centerLeft,
-                        child: Text(
-                          count,
-                          maxLines: 1,
-                          style: TextStyle(
-                            fontFamily: countdownFont,
-                            fontSize: 150,
-                            height: 0.95,
-                            letterSpacing: -3,
-                            color: tone,
-                            fontFeatures: tabular,
-                          ),
-                        ),
+                        child: CountdownNumber(text: count, color: tone),
                       ),
                     ),
                     const SizedBox(height: 8),
                     if (ready && !departed)
                       Text('${kstClock(forecast['leaveAt'])}에 나가세요',
                           style: textTheme.copyWith(fontSize: 22, fontWeight: FontWeight.w700, fontFeatures: tabular)),
-                    const SizedBox(height: 4),
-                    Text(detail, style: textTheme.copyWith(fontSize: 15, fontWeight: FontWeight.w500, fontFeatures: tabular)),
+                    const SizedBox(height: 10),
+                    if (ready && !departed) ...[
+                      _InfoLine(label: '출발', parts: [
+                        (vehicleLabel(route, subway: subwayMode), false),
+                        (kstClock(forecast['boardingAt']), true),
+                        ('탑승', false),
+                      ]),
+                      const SizedBox(height: 4),
+                      _InfoLine(label: '도착', parts: [
+                        (kstClock(forecast['arriveAt']), true),
+                        if (slack != null) (slack > 0 ? '$slack분 여유' : '딱 맞게 도착', false),
+                      ]),
+                    ] else
+                      Text(_notReadyText(forecast, '${data['forecastError'] ?? ''}'),
+                          style: textTheme.copyWith(fontSize: 15, fontWeight: FontWeight.w500)),
                     if (ready && forecast['urgent'] == true && !departed) ...[
                       const SizedBox(height: 8),
                       Text('이 차가 제시간에 도착하는 마지막 교통편이에요.', style: textTheme.copyWith(fontSize: 14, fontWeight: FontWeight.w700)),
@@ -327,6 +382,7 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
               title: vehicles,
               basis: basis,
               rows: rows,
+              subway: subwayMode,
               busy: _busy,
               armed: armed,
               departed: departed,
@@ -357,11 +413,38 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
   }
 }
 
-class _Sheet extends StatelessWidget {
+/// "출발  1번 버스 21:22 탑승" — times in the emphasis red.
+class _InfoLine extends StatelessWidget {
+  const _InfoLine({required this.label, required this.parts});
+  final String label;
+  final List<(String, bool)> parts;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = InochiPalette.of(context);
+    return Text.rich(
+      TextSpan(children: [
+        TextSpan(text: '$label  ', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: p.ink)),
+        for (final (text, time) in parts)
+          TextSpan(
+            text: '$text ',
+            style: time
+                ? TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: p.emphasis, fontFeatures: tabular)
+                : TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: p.ink),
+          ),
+      ]),
+    );
+  }
+}
+
+/// Bottom sheet: the next vehicles (swipe the list, or pull the sheet up for
+/// more), 출발했어요 and today's alarm switch.
+class _Sheet extends StatefulWidget {
   const _Sheet({
     required this.title,
     required this.basis,
     required this.rows,
+    required this.subway,
     required this.busy,
     required this.armed,
     required this.departed,
@@ -373,6 +456,7 @@ class _Sheet extends StatelessWidget {
   final String title;
   final String basis;
   final List<Map<String, dynamic>> rows;
+  final bool subway;
   final bool busy;
   final bool armed;
   final bool departed;
@@ -381,20 +465,59 @@ class _Sheet extends StatelessWidget {
   final String footer;
 
   @override
+  State<_Sheet> createState() => _SheetState();
+}
+
+class _SheetState extends State<_Sheet> {
+  static const _rowHeight = 48.0;
+  bool _expanded = false;
+
+  void _setExpanded(bool value) {
+    if (value != _expanded && widget.rows.length > 3) setState(() => _expanded = value);
+  }
+
+  @override
   Widget build(BuildContext context) {
     final p = InochiPalette.of(context);
+    final rows = widget.rows;
+    final maxRows = math.max(3, math.min(20, (MediaQuery.sizeOf(context).height * 0.45 / _rowHeight).floor()));
+    final int visible = math.min(rows.length, _expanded ? maxRows : 3);
     return Container(
       decoration: BoxDecoration(
         color: p.sheet,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
         boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.10), blurRadius: 24, offset: const Offset(0, -6))],
       ),
-      padding: EdgeInsets.fromLTRB(20, 20, 20, MediaQuery.paddingOf(context).bottom + 16),
+      padding: EdgeInsets.fromLTRB(20, 8, 20, MediaQuery.paddingOf(context).bottom + 16),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
-        Row(children: [
-          Expanded(child: Text(title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700))),
-          BasisChip(basis: basis),
-        ]),
+        GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => _setExpanded(!_expanded),
+          onVerticalDragEnd: (details) {
+            final velocity = details.primaryVelocity ?? 0;
+            if (velocity < -100) _setExpanded(true);
+            if (velocity > 100) _setExpanded(false);
+          },
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Center(
+              child: Container(
+                width: 36,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 12),
+                decoration: BoxDecoration(color: p.line, borderRadius: BorderRadius.circular(2)),
+              ),
+            ),
+            Row(children: [
+              Expanded(child: Text(widget.title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700))),
+              if (rows.length > 3)
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: Text(_expanded ? '접기' : '${rows.length - 3}대 더 보기', style: TextStyle(fontSize: 13, color: p.muted)),
+                ),
+              BasisChip(basis: widget.basis),
+            ]),
+          ]),
+        ),
         const SizedBox(height: 6),
         if (rows.isEmpty)
           Padding(
@@ -402,42 +525,65 @@ class _Sheet extends StatelessWidget {
             child: Text('표시할 교통편이 아직 없어요.', style: TextStyle(fontSize: 14, color: p.muted)),
           )
         else
-          for (var i = 0; i < rows.length; i++) _VehicleRow(row: rows[i], last: i == rows.length - 1),
+          AnimatedSize(
+            duration: motion(context, 250),
+            curve: motionCurve,
+            alignment: Alignment.topCenter,
+            child: SizedBox(
+              height: visible * _rowHeight,
+              child: NotificationListener<OverscrollNotification>(
+                // Pulling past the top of the short list opens the full list.
+                onNotification: (note) {
+                  if (note.overscroll > 0 && !_expanded) _setExpanded(true);
+                  return false;
+                },
+                child: ListView.builder(
+                  padding: EdgeInsets.zero,
+                  physics: const ClampingScrollPhysics(),
+                  itemCount: rows.length,
+                  itemExtent: _rowHeight,
+                  itemBuilder: (context, index) =>
+                      _VehicleRow(row: rows[index], subway: widget.subway, last: index == rows.length - 1),
+                ),
+              ),
+            ),
+          ),
         const SizedBox(height: 14),
         Row(children: [
           Expanded(
             child: FilledButton(
-              onPressed: busy || departed ? null : onDeparted,
+              onPressed: widget.busy || widget.departed ? null : widget.onDeparted,
               style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(54)),
-              child: Text(departed ? '오늘은 출발 완료' : '출발했어요'),
+              child: Text(widget.departed ? '오늘은 출발 완료' : '출발했어요'),
             ),
           ),
           const SizedBox(width: 10),
           Semantics(
-            toggled: armed,
+            toggled: widget.armed,
             label: '오늘 출발 알림',
             child: SizedBox(
               width: 54,
               height: 54,
               child: OutlinedButton(
                 style: OutlinedButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(54, 54)),
-                onPressed: busy ? null : onToggle,
-                child: Icon(armed ? Icons.notifications_active_outlined : Icons.notifications_off_outlined,
-                    color: armed ? p.ink : p.muted, size: 22),
+                onPressed: widget.busy ? null : widget.onToggle,
+                child: Icon(widget.armed ? Icons.notifications_active_outlined : Icons.notifications_off_outlined,
+                    color: widget.armed ? p.ink : p.muted, size: 22),
               ),
             ),
           ),
         ]),
         const SizedBox(height: 12),
-        Text(footer, textAlign: TextAlign.center, style: TextStyle(fontSize: 13, color: p.muted, fontFeatures: tabular)),
+        Text(widget.footer, textAlign: TextAlign.center, style: TextStyle(fontSize: 13, color: p.muted, fontFeatures: tabular)),
       ]),
     );
   }
 }
 
 class _VehicleRow extends StatelessWidget {
-  const _VehicleRow({required this.row, required this.last});
+  const _VehicleRow({required this.row, required this.subway, required this.last});
   final Map<String, dynamic> row;
+  final bool subway;
   final bool last;
 
   @override
@@ -446,18 +592,18 @@ class _VehicleRow extends StatelessWidget {
     final onTime = row['onTime'] == true;
     final target = row['target'] == true;
     final catchable = row['catchable'] == true;
-    final (status, color, weight) = !onTime
-        ? ('지각', p.danger, FontWeight.w700)
+    final status = rowStatus(row);
+    final (color, weight) = !onTime
+        ? (p.danger, FontWeight.w700)
         : target
-            ? ('추천', p.recommend, FontWeight.w700)
+            ? (p.emphasis, FontWeight.w800)
             : !catchable
-                ? ('서둘러야', p.muted, FontWeight.w500)
-                : ('정시', p.ok, FontWeight.w500);
-    final faded = !onTime;
-    final direction = '${row['direction'] ?? ''}'.trim();
-    final route = '${row['routeNumber'] ?? ''}'.trim();
+                ? (p.muted, FontWeight.w500)
+                : (p.ok, FontWeight.w600);
+    final faded = !onTime || !catchable;
+    final route = vehicleLabel('${row['routeNumber'] ?? ''}'.trim(), subway: subway);
+    final arrive = kstClock(row['arriveAt']);
     return Container(
-      constraints: const BoxConstraints(minHeight: 46),
       decoration: BoxDecoration(border: last ? null : Border(bottom: BorderSide(color: p.line))),
       child: Row(children: [
         SizedBox(
@@ -467,10 +613,10 @@ class _VehicleRow extends StatelessWidget {
         ),
         Expanded(
           child: Text(
-            [route, direction].where((part) => part.isNotEmpty).join(' · '),
+            arrive == '--:--' ? route : '$route · $arrive 도착',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontSize: 14, color: p.muted),
+            style: TextStyle(fontSize: 14, color: p.muted, fontFeatures: tabular),
           ),
         ),
         const SizedBox(width: 8),

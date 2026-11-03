@@ -23,6 +23,7 @@ class InochiPalette extends ThemeExtension<InochiPalette> {
     required this.nowTone,
     required this.recommend,
     required this.timetable,
+    required this.emphasis,
   });
 
   final Color ground;
@@ -45,6 +46,8 @@ class InochiPalette extends ThemeExtension<InochiPalette> {
   final Color nowTone;
   final Color recommend;
   final Color timetable;
+  // Times the user acts on (탑승·도착 시각): red, readable on every urgency field.
+  final Color emphasis;
 
   static const light = InochiPalette(
     ground: Color(0xFFF4F2EE),
@@ -65,6 +68,7 @@ class InochiPalette extends ThemeExtension<InochiPalette> {
     nowTone: Color(0xFF1B1A17),
     recommend: Color(0xFFB8360F),
     timetable: Color(0xFF6B4F00),
+    emphasis: Color(0xFFB00018),
   );
 
   static const dark = InochiPalette(
@@ -86,6 +90,7 @@ class InochiPalette extends ThemeExtension<InochiPalette> {
     nowTone: Color(0xFFFF9C8A),
     recommend: Color(0xFFFFB59E),
     timetable: Color(0xFFF4C14F),
+    emphasis: Color(0xFFFF8A80),
   );
 
   static InochiPalette of(BuildContext context) => Theme.of(context).extension<InochiPalette>() ?? light;
@@ -116,6 +121,7 @@ class InochiPalette extends ThemeExtension<InochiPalette> {
       nowTone: mix(nowTone, other.nowTone),
       recommend: mix(recommend, other.recommend),
       timetable: mix(timetable, other.timetable),
+      emphasis: mix(emphasis, other.emphasis),
     );
   }
 }

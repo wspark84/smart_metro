@@ -27,7 +27,16 @@ void main() {
     expect(urgencyFor(25, overdue: true), Urgency.now);
     expect(urgencyFor(null), Urgency.idle);
     expect(countdownText(7), '7분');
-    expect(countdownText(130), '2시간');
+    expect(countdownText(112), '1시간 52분');
+    expect(countdownText(120), '2시간');
+    expect(vehicleLabel('1', subway: false), '1번 버스');
+    expect(vehicleLabel('M4102', subway: false), 'M4102번 버스');
+    expect(vehicleLabel('신분당선', subway: true), '신분당선');
+    expect(vehicleLabel('', subway: false), '대중교통');
+    expect(rowStatus({'onTime': true, 'catchable': true, 'slackMinutes': 7}), '7분 여유');
+    expect(rowStatus({'onTime': true, 'catchable': true, 'target': true, 'slackMinutes': 3}), '추천');
+    expect(rowStatus({'onTime': true, 'catchable': false, 'slackMinutes': 40}), '놓쳐요');
+    expect(rowStatus({'onTime': false, 'catchable': true, 'slackMinutes': -4}), '4분 늦음');
   });
 
   test('commute inputs round-trip and read naturally in Korean', () {
@@ -46,6 +55,14 @@ void main() {
   test('light and dark themes carry the design tokens', () {
     expect(buildInochiTheme(Brightness.light).extension<InochiPalette>()!.soonGround, const Color(0xFFF4C14F));
     expect(buildInochiTheme(Brightness.dark).extension<InochiPalette>()!.ground, const Color(0xFF141311));
+  });
+
+  testWidgets('countdown digits are large and units small', (tester) async {
+    await tester.pumpWidget(const MaterialApp(home: Scaffold(body: CountdownNumber(text: '1시간 52분', color: Colors.black))));
+    final root = tester.widget<RichText>(find.byType(RichText).first).text as TextSpan;
+    final spans = (root.children!.first as TextSpan).children!.cast<TextSpan>();
+    expect(spans.map((span) => span.text).toList(), ['1', ' 시간  ', '52', ' 분']);
+    expect(spans[0].style!.fontSize, greaterThan(spans[1].style!.fontSize! * 3));
   });
 
   testWidgets('timetable and estimated times never look real-time', (tester) async {

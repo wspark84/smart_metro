@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Sky blue sampled from the 이노치 icon illustration. -->
+    <color name="ic_launcher_background">#46C4FD</color>
+    <color name="splash_background">#F4F2EE</color>
+    <color name="splash_background_night">#141311</color>
+</resources>
