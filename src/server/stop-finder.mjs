@@ -5,7 +5,7 @@
 //    user can tell the two same-named stops on either side of a road apart.
 import { haversineDistanceMeters } from "../logic/commute.js";
 import { searchNearbyBoardingStations } from "./nearby-stations.mjs";
-import { searchSeoulStationRoutes, searchGyeonggiStationRoutes } from "./bus-providers.mjs";
+import { searchSeoulStationRoutes, searchGyeonggiStationRoutes, regionalBusProvider } from "./bus-providers.mjs";
 import { searchTagoStationRoutes } from "./tago-api.mjs";
 import { routeRows } from "./tago-headway-binding.mjs";
 import { kakaoSubwayStation, subwayStationRoutes } from "./subway-providers.mjs";
@@ -114,7 +114,8 @@ export async function findNearbyStops({ lat, lng }, deps = {}) {
   const env = deps.env || process.env, fetchImpl = deps.fetchImpl || fetch;
   const seoul = deps.seoul || searchSeoulStationsByPos, national = deps.national || searchNearbyBoardingStations, subway = deps.subway || searchNearbySubwayStations;
   const jobs = [
-    inCapitalArea(center) ? seoul({ apiKey: env.SEOUL_OPEN_API_KEY, ...center, fetchImpl }).then((rows) => rows.map((row) => busStop(row, "seoul"))) : Promise.resolve([]),
+    inCapitalArea(center) ? seoul({ apiKey: env.SEOUL_OPEN_API_KEY, ...center, fetchImpl })
+      .then((rows) => rows.map((row) => busStop(row, regionalBusProvider("seoul", row.stationId)))) : Promise.resolve([]),
     national(center).then((result) => (result?.stations || []).map((row) => busStop(row, row.provider === "gyeonggi" ? "gyeonggi" : result.provider || "tago"))),
     subway({ apiKey: env.KAKAO_LOCAL_REST_API_KEY, ...center, fetchImpl }).then((rows) => rows.map(subwayStop)),
   ];
@@ -154,7 +155,7 @@ async function gyeonggiRouteStations({ serviceKey, routeId, fetchImpl }) {
 }
 
 export async function describeStop(input = {}, deps = {}) {
-  const provider = text(input.provider, 20);
+  const provider = regionalBusProvider(text(input.provider, 20), text(input.stationId));
   if (!["seoul", "gyeonggi", "tago", "subway"].includes(provider)) throw fail("정류장 정보를 다시 선택해 주세요.");
   const env = deps.env || process.env, fetchImpl = deps.fetchImpl || fetch;
   const cacheKey = JSON.stringify([provider, input.stationId, input.arsId, input.cityCode, input.nodeId, input.lineName, input.stationName]);

@@ -7,6 +7,7 @@ import { transitQueryForState } from "../logic/transit-journey.js";
 import { normalizeTripSchedules, scheduleValidation, normalizeAlarmLeads, ALARM_LEAD_CHOICES, DEFAULT_ALARM_LEADS, REMINDER_CHOICES } from "../logic/trip-schedules.js";
 import { parseSubwayRouteId, isTimetableSubwayRoute } from "../logic/station-search.js";
 import { findNearbyStops, describeStop } from "./stop-finder.mjs";
+import { regionalBusProvider } from "./bus-providers.mjs";
 import { createUserThrottle } from "./ops-access.mjs";
 
 const PROVIDERS = new Set(["seoul", "gyeonggi", "tago", "subway"]);
@@ -50,7 +51,8 @@ export function applyCommuteSetup(previous, patch = {}, now = new Date()) {
   }
   if (patch.boarding !== undefined) {
     const b = patch.boarding || {};
-    const provider = str(b.provider, 20);
+    // A Gyeonggi stop listed by Seoul's bus API is saved as a Gyeonggi stop.
+    const provider = regionalBusProvider(str(b.provider, 20), str(b.stationId));
     const location = point(b.lat, b.lng);
     if (!PROVIDERS.has(provider) || !str(b.stationName) || !(str(b.stationId) || str(b.nodeId)) || !location) {
       throw fail(400, "검색 결과에서 출발 정류장 또는 역을 선택해 주세요.");

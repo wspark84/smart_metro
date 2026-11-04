@@ -183,10 +183,20 @@ export function parseSeoulStationSearchXml(xml) {
     .filter((row) => row.stationId || row.arsId);
 }
 
+// Seoul's bus API also lists Gyeonggi stops near the border (station IDs
+// 2xxxxxxxx), but only Seoul stops (1xxxxxxxx) have its route and arrival
+// data; a Gyeonggi stop is looked up with Gyeonggi's API.
+export const isSeoulStationId = (id) => /^1(?:0\d|1\d|2[0-4])\d{6}$/.test(String(id || "").trim());
+export const isGyeonggiStationId = (id) => /^2\d{8}$/.test(String(id || "").trim());
+export function regionalBusProvider(provider, stationId) {
+  return provider === "seoul" && isGyeonggiStationId(stationId) ? "gyeonggi" : provider;
+}
+
 export function parseSeoulStationRoutesXml(xml) {
   const headerCode = getXmlValue(xml, "headerCd");
   if (headerCode && headerCode !== "0") {
-    throw new Error(`Seoul station-route API error: ${getXmlValue(xml, "headerMsg") || headerCode}`);
+    throw Object.assign(new Error(`Seoul station-route API error: ${getXmlValue(xml, "headerMsg") || headerCode}`),
+      { apiCode: Number(headerCode) });
   }
 
   return getXmlBlocks(xml, ["itemList"])
@@ -718,6 +728,9 @@ async function searchLiveStationsExact(binding) {
 }
 
 export async function searchLiveStationRoutes(binding) {
+  if (regionalBusProvider(binding.provider, binding.stationId) !== binding.provider) {
+    return searchLiveStationRoutes({ ...binding, provider: "gyeonggi", arsId: "" });
+  }
   if (binding.provider === "subway") return {provider:"subway",routes:await subwayStationRoutes(binding)};
   if (binding.provider === "tago") {
     return { provider: "tago", routes: await searchTagoStationRoutes({ serviceKey: process.env.TAGO_SERVICE_KEY,
