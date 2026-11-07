@@ -1,5 +1,6 @@
 import { addMinutes, combineDateAndTime, evaluateLateRisk, buildDepartureGuidance, formatClock } from './commute.js';
 import { koreanServiceDate } from './bus-headway.js';
+import { CLOCK_SKEW_MS } from './live-arrivals.js';
 
 export const DEPARTURE_REMINDER_MINUTES = [20, 10, 5, 3];
 
@@ -15,7 +16,7 @@ export function detectEarlyDeparture(plan, previous, now, fetchedAt) {
   const prediction=departurePrediction(plan,now);
   const age=now-Date.parse(fetchedAt || '');
   if (!prediction || !previous || !Number.isFinite(Date.parse(previous.boardingAt)) || row.estimated || row.arrivalMinutes<=0 ||
-      !(age>=0 && age<=90_000) || !(plan.risk.followingResult?.deltaMinutes<0) ||
+      !(age>=-CLOCK_SKEW_MS && age<=90_000) || !(plan.risk.followingResult?.deltaMinutes<0) ||
       plan.risk.departure.remainingMin>3 ||
       koreanServiceDate(previous.boardingAt)!==koreanServiceDate(now)) return null;
   const advancedMin=(Date.parse(previous.boardingAt)-Date.parse(prediction.boardingAt))/60000;
@@ -61,8 +62,8 @@ export function buildBoardingPlan({ now, requiredArrivalTime, route, arrivalsMin
   const latestBoardAt = duration ? addMinutes(combineDateAndTime(now, requiredArrivalTime),
     -duration - base.etaRiskBufferMin) : null;
   const latestMin = latestBoardAt ? (latestBoardAt - now) / 60000 : null;
-  const age = (now - Date.parse(snapshot?.fetchedAt || '')) / 60000;
-  const recent = Number.isFinite(age) && age >= 0 && (validHeadway(officialHeadwayMin)
+  const age = Math.max(0, (now - Date.parse(snapshot?.fetchedAt || '')) / 60000);
+  const recent = Number.isFinite(age) && now - Date.parse(snapshot?.fetchedAt || '') >= -CLOCK_SKEW_MS && (validHeadway(officialHeadwayMin)
     ? koreanServiceDate(snapshot?.fetchedAt) === koreanServiceDate(now) : age <= 30);
   const raw = recent && Array.isArray(snapshot?.arrivalsMin) ? snapshot.arrivalsMin
     .filter(v => v !== null && v !== '' && Number.isFinite(Number(v)) && Number(v) >= 0)

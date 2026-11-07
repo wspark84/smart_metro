@@ -1,4 +1,5 @@
 import { isValidLocation, normalizeBoardingAccessMin } from "./commute.js";
+import { CLOCK_SKEW_MS } from "./live-arrivals.js";
 
 export const TRANSIT_ROUTE_MAX_AGE_MS = 15 * 60_000;
 
@@ -41,7 +42,7 @@ export function resolveJourneyDuration(state, now = new Date()) {
   const duration = journey?.onboardDurationSec;
   const valid = journey?.queryKey === transitQueryKey(transitQueryForState(state)) &&
     journey?.boardingConfirmed === true && journey?.compatible === true &&
-    age >= 0 && age <= TRANSIT_ROUTE_MAX_AGE_MS && typeof duration === "number" && duration > 0;
+    age >= -CLOCK_SKEW_MS && age <= TRANSIT_ROUTE_MAX_AGE_MS && typeof duration === "number" && duration > 0;
   return {
     boardingAccessMin,
     durationAvailable: Boolean(valid),

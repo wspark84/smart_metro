@@ -1,11 +1,16 @@
 // An ETA is relative to the provider fetch time, never the cache response time.
 export const MAX_LIVE_ETA_AGE_MS = 120_000;
+// A snapshot can be stamped a moment after the "now" a request started with
+// (the lookup runs after it), and server clocks differ slightly. Such a
+// snapshot is current, not invalid: treat up to two minutes ahead as age 0.
+export const CLOCK_SKEW_MS = 120_000;
 
 export function projectLiveArrivals(snapshot, now = new Date()) {
   const fetchedAt = Date.parse(snapshot?.fetchedAt || "");
   const nowMs = new Date(now).getTime();
-  const age = nowMs - fetchedAt;
-  if (!Number.isFinite(age) || age < 0 || age > MAX_LIVE_ETA_AGE_MS) return [];
+  const rawAge = nowMs - fetchedAt;
+  if (!Number.isFinite(rawAge) || rawAge < -CLOCK_SKEW_MS || rawAge > MAX_LIVE_ETA_AGE_MS) return [];
+  const age = Math.max(0, rawAge);
   return (Array.isArray(snapshot?.arrivalsMin) ? snapshot.arrivalsMin : [])
     .filter((value) => value !== null && value !== "" && Number.isFinite(Number(value)))
     .map((value) => Number(value) - age / 60_000)
