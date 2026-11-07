@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../../app/inochi_theme.dart';
 import '../../core/device/alarm_voice.dart';
 import '../../core/device/local_alarm_scheduler.dart';
+import '../../core/device/push_registration.dart';
 import '../../core/format/kst_format.dart';
 import '../../core/network/inochi_api.dart';
 import '../../core/network/play_billing.dart';
@@ -110,12 +111,15 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
   Timer? _refresh;
   Timer? _tick;
   DateTime _now = DateTime.now();
+  // Notifications are turned off on this phone: alarms cannot arrive.
+  bool _pushOff = false;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     unawaited(_load());
+    unawaited(_syncPush());
     _refresh = Timer.periodic(const Duration(seconds: 60), (_) {
       if (!_busy) unawaited(_load());
     });
@@ -140,7 +144,26 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
       AlarmVoice.stop();
       unawaited(Future<void>.delayed(const Duration(seconds: 1), AlarmVoice.restoreVolume));
       unawaited(_load());
+      unawaited(_syncPush());
     }
+  }
+
+  // Sends this phone's current push token so alarms keep arriving after a
+  // reinstall or a token change; notes when notifications are off.
+  Future<void> _syncPush() async {
+    try {
+      final ok = await PushRegistration.sync(widget.api);
+      if (ok != null && mounted) setState(() => _pushOff = !ok);
+    } catch (_) {
+      // Tried again on the next open.
+    }
+  }
+
+  Future<void> _turnOnPush() async {
+    final problem = await PushRegistration.register(widget.api).catchError((_) => '알림 연결에 실패했습니다. 다시 시도해 주세요.');
+    if (!mounted) return;
+    setState(() => _pushOff = problem != null);
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(problem ?? '알림을 켰어요. 나갈 시각에 알려 드릴게요.')));
   }
 
   Future<void> _load() async {
@@ -438,6 +461,15 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
                     if (_error.isNotEmpty) ...[
                       const SizedBox(height: 8),
                       Text(_error, style: textTheme.copyWith(fontSize: 13)),
+                    ],
+                    if (_pushOff) ...[
+                      const SizedBox(height: 12),
+                      OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(minimumSize: const Size(0, 48), side: BorderSide(color: p.ink)),
+                        onPressed: _turnOnPush,
+                        icon: Icon(Icons.notifications_off_outlined, color: p.ink),
+                        label: Text('알림이 꺼져 있어요 · 눌러서 켜기', style: TextStyle(color: p.ink, fontWeight: FontWeight.w700)),
+                      ),
                     ],
                   ]),
                 ),

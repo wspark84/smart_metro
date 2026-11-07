@@ -219,6 +219,26 @@ class MobilePushRuntime {
     }
   }
 
+  /// This phone's current token when notifications are already allowed,
+  /// without asking. `ready: false` means notifications are off; null means
+  /// push is not set up in this build or Firebase could not be reached.
+  Future<MobilePushTokenResult?> tokenIfAllowed() async {
+    final initializedStatus = await initialize();
+    if (!initializedStatus.firebaseReady) return null;
+    try {
+      final settings = await FirebaseMessaging.instance.getNotificationSettings();
+      if (!_permissionGranted(settings)) {
+        return MobilePushTokenResult(ready: false, token: '', platform: _platformName, message: 'PERMISSION');
+      }
+      if (defaultTargetPlatform == TargetPlatform.iOS && await _waitForApnsToken() == null) return null;
+      final token = (await FirebaseMessaging.instance.getToken())?.trim() ?? '';
+      if (token.isEmpty) return null;
+      return MobilePushTokenResult(ready: true, token: token, platform: _platformName, message: '');
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<String?> _waitForApnsToken() async {
     for (var attempt = 0; attempt < 8; attempt += 1) {
       final apnsToken = await FirebaseMessaging.instance.getAPNSToken();
