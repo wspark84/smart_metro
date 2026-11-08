@@ -59,7 +59,10 @@ test("when even the first catchable bus arrives late, it is 'already late', not 
   const live = { ...turnaround, arrivalsMin: [25], lastObservation: { fetchedAt: "2026-11-07T22:39:50Z", arrivalsMin: [25] } };
   const forecast = buildHomeForecast({ state, automatic: { options: [option(live)] }, now });
   assert.equal(forecast.status, "too-late");
-  assert.equal(forecast.title, "이미 지각입니다.");
+  // 07:40 + ~25 min (seen 10 s earlier) = 08:04:50 board, + 34m40s = 08:39:40 for an 08:30 goal: 9 min late on the clock.
+  assert.equal(forecast.title, "지금 출발하면 9분 지각이에요");
+  assert.equal(forecast.lateMinutes, 9);
+  assert.equal(forecast.detail, "1번 버스 08:04 탑승 → 08:39 도착 예상");
   assert.equal(forecast.message, "마음을 비우고 당장 출발하세요.");
   assert.ok(forecast.slackMinutes < 0);
   assert.ok(forecast.rows.length > 0, "the buses stay listed");

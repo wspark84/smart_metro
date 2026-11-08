@@ -341,7 +341,7 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
     final remaining = leaveAt?.difference(_now);
     final minutes = ready && remaining != null ? math.max(0, (remaining.inSeconds / 60).ceil()) : null;
     final overdue = remaining != null && remaining.isNegative;
-    // "이미 지각입니다" uses the red field like any must-go-now moment.
+    // "지금 출발하면 N분 지각이에요" uses the red field like any must-go-now moment.
     final urgency = departed ? Urgency.relaxed : forecast['status'] == 'too-late' ? Urgency.now : urgencyFor(minutes, overdue: overdue);
     final (ground, tone) = switch (urgency) {
       Urgency.relaxed => (p.relaxedGround, p.relaxedTone),
@@ -361,7 +361,7 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
     final label = departed
         ? '오늘은 출발했어요'
         : goalIssue
-            ? '${forecast['title'] ?? (status == 'too-late' ? '이미 지각입니다.' : '시간을 다시 설정해 보세요.')}'
+            ? '${forecast['title'] ?? (status == 'too-late' ? '지금 출발해도 지각이에요' : '시간을 다시 설정해 보세요.')}'
             : awaitingLive
             ? '${forecast['title'] ?? '아직 실시간 정보가 확인되지 않았습니다.'}'
             : needsManual
@@ -480,6 +480,10 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
                       ]),
                     ] else if (goalIssue) ...[
                       Text('${forecast['message'] ?? ''}', style: textTheme.copyWith(fontSize: 17, fontWeight: FontWeight.w700)),
+                      if ('${forecast['detail'] ?? ''}'.isNotEmpty) ...[
+                        const SizedBox(height: 6),
+                        Text('${forecast['detail']}', style: textTheme.copyWith(fontSize: 15, fontWeight: FontWeight.w500, fontFeatures: tabular)),
+                      ],
                       if (status == 'goal-passed') ...[
                       const SizedBox(height: 12),
                       SizedBox(

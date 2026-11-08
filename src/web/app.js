@@ -354,7 +354,7 @@ function renderToday() {
   const awaitingLive = !departed && status === "awaiting-live";
   const needsManual = !ready && !departed && !goalIssue && !awaitingLive && (status === "not-checked" || status === "no-live" || obj(data.refresh).state === "unknown");
   const label = departed ? "오늘은 출발했어요"
-    : goalIssue ? String(forecast.title || (status === "too-late" ? "이미 지각입니다." : "시간을 다시 설정해 보세요."))
+    : goalIssue ? String(forecast.title || (status === "too-late" ? "지금 출발해도 지각이에요" : "시간을 다시 설정해 보세요."))
     : awaitingLive ? String(forecast.title || "아직 실시간 정보가 확인되지 않았습니다.")
     : needsManual ? "현재 시간이 조회되지 않습니다"
     : !ready ? (status === "no-catchable" ? "제시간 도착이 어려워요" : "경로를 확인하고 있어요")
@@ -404,6 +404,7 @@ function renderToday() {
         <p class="info">출발&nbsp; <span class="v">${esc(vehicleLabel(route, subway))}</span><span class="t tab">${kstClock(forecast.boardingAt)}</span><span class="v">탑승</span></p>
         <p class="info">도착&nbsp; <span class="t tab">${kstClock(forecast.arriveAt)}</span>${slack !== null ? `<span class="v">${slack > 0 ? `${slack}분 여유` : slack < 0 ? `${-slack}분 늦음` : "딱 맞게 도착"}</span>` : ""}</p>`
       : goalIssue ? `<p class="note" style="font-size:17px;font-weight:700">${esc(forecast.message || "")}</p>
+        ${forecast.detail ? `<p class="note" style="font-size:15px;margin-top:6px">${esc(forecast.detail)}</p>` : ""}
         ${status === "too-late" ? "" : `<div class="manual"><label class="btn" style="width:auto;position:relative">${icon("schedule")} 도착 시각 바꾸기
           <input type="time" data-input="today-arrival" value="${esc(setup.requiredArrivalTime || "09:00")}" aria-label="도착 시각"
             style="position:absolute;inset:0;opacity:0;width:100%;cursor:pointer"></label></div>`}`

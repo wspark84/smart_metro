@@ -279,9 +279,13 @@ export function buildHomeForecast({ state, automatic, now = new Date() }) {
   // time (2026-11-08 19:14: "20:26 딱 맞게 도착" for a 20:00 goal). That is
   // late, not a leave time: say so, and keep the buses listed.
   if (Number.isFinite(target?.arrivalMinutes) && Number.isFinite(target?.deltaMinutes) && target.deltaMinutes < 0 && !plan.urgentBoarding) {
-    return { status: "too-late", title: "이미 지각입니다.", message: "마음을 비우고 당장 출발하세요.", rows,
-      basis: rowBasis(target, options), arriveAt: shown ? iso(shown.arriveWorkAt) : null, slackMinutes: slack(target.deltaMinutes),
-      checkedAt: now.toISOString() };
+    const goal = combineDateAndTime(now, setup.requiredArrivalTime);
+    const late = lateMinutes(target.arriveWorkAt, goal);
+    const vehicle = target.binding?.provider === "subway" ? str(target.routeNumber, 40) : `${str(target.routeNumber, 40)}번 버스`;
+    return { status: "too-late", title: `지금 출발하면 ${late}분 지각이에요`, message: "마음을 비우고 당장 출발하세요.", rows,
+      detail: `${vehicle} ${kstClock(addMinutesTo(now, target.arrivalMinutes))} 탑승 → ${kstClock(target.arriveWorkAt)} 도착 예상`,
+      lateMinutes: late, basis: rowBasis(target, options), arriveAt: shown ? iso(shown.arriveWorkAt) : null,
+      slackMinutes: slack(target.deltaMinutes), checkedAt: now.toISOString() };
   }
   if (!Number.isFinite(target?.arrivalMinutes) && plan.awaitingLive) {
     return { status: "awaiting-live", title: "아직 실시간 정보가 확인되지 않았습니다.",
@@ -330,8 +334,20 @@ export function goalCheck({ setup, automatic, now = new Date() }) {
   if (!onboard.length) return null;
   const earliest = now.getTime() + (Number(setup.boardingAccessMin) || 0) * 60_000 + Math.min(...onboard) * 60_000;
   if (earliest <= goal.getTime()) return null;
-  return { ...base, status: "too-late", title: "이미 지각입니다.",
-    message: "마음을 비우고 당장 출발하세요." };
+  // Best case: a bus the moment you reach the stop. So "at least".
+  const late = lateMinutes(new Date(earliest), goal);
+  return { ...base, status: "too-late", title: `지금 출발해도 최소 ${late}분 지각이에요`,
+    message: "마음을 비우고 당장 출발하세요.", lateMinutes: late };
+}
+
+// Minutes late, counted on the clock shown (20:26 for a 20:00 goal is 26).
+function lateMinutes(arrive, goal) {
+  return Math.max(1, Math.floor(new Date(arrive).getTime() / 60_000) - Math.floor(goal.getTime() / 60_000));
+}
+const addMinutesTo = (date, minutes) => new Date(date.getTime() + minutes * 60_000);
+function kstClock(value) {
+  const date = new Date(value);
+  return Number.isFinite(date.getTime()) ? new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Seoul", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(date) : "--:--";
 }
 
 // ---- HTTP layer -------------------------------------------------------------
