@@ -401,7 +401,7 @@ function renderToday() {
       ${ready && !departed ? `<p class="leave tab">${kstClock(forecast.leaveAt)}에 나가세요</p>
         ${BASIS_SENTENCE[forecast.basis] ? `<p class="note" style="font-size:10px;font-weight:600;margin:2px 0 6px">${BASIS_SENTENCE[forecast.basis]}</p>` : ""}
         <p class="info">출발&nbsp; <span class="v">${esc(vehicleLabel(route, subway))}</span><span class="t tab">${kstClock(forecast.boardingAt)}</span><span class="v">탑승</span></p>
-        <p class="info">도착&nbsp; <span class="t tab">${kstClock(forecast.arriveAt)}</span>${slack !== null ? `<span class="v">${slack > 0 ? `${slack}분 여유` : "딱 맞게 도착"}</span>` : ""}</p>`
+        <p class="info">도착&nbsp; <span class="t tab">${kstClock(forecast.arriveAt)}</span>${slack !== null ? `<span class="v">${slack > 0 ? `${slack}분 여유` : slack < 0 ? `${-slack}분 늦음` : "딱 맞게 도착"}</span>` : ""}</p>`
       : goalIssue ? `<p class="note" style="font-size:17px;font-weight:700">${esc(forecast.message || "")}</p>
         ${status === "too-late" ? "" : `<div class="manual"><label class="btn" style="width:auto;position:relative">${icon("schedule")} 도착 시각 바꾸기
           <input type="time" data-input="today-arrival" value="${esc(setup.requiredArrivalTime || "09:00")}" aria-label="도착 시각"

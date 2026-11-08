@@ -273,6 +273,14 @@ export function buildHomeForecast({ state, automatic, now = new Date() }) {
     catchable: Boolean(row.catchable), basis: rowBasis(row, options), arriveAt: iso(row.arriveWorkAt), slackMinutes: slack(row.deltaMinutes), target: isTarget(row),
   }));
   const departure = plan.risk.departure;
+  // Even the first bus that can still be caught arrives after the arrival
+  // time (2026-11-08 19:14: "20:26 딱 맞게 도착" for a 20:00 goal). That is
+  // late, not a leave time: say so, and keep the buses listed.
+  if (Number.isFinite(target?.arrivalMinutes) && Number.isFinite(target?.deltaMinutes) && target.deltaMinutes < 0 && !plan.urgentBoarding) {
+    return { status: "too-late", title: "이미 지각입니다.", message: "마음을 비우고 당장 출발하세요.", rows,
+      basis: rowBasis(target, options), arriveAt: shown ? iso(shown.arriveWorkAt) : null, slackMinutes: slack(target.deltaMinutes),
+      checkedAt: now.toISOString() };
+  }
   if (!Number.isFinite(target?.arrivalMinutes) && plan.awaitingLive) {
     return { status: "awaiting-live", title: "아직 실시간 정보가 확인되지 않았습니다.",
       message: "실시간 정보가 확인되는 대로 다시 알려드릴게요.", rows, basis: null, checkedAt: now.toISOString() };

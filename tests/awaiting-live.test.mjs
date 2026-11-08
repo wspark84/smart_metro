@@ -49,3 +49,19 @@ test("each time says its basis: live, next bus by interval, or timetable estimat
   assert.equal(planned.status, "ready");
   assert.equal(planned.basis, "schedule");
 });
+
+test("when even the first catchable bus arrives late, it is 'already late', not 'just on time'", () => {
+  // 2026-11-08 19:14: goal 20:00, first catchable bus arrives 20:26 and the
+  // app said "19:47에 나가세요 · 20:26 딱 맞게 도착".
+  const state = { user: { requiredArrivalTime: "08:30", workLocation: { lat: 37.39, lng: 127.11 }, workAddress: "판교" },
+    commute: { boardingAccessMin: 9, stopLocation: { lat: 37.27, lng: 127.05 } },
+    live: { provider: "gyeonggi", stationId: "203000426", stationName: "더샵", nodeId: "" } };
+  const live = { ...turnaround, arrivalsMin: [25], lastObservation: { fetchedAt: "2026-11-07T22:39:50Z", arrivalsMin: [25] } };
+  const forecast = buildHomeForecast({ state, automatic: { options: [option(live)] }, now });
+  assert.equal(forecast.status, "too-late");
+  assert.equal(forecast.title, "이미 지각입니다.");
+  assert.equal(forecast.message, "마음을 비우고 당장 출발하세요.");
+  assert.ok(forecast.slackMinutes < 0);
+  assert.ok(forecast.rows.length > 0, "the buses stay listed");
+  assert.equal(forecast.leaveAt, undefined, "no leave time to count down to");
+});

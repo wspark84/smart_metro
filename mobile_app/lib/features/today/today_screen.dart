@@ -476,7 +476,7 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
                       const SizedBox(height: 4),
                       _InfoLine(label: '도착', parts: [
                         (kstClock(forecast['arriveAt']), true),
-                        if (slack != null) (slack > 0 ? '$slack분 여유' : '딱 맞게 도착', false),
+                        if (slack != null) (slack > 0 ? '$slack분 여유' : slack < 0 ? '${-slack}분 늦음' : '딱 맞게 도착', false),
                       ]),
                     ] else if (goalIssue) ...[
                       Text('${forecast['message'] ?? ''}', style: textTheme.copyWith(fontSize: 17, fontWeight: FontWeight.w700)),
