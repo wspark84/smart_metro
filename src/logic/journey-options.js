@@ -1,6 +1,7 @@
 import {buildBoardingPlan} from './boarding-plan.js';
 import {projectLiveArrivals,CLOCK_SKEW_MS} from './live-arrivals.js';
 import {selectBusHeadway,koreanServiceDate} from './bus-headway.js';
+import {upcomingFromHistory} from './bus-history.js';
 import {buildDepartureGuidance} from './commute.js';
 import {TRANSIT_ROUTE_MAX_AGE_MS} from './transit-journey.js';
 
@@ -17,7 +18,8 @@ export function buildJourneyOptionsPlan({options=[],now,requiredArrivalTime,boar
     const plan=buildBoardingPlan({now,requiredArrivalTime,
       route:{durationAvailable:durationValid,onboardToDestinationMin:option.onboardDurationSec/60,boardingAccessMin},
       arrivalsMin:live,snapshot:live.length ? snapshot : snapshot?.lastObservation || snapshot,
-      officialHeadwayMin:headwayInfo?.minutes,headwayInfo,allowObservedHeadway:option.binding?.provider==='subway'});
+      officialHeadwayMin:headwayInfo?.minutes,headwayInfo,allowObservedHeadway:option.binding?.provider==='subway',
+      history:upcomingFromHistory(snapshot?.passageDays,now,holidays)});
     return {option,plan};
   });
   const rows=plans.flatMap(({option,plan})=>plan.rows.map(row=>({...row,optionId:option.id,

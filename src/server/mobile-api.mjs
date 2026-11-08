@@ -224,7 +224,9 @@ export function applyTrips(previous, trips) {
 // realtime: live arrival. estimate: a later bus timed from a live one by the
 // interval. schedule: no live data yet, planned from the timetable interval.
 // timetable: subway timetable.
+// history: no live data yet, planned from when buses passed on earlier days.
 function rowBasis(row, options = []) {
+  if (row.historyPlan) return "history";
   if (row.intervalPlan) return "schedule";
   if (row.estimated) return "estimate";
   // Real-time subway answered from the timetable when its countdown was unavailable.

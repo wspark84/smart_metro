@@ -218,6 +218,7 @@ function mobileApiDeps() {
     withUserDocuments: (auth, work) => runWithDocumentStorage(auth, createSupabaseGateway(), async () => {
       const files = buildUserFileMap(auth.user.id);
       const runtime = await readAlarmRuntimeState(files.alarmRuntime);
+      let transitCache = null;
       return work({
         async readState() {
           const stored = await readAppState(files.appState);
@@ -236,18 +237,21 @@ function mobileApiDeps() {
         },
         lastOptions: () => runtime?.automaticOptions || null,
         // Shared with the background alarm job, so a person's check is not repeated.
+        // Bus passages seen during this check (이노치 예상시간표) are kept with it.
         async saveOptions(automaticOptions) {
           const latest = await readAlarmRuntimeState(files.alarmRuntime);
-          await writeAlarmRuntimeState({ ...(latest || runtime || createAlarmRuntimeState()), automaticOptions }, files.alarmRuntime);
+          const base = latest || runtime || createAlarmRuntimeState();
+          await writeAlarmRuntimeState({ ...base, automaticOptions, ...(transitCache ? { transitCache } : {}) }, files.alarmRuntime);
         },
         loadOptions: (query, planning, mode = {}) => refreshJourneyOptions(query, {
           previous: runtime?.automaticOptions, planning, ...mode,
+          // Sequential per route, so each call sees the previous one's cache.
           loadArrival: (binding) => loadStoredTransit(binding, {
-            now: new Date(), cache: runtime?.transitCache,
+            now: new Date(), cache: transitCache || runtime?.transitCache,
             loadArrival: () => loadWithCache({ key: ["live-arrivals", binding], ttlMs: LIVE_ARRIVAL_CACHE_TTL_MS,
               allowStaleOnError: false, loader: () => fetchLiveArrival(binding) }),
             loadHeadway: () => fetchBusHeadway(binding, { now: new Date() }),
-            saveCache: async () => {},
+            saveCache: async (next) => { transitCache = next; },
           }),
         }),
       });

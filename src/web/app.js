@@ -62,14 +62,15 @@ function stopTitle(stop) {
   const name = String(stop?.stationName || "").trim();
   return isSubway(stop) && name && !name.endsWith("역") ? `${name}역` : name;
 }
-const BASIS = { realtime: "실시간", timetable: "시간표 기준", estimate: "배차간격 예상", schedule: "시간표 예상" };
-const BASIS_SHORT = { realtime: "실시간", timetable: "시간표", estimate: "배차예상", schedule: "시간표예상" };
+const BASIS = { realtime: "실시간", timetable: "시간표 기준", estimate: "배차간격 예상", schedule: "시간표 예상", history: "이노치 예상시간표" };
+const BASIS_SHORT = { realtime: "실시간", timetable: "시간표", estimate: "배차예상", schedule: "시간표예상", history: "기록예상" };
 // What the leave time is based on, said in full under the headline.
 const BASIS_SENTENCE = {
   realtime: "실시간 도착정보 기준 시간이에요",
   timetable: "열차 시간표 기준 시간이에요",
   estimate: "앞 차 실시간 정보에 배차간격을 더해 예상한 시간이에요 (실시간 아님)",
   schedule: "실시간 정보가 아직 없어 시간표(배차간격)로 예상한 시간이에요",
+  history: "실시간 정보가 아직 없어 지난 운행 기록(이노치 예상시간표)으로 예상한 시간이에요",
 };
 function basisChip(basis) {
   const text = BASIS[basis];

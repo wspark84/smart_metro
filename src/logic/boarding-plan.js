@@ -1,4 +1,4 @@
-import { addMinutes, combineDateAndTime, evaluateLateRisk, buildDepartureGuidance, formatClock } from './commute.js';
+import { addMinutes, combineDateAndTime, evaluateLateRisk, buildDepartureGuidance, formatClock, determineLateRiskLevel, getRiskMeta } from './commute.js';
 import { koreanServiceDate } from './bus-headway.js';
 import { CLOCK_SKEW_MS } from './live-arrivals.js';
 
@@ -39,8 +39,10 @@ export function buildDepartureReminder(plan, now, routeNumber = '') {
   const remaining = (departure.leaveAt - now) / 60000;
   const estimated = Boolean(plan.risk.targetResult.estimated);
   const scheduled = Boolean(plan.risk.targetResult.intervalPlan);
+  const learned = Boolean(plan.risk.targetResult.historyPlan);
   const level = remaining <= 3 ? 'RED' : remaining <= 5 ? 'ORANGE' : remaining <= 10 ? 'YELLOW' : 'GREEN';
-  const basis = scheduled ? '시간표(배차간격)로 예상한 시간 · 실시간 아님'
+  const basis = learned ? '지난 운행 기록(이노치 예상시간표)으로 예상한 시간 · 실시간 아님'
+    : scheduled ? '시간표(배차간격)로 예상한 시간 · 실시간 아님'
     : estimated ? '앞 차 실시간 정보 + 배차간격으로 예상한 시간 · 실시간 아님' : '실시간 도착정보 기준';
   const time = formatClock(departure.leaveAt);
   const title = remaining <= 0 ? '지금 집에서 출발하세요' : `집에서 출발까지 ${Math.ceil(remaining)}분`;
@@ -70,7 +72,7 @@ export function inServiceHours(headwayInfo, at) {
 
 // Planning estimates may drive labeled reminders, never confirmed-vehicle claims.
 export function buildBoardingPlan({ now, requiredArrivalTime, route, arrivalsMin = [], snapshot,
-  officialHeadwayMin, observedHeadwayMin, allowObservedHeadway = false, headwayInfo = null }) {
+  officialHeadwayMin, observedHeadwayMin, allowObservedHeadway = false, headwayInfo = null, history = [] }) {
   const base = evaluateLateRisk({now, requiredArrivalTime, route, busArrivalsMin:arrivalsMin});
   const duration = base.onboardToDestinationMin;
   const latestBoardAt = duration ? addMinutes(combineDateAndTime(now, requiredArrivalTime),
@@ -110,7 +112,14 @@ export function buildBoardingPlan({ now, requiredArrivalTime, route, arrivalsMin
   // than a misleading "leave now".
   const scheduleMax = validHeadway(headwayInfo?.max) || validHeadway(officialHeadwayMin);
   let awaitingLive = false;
-  if (!real.length && !raw.length && duration && scheduleMax && latestMin >= 0 && latestMin <= 1440) {
+  // 이노치 예상시간표 first: when buses actually passed this stop on earlier
+  // days of the same type. Be at the stop by the earliest time seen; judge
+  // being on time by the latest. Falls back to the interval plan below.
+  const learned = !real.length && !raw.length && duration && latestMin >= 0 && latestMin <= 1440
+    ? (Array.isArray(history) ? history : []).filter(row => Number.isFinite(row?.earliestMin) && row.earliestMin >= 0) : [];
+  for (const row of learned) planned.push({minutes:row.earliestMin, estimated:true, historyPlan:true,
+    spreadMin:Math.max(0, row.latestMin - row.earliestMin), typicalMin:row.typicalMin});
+  if (!learned.length && !real.length && !raw.length && duration && scheduleMax && latestMin >= 0 && latestMin <= 1440) {
     const access = Number.isFinite(route.boardingAccessMin) ? route.boardingAccessMin : 0;
     const atStop = latestMin - scheduleMax;
     if (atStop >= access && inServiceHours(headwayInfo, addMinutes(now, atStop)))
@@ -121,7 +130,17 @@ export function buildBoardingPlan({ now, requiredArrivalTime, route, arrivalsMin
   planned.sort((a,b)=>a.minutes-b.minutes);
   const evaluated = evaluateLateRisk({now, requiredArrivalTime, route, busArrivalsMin:planned.map(row=>row.minutes)});
   const rows = evaluated.results.filter(row=>Number.isFinite(row.arrivalMinutes))
-    .map((row,index)=>({...row,estimated:planned[index].estimated,intervalPlan:Boolean(planned[index].intervalPlan)}));
+    .map((row,index)=>{
+      const plan = planned[index];
+      const out = {...row,estimated:plan.estimated,intervalPlan:Boolean(plan.intervalPlan),historyPlan:Boolean(plan.historyPlan)};
+      if (!plan.historyPlan || !(row.arriveWorkAt instanceof Date)) return out;
+      // On time only if even the latest-seen bus arrives in time.
+      const arriveWorkAt = addMinutes(row.arriveWorkAt, plan.spreadMin);
+      const deltaMinutes = Math.floor((combineDateAndTime(now, requiredArrivalTime) - arriveWorkAt) / 60000);
+      const level = determineLateRiskLevel(deltaMinutes);
+      return {...out,arriveWorkAt,deltaMinutes,level,risk:getRiskMeta(level),
+        latestMinutes:row.arrivalMinutes + plan.spreadMin,typicalMinutes:plan.typicalMin};
+    });
   const reachable = rows.filter(row=>row.level !== 'UNKNOWN' && row.catchable);
   const lastOnTime = rows.filter(row=>row.level!=='UNKNOWN' && row.deltaMinutes>=0 && row.arrivalMinutes>0).at(-1);
   const urgentBoarding = Boolean(lastOnTime && !lastOnTime.estimated && !lastOnTime.catchable &&
@@ -132,7 +151,9 @@ export function buildBoardingPlan({ now, requiredArrivalTime, route, arrivalsMin
     target.deltaMinutes>=0 && following.deltaMinutes<0);
   const estimatedLast = Boolean(target && target.deltaMinutes>=0 && following?.deltaMinutes<0 && !confirmed);
   const departure = target ? buildDepartureGuidance(target.arrivalMinutes,route.boardingAccessMin,now) : null;
-  const message = target ? target.intervalPlan
+  const message = target ? target.historyPlan
+    ? '실시간 도착정보가 아직 없어 지난 운행 기록(이노치 예상시간표)으로 예상한 시간입니다(실시간 아님). 실시간 정보가 확인되면 바로 바꿔 드려요.'
+    : target.intervalPlan
     ? '실시간 도착정보가 아직 없어 시간표(배차간격)로 예상한 시간입니다(실시간 아님). 실시간 정보가 확인되면 바로 바꿔 드려요.'
     : target.estimated
     ? '배차간격 기준 예상 도착시간입니다(실시간 아님). 운행 종료·결행은 반영되지 않을 수 있으며 실시간 정보가 확인되면 갱신합니다.'
