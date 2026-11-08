@@ -85,7 +85,7 @@ button { cursor: pointer; }
 .count .d { font-size: var(--d); letter-spacing: -4px; }
 .count .u { font-size: calc(var(--d) * .274); }
 @keyframes rise { from { opacity: 0; transform: translateY(6%); } to { opacity: 1; transform: none; } }
-.leave { font-size: 22px; font-weight: 700; margin: 8px 0 10px; }
+.leave { font-size: 30px; font-weight: 800; margin: 8px 0 10px; }
 .info { font-size: 15px; font-weight: 500; margin: 0 0 4px; }
 .info .v { font-size: 17px; font-weight: 700; margin-right: 4px; }
 .info .t { font-size: 22px; font-weight: 800; color: var(--emphasis); margin-right: 4px; }

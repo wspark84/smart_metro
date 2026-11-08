@@ -399,7 +399,7 @@ function renderToday() {
       <p class="today-label ${count ? "" : "big"}">${esc(label)}</p>
       <div class="count-box">${count ? `<span class="count tab" aria-label="${esc(count)}">${countMarkup(count)}</span>` : ""}</div>
       ${ready && !departed ? `<p class="leave tab">${kstClock(forecast.leaveAt)}에 나가세요</p>
-        ${BASIS_SENTENCE[forecast.basis] ? `<p class="note" style="font-size:14px;font-weight:600;margin:2px 0 6px">${BASIS_SENTENCE[forecast.basis]}</p>` : ""}
+        ${BASIS_SENTENCE[forecast.basis] ? `<p class="note" style="font-size:10px;font-weight:600;margin:2px 0 6px">${BASIS_SENTENCE[forecast.basis]}</p>` : ""}
         <p class="info">출발&nbsp; <span class="v">${esc(vehicleLabel(route, subway))}</span><span class="t tab">${kstClock(forecast.boardingAt)}</span><span class="v">탑승</span></p>
         <p class="info">도착&nbsp; <span class="t tab">${kstClock(forecast.arriveAt)}</span>${slack !== null ? `<span class="v">${slack > 0 ? `${slack}분 여유` : "딱 맞게 도착"}</span>` : ""}</p>`
       : goalIssue ? `<p class="note" style="font-size:17px;font-weight:700">${esc(forecast.message || "")}</p>

@@ -460,11 +460,11 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
                     const SizedBox(height: 8),
                     if (ready && !departed)
                       Text('${kstClock(forecast['leaveAt'])}에 나가세요',
-                          style: textTheme.copyWith(fontSize: 22, fontWeight: FontWeight.w700, fontFeatures: tabular)),
+                          style: textTheme.copyWith(fontSize: 30, fontWeight: FontWeight.w800, fontFeatures: tabular)),
                     // Always say whether the time is live or estimated.
                     if (ready && !departed && basisText.isNotEmpty) ...[
                       const SizedBox(height: 4),
-                      Text(basisText, style: textTheme.copyWith(fontSize: 14, fontWeight: FontWeight.w600)),
+                      Text(basisText, style: textTheme.copyWith(fontSize: 10, fontWeight: FontWeight.w600)),
                     ],
                     const SizedBox(height: 10),
                     if (ready && !departed) ...[
