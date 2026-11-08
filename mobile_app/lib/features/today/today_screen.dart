@@ -353,12 +353,17 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
     // Leave time unknown and no automatic checks: the person refreshes.
     // The arrival time has passed, or leaving now is already too late.
     final goalIssue = !departed && (status == 'goal-passed' || status == 'too-late');
-    final needsManual = !ready && !departed && !goalIssue &&
+    // A bus is still possible but live arrivals have not come yet (e.g. it is
+    // waiting at the turnaround): no "0분", checks continue automatically.
+    final awaitingLive = !departed && status == 'awaiting-live';
+    final needsManual = !ready && !departed && !goalIssue && !awaitingLive &&
         (status == 'not-checked' || status == 'no-live' || asMap(data['refresh'])['state'] == 'unknown');
     final label = departed
         ? '오늘은 출발했어요'
         : goalIssue
             ? '${forecast['title'] ?? (status == 'too-late' ? '이미 지각입니다.' : '시간을 다시 설정해 보세요.')}'
+            : awaitingLive
+            ? '${forecast['title'] ?? '아직 실시간 정보가 확인되지 않았습니다.'}'
             : needsManual
             ? '현재 시간이 조회되지 않습니다'
             : !ready
@@ -373,6 +378,7 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
     final slack = forecast['slackMinutes'] is num ? (forecast['slackMinutes'] as num).toInt() : null;
     final rows = asMapList(forecast['rows']);
     final basis = '${forecast['basis'] ?? (rows.isNotEmpty ? rows.first['basis'] : '')}';
+    final basisText = BasisChip.sentence('${forecast['basis'] ?? ''}');
     final days = (repeat['days'] is List ? repeat['days'] as List : const []).map((d) => d is num ? d.toInt() : -1).toList();
     final repeatLabel = repeat['enabled'] == true ? _daysLabel(days) : '오늘 하루';
     final mode = boarding['mode'] == 'subway' ? '역' : '정류장';
@@ -455,6 +461,11 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
                     if (ready && !departed)
                       Text('${kstClock(forecast['leaveAt'])}에 나가세요',
                           style: textTheme.copyWith(fontSize: 22, fontWeight: FontWeight.w700, fontFeatures: tabular)),
+                    // Always say whether the time is live or estimated.
+                    if (ready && !departed && basisText.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(basisText, style: textTheme.copyWith(fontSize: 14, fontWeight: FontWeight.w600)),
+                    ],
                     const SizedBox(height: 10),
                     if (ready && !departed) ...[
                       _InfoLine(label: '출발', parts: [
@@ -481,6 +492,9 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
                         ),
                       ),
                       ],
+                    ] else if (awaitingLive) ...[
+                      Text('${forecast['message'] ?? '실시간 정보가 확인되는 대로 다시 알려드릴게요.'}',
+                          style: textTheme.copyWith(fontSize: 17, fontWeight: FontWeight.w700)),
                     ] else ...[
                       if (!needsManual || status == 'no-live')
                         Text(_notReadyText(forecast, '${data['forecastError'] ?? ''}'),
@@ -713,6 +727,11 @@ class _VehicleRow extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 8),
+        if (BasisChip.short('${row['basis'] ?? ''}').isNotEmpty) ...[
+          Text(BasisChip.short('${row['basis']}'),
+              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: row['basis'] == 'realtime' ? p.ok : p.muted)),
+          const SizedBox(width: 6),
+        ],
         Text(status, style: TextStyle(fontSize: 13, fontWeight: weight, color: color)),
       ]),
     );

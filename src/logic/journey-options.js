@@ -32,7 +32,9 @@ export function buildJourneyOptionsPlan({options=[],now,requiredArrivalTime,boar
     route:{durationAvailable:false,boardingAccessMin},arrivalsMin:[]});
   const following=target ? rows.find(r=>r.arrivalMinutes>target.arrivalMinutes && r.deltaMinutes<0) : null;
   const complete=!incomplete && plans.length>0 && plans.every(({plan})=>plan.rows.some(row=>row.level!=='UNKNOWN'));
-  return {...base,rows,urgentBoarding:Boolean(urgent && complete && following),estimatedLast:Boolean(complete && following && target?.deltaMinutes>=0),
+  // No leave time yet, but a bus can still make it once live arrivals show up.
+  const awaitingLive=!target && plans.some(({plan})=>plan.awaitingLive);
+  return {...base,rows,awaitingLive,urgentBoarding:Boolean(urgent && complete && following),estimatedLast:Boolean(complete && following && target?.deltaMinutes>=0),
     hasEstimates:rows.some(r=>r.estimated),optionsCount:options.length,coverageComplete:complete,
     risk:{...base.risk,results:rows,targetResult:target || {...base.risk.targetResult,level:'UNKNOWN',arrivalMinutes:null},
       followingResult:complete ? following : null,lastChanceConfirmed:false,

@@ -130,10 +130,11 @@ export async function refreshJourneyOptions(query,{loadArrival,discover=discover
     }
     options.push({...option,snapshot:snapshots.get(id)});
   }
-  let departureAt=null;
+  let departureAt=null,awaitingLive=false;
   if(planning) {
     const plan=buildJourneyOptionsPlan({...planning,options,now,incomplete:Boolean(metadata.unverifiedCount)});
     departureAt=plan.risk.departure?.leaveAt?.toISOString() || null;
+    awaitingLive=!departureAt && plan.awaitingLive;
   }
   // No leave time yet. Far from the expected one (route time from the saved paths),
   // e.g. a 3 a.m. check before buses run, simply wait for the 2-hour mark; close
@@ -145,7 +146,10 @@ export async function refreshJourneyOptions(query,{loadArrival,discover=discover
     const expected=Number.isFinite(minutes) && Number.isFinite(goal?.getTime?.()) ? goal.getTime()-(minutes+Number(planning.boardingAccessMin || 0)+10)*60_000 : NaN;
     if(Number.isFinite(expected) && expected-120*60_000>now.getTime()) waitUntil=new Date(expected-120*60_000).toISOString();
   }
-  return {...metadata,options,updatedAt:now.toISOString(),planningKey,departureAt,
+  // Waiting for live arrivals (bus at the turnaround): check again every
+  // minute until one shows up, then the usual time-left schedule applies.
+  if(awaitingLive && !waitUntil) waitUntil=new Date(now.getTime()+60_000).toISOString();
+  return {...metadata,options,updatedAt:now.toISOString(),planningKey,departureAt,awaitingLive,
     autoRefresh:!planning ? null : waitUntil ? 'scheduled' : !departureAt ? 'unknown' : Date.parse(departureAt)<now.getTime() ? 'departed' : 'scheduled',
     manualRefreshAt:manual ? now.toISOString() : previous?.queryKey===key && sameDay ? previous.manualRefreshAt || null : null,
     nextRefreshAt:planning ? waitUntil || nextTransitRefreshAt(now.toISOString(),departureAt) : null};

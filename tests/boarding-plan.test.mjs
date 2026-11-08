@@ -36,7 +36,7 @@ test('departure alarms follow the same 09:14 deadline as home instead of the old
   assert.deepEqual(p.allTriggers.map(t=>formatClock(new Date(t.triggerAt))),['08:54','09:04','09:09','09:11']);
   assert.deepEqual(p.allTriggers.map(t=>t.riskLevel),['GREEN','YELLOW','ORANGE','RED']);
   assert.ok(p.allTriggers.every(t=>t.source==='headway-estimate' && !t.lastChanceConfirmed));
-  assert.match(p.nextTrigger.notificationSpec.body,/배차간격 예상.*09:14까지 집에서 출발/);
+  assert.match(p.nextTrigger.notificationSpec.body,/배차간격으로 예상한 시간.*09:14까지 집에서 출발/);
   assert.equal(reconcileAlarmRuntime(s,undefined,now).dueEvents.length,0);
   assert.equal(isAlarmRefreshWindow(s,now),true);
 });
@@ -48,7 +48,7 @@ test('live last vehicle replaces forecast deadline and reminder copy',()=>{
   assert.equal(p.allTriggers[0].source,'live-snapshot');
   assert.equal(p.allTriggers[0].lastChanceConfirmed,true);
   assert.match(p.allTriggers[0].notificationSpec.body,/실시간 도착정보 기준.*09:17까지 집에서 출발/);
-  assert.doesNotMatch(p.allTriggers[0].notificationSpec.body,/배차간격 예상/);
+  assert.doesNotMatch(p.allTriggers[0].notificationSpec.body,/배차간격으로 예상/);
 });
 
 test('15:15 estimate advancing to 15:04 live triggers one emergency even with five-minute access',()=>{

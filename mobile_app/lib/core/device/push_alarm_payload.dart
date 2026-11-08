@@ -98,11 +98,18 @@ String alarmSpeech(PushAlarmPayload payload, DateTime now) {
   final vehicle = spokenVehicle(payload.routeNumber);
   final ride = vehicle.isEmpty ? '' : ' $vehicle${objectParticle(vehicle)} 타야 해요.';
   if (payload.triggerKind == 'late') return '지각 위험! 바로 뛰어나가세요.$ride';
+  // No leave time while live arrivals are awaited: read the notice as sent.
+  if (payload.triggerKind == 'awaiting-live') {
+    return '${payload.title}. ${payload.body}'.replaceAll('..', '.');
+  }
   final departure = DateTime.tryParse(payload.departureAt);
   if (departure != null) {
     final minutes = (departure.difference(now).inSeconds / 60).ceil();
-    if (minutes <= 0) return '지금 집에서 출발하세요!$ride';
-    return '집에서 출발까지 $minutes분 남았습니다. ${spokenClock(departure)}까지 나가세요.$ride';
+    final found = payload.triggerKind == 'live-found' ? '실시간 정보가 확인됐어요. ' : '';
+    // Times planned without live data are said to be estimates.
+    final estimate = payload.title.startsWith('예상') ? ' 실시간 정보가 아닌 예상 시간이에요.' : '';
+    if (minutes <= 0) return '$found지금 집에서 출발하세요!$ride$estimate';
+    return '$found집에서 출발까지 $minutes분 남았습니다. ${spokenClock(departure)}까지 나가세요.$ride$estimate';
   }
   final text = payload.spokenText.isNotEmpty ? payload.spokenText : payload.title;
   return text;

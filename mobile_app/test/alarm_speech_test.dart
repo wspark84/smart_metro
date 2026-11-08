@@ -29,4 +29,15 @@ void main() {
     expect(objectParticle('버스'), '를');
     expect(objectParticle('신분당선'), '을');
   });
+
+  test('awaiting live data is said as is; estimates and live-found say their basis', () {
+    final waiting = alarm({'triggerKind': 'awaiting-live', 'title': '아직 실시간 정보가 확인되지 않았습니다',
+        'body': '실시간 정보가 확인되는 대로 다시 알려드릴게요.'});
+    expect(alarmSpeech(waiting, now), '아직 실시간 정보가 확인되지 않았습니다. 실시간 정보가 확인되는 대로 다시 알려드릴게요.');
+    final found = alarm({'triggerKind': 'live-found', 'title': '실시간 정보 확인 · 집에서 출발까지 3분',
+        'departureAt': '2026-11-03T11:50:00Z', 'routeNumber': '7'});
+    expect(alarmSpeech(found, now), startsWith('실시간 정보가 확인됐어요. 집에서 출발까지 3분 남았습니다.'));
+    final estimate = alarm({'title': '예상 · 집에서 출발까지 3분', 'departureAt': '2026-11-03T11:50:00Z', 'routeNumber': '7'});
+    expect(alarmSpeech(estimate, now), endsWith('실시간 정보가 아닌 예상 시간이에요.'));
+  });
 }

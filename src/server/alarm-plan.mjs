@@ -338,6 +338,26 @@ function buildDepartureAlarmPlan(state, today, options) {
       title:emergency.title,body:emergency.body,spokenText:emergency.body,emergencyKey,
       emergencyContextKey:stageKey,expiresAt:emergency.boardingAt,departureAt:emergency.leaveAt,
       fullScreen:true,volumePercent:100,vibrationRepeats:5}} : null;
+  // Live arrivals not there yet (bus waiting at the turnaround) and the
+  // timetable interval cannot time the leave: say so once instead of a
+  // misleading "leave now", then alert once as soon as live data times it.
+  const awaitingLive = Boolean(scheduleState.firing && !departureAt && boarding.awaitingLive);
+  const wasAwaiting = Boolean(prior?.stageKey===stageKey && prior.awaitingLive);
+  const notice = (kind, key, title, body, leaveAt, level) => ({triggerAt:today.toISOString(),triggerKind:kind,
+    triggerLabel:kind==='awaiting-live' ? '실시간 정보 대기 안내' : '실시간 정보 확인 알림',reminderKey:key,
+    riskLevel:level,urgency:'HURRY',source:'live-snapshot',arrivalsMin:[],departureAt:leaveAt,departureEstimated:false,message:body,
+    notificationSpec:{...getNotificationSpec({riskLevel:level,urgency:'HURRY',routeNumber:line.number,escalationEnabled:false,
+      preferredSoundPresetId:state.notification.soundPresetId}),title,body,spokenText:body,alertPhraseKo:body,
+      departureAt:leaveAt,expiresAt:addMinutes(today,10).toISOString(),riskLevel:level}});
+  let noticeTrigger = null;
+  if (!emergencyTrigger && awaitingLive)
+    noticeTrigger = notice('awaiting-live',`awaiting-live:${stageKey}`,'아직 실시간 정보가 확인되지 않았습니다',
+      '실시간 정보가 확인되는 대로 다시 알려드릴게요.',null,'ORANGE');
+  else if (!emergencyTrigger && scheduleState.firing && valid && wasAwaiting && Date.parse(departureAt) >= today.getTime() - 60_000) {
+    const copy = buildDepartureReminder(boarding,today,line.number);
+    noticeTrigger = notice('live-found',`live-found:${stageKey}`,`실시간 정보 확인 · ${copy.title}`,
+      `실시간 정보가 확인됐어요. ${copy.body}`,departureAt,'RED');
+  }
   const chosenLeads = alarmLeadMinutes(state.schedule, Boolean(state.tripId));
   const selectedReminders = chosenLeads.filter(lead => lead > 0);
   const regularTriggers = scheduleState.firing && valid ? selectedReminders.map(lead => {
@@ -398,8 +418,9 @@ function buildDepartureAlarmPlan(state, today, options) {
   const triggers = allTriggers.filter(t=>Date.parse(t.triggerAt)>=today.getTime());
   return {generatedAt:today.toISOString(),dateKey:dateOnlyKey(today),todayStatus:scheduleState,
     mode:'departure-deadline',tripId:state.tripId || null,departureAt:valid ? departureAt : null,
-    planningObservation:{binding,snapshot,headway,gap,gapAt,stageKey,prediction:departurePrediction(boarding,today),committed},
-    emergencyTrigger,emergencyContextKey:stageKey,
+    planningObservation:{binding,snapshot,headway,gap,gapAt,stageKey,prediction:departurePrediction(boarding,today),committed,
+      awaitingLive:awaitingLive || (wasAwaiting && !valid)},
+    emergencyTrigger:emergencyTrigger || noticeTrigger,awaitingLive,emergencyContextKey:stageKey,
     stop:{id:stop.id,name:state.live.stationName || stop.name,stopCode:stop.stopCode},
     route:{id:line.id,number:line.number,label:line.label,destination:line.destination},
     window:{startAt:allTriggers[0]?.triggerAt || goalAt.toISOString(),endAt:boarding.urgentBoarding ? addMinutes(today,boarding.risk.targetResult.arrivalMinutes).toISOString() : departureAt || goalAt.toISOString(),repeatIntervalMin:null,alertUntil:lateUntil},

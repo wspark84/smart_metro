@@ -38,8 +38,10 @@ export function buildDepartureReminder(plan, now, routeNumber = '') {
   if (!departure || !Number.isFinite(departure.leaveAt?.getTime())) return null;
   const remaining = (departure.leaveAt - now) / 60000;
   const estimated = Boolean(plan.risk.targetResult.estimated);
+  const scheduled = Boolean(plan.risk.targetResult.intervalPlan);
   const level = remaining <= 3 ? 'RED' : remaining <= 5 ? 'ORANGE' : remaining <= 10 ? 'YELLOW' : 'GREEN';
-  const basis = estimated ? '배차간격 예상 (실시간 아님)' : '실시간 도착정보 기준';
+  const basis = scheduled ? '시간표(배차간격)로 예상한 시간 · 실시간 아님'
+    : estimated ? '앞 차 실시간 정보 + 배차간격으로 예상한 시간 · 실시간 아님' : '실시간 도착정보 기준';
   const time = formatClock(departure.leaveAt);
   const title = remaining <= 0 ? '지금 집에서 출발하세요' : `집에서 출발까지 ${Math.ceil(remaining)}분`;
   const body = `${basis} · ${time}까지 집에서 출발하세요. 첫 정류장·역까지 이동 ${departure.accessMin}분을 반영했습니다. ${routeNumber ? `${routeNumber} 노선 · ` : ''}${estimated ? '예상 출발시간이며 운행 상황에 따라 바뀔 수 있습니다. 실시간 정보를 확인해 주세요.' : '실시간 정보가 바뀌면 출발시간도 갱신합니다.'}`;
@@ -102,17 +104,24 @@ export function buildBoardingPlan({ now, requiredArrivalTime, route, arrivalsMin
   // interval before the last on-time boarding catches a bus whatever the
   // timing, so the alarm still goes off; live arrivals replace this as soon
   // as they come. Never after the route's last bus.
+  // When even that point is already behind us (the interval is longer than
+  // the time left), the interval cannot say when to leave: report that live
+  // arrivals are awaited (e.g. a bus still waiting at the turnaround) rather
+  // than a misleading "leave now".
   const scheduleMax = validHeadway(headwayInfo?.max) || validHeadway(officialHeadwayMin);
+  let awaitingLive = false;
   if (!real.length && !raw.length && duration && scheduleMax && latestMin >= 0 && latestMin <= 1440) {
     const access = Number.isFinite(route.boardingAccessMin) ? route.boardingAccessMin : 0;
-    const minutes = Math.max(latestMin - scheduleMax, access);
-    if (minutes <= latestMin && inServiceHours(headwayInfo, addMinutes(now, minutes)))
-      planned.push({minutes, estimated:true, intervalPlan:true});
+    const atStop = latestMin - scheduleMax;
+    if (atStop >= access && inServiceHours(headwayInfo, addMinutes(now, atStop)))
+      planned.push({minutes:atStop, estimated:true, intervalPlan:true});
+    else if (access <= latestMin && inServiceHours(headwayInfo, addMinutes(now, access)))
+      awaitingLive = true;
   }
   planned.sort((a,b)=>a.minutes-b.minutes);
   const evaluated = evaluateLateRisk({now, requiredArrivalTime, route, busArrivalsMin:planned.map(row=>row.minutes)});
   const rows = evaluated.results.filter(row=>Number.isFinite(row.arrivalMinutes))
-    .map((row,index)=>({...row,estimated:planned[index].estimated}));
+    .map((row,index)=>({...row,estimated:planned[index].estimated,intervalPlan:Boolean(planned[index].intervalPlan)}));
   const reachable = rows.filter(row=>row.level !== 'UNKNOWN' && row.catchable);
   const lastOnTime = rows.filter(row=>row.level!=='UNKNOWN' && row.deltaMinutes>=0 && row.arrivalMinutes>0).at(-1);
   const urgentBoarding = Boolean(lastOnTime && !lastOnTime.estimated && !lastOnTime.catchable &&
@@ -123,11 +132,13 @@ export function buildBoardingPlan({ now, requiredArrivalTime, route, arrivalsMin
     target.deltaMinutes>=0 && following.deltaMinutes<0);
   const estimatedLast = Boolean(target && target.deltaMinutes>=0 && following?.deltaMinutes<0 && !confirmed);
   const departure = target ? buildDepartureGuidance(target.arrivalMinutes,route.boardingAccessMin,now) : null;
-  const message = target ? target.estimated
+  const message = target ? target.intervalPlan
+    ? '실시간 도착정보가 아직 없어 시간표(배차간격)로 예상한 시간입니다(실시간 아님). 실시간 정보가 확인되면 바로 바꿔 드려요.'
+    : target.estimated
     ? '배차간격 기준 예상 도착시간입니다(실시간 아님). 운행 종료·결행은 반영되지 않을 수 있으며 실시간 정보가 확인되면 갱신합니다.'
     : evaluated.message
     : duration ? '지금 조회된 차는 이동시간상 탑승이 어렵거나 도착정보가 없습니다. 이후 교통편을 확인하고 있습니다.' : evaluated.message;
-  return { rows, interval, intervalSource, headwayInfo, latestBoardAt, estimatedLast,urgentBoarding,
+  return { rows, interval, intervalSource, headwayInfo, latestBoardAt, estimatedLast,urgentBoarding,awaitingLive,
     anchorCheckedAt:recent ? snapshot.fetchedAt : null,
     hasEstimates:rows.some(row=>row.estimated),
     risk:{...evaluated,results:rows,targetResult:target || {...base.results[0],level:'UNKNOWN',arrivalMinutes:null},

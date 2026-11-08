@@ -221,7 +221,11 @@ export function applyTrips(previous, trips) {
   return state;
 }
 
+// realtime: live arrival. estimate: a later bus timed from a live one by the
+// interval. schedule: no live data yet, planned from the timetable interval.
+// timetable: subway timetable.
 function rowBasis(row, options = []) {
+  if (row.intervalPlan) return "schedule";
   if (row.estimated) return "estimate";
   // Real-time subway answered from the timetable when its countdown was unavailable.
   if (options.find((option) => option.id === row.optionId)?.snapshot?.basis === "timetable") return "timetable";
@@ -269,6 +273,10 @@ export function buildHomeForecast({ state, automatic, now = new Date() }) {
     catchable: Boolean(row.catchable), basis: rowBasis(row, options), arriveAt: iso(row.arriveWorkAt), slackMinutes: slack(row.deltaMinutes), target: isTarget(row),
   }));
   const departure = plan.risk.departure;
+  if (!Number.isFinite(target?.arrivalMinutes) && plan.awaitingLive) {
+    return { status: "awaiting-live", title: "아직 실시간 정보가 확인되지 않았습니다.",
+      message: "실시간 정보가 확인되는 대로 다시 알려드릴게요.", rows, basis: null, checkedAt: now.toISOString() };
+  }
   // No vehicle at all because the arrival APIs gave nothing usable is not
   // "no transit": say that the information is missing.
   const noLive = options.length > 0 && !plan.rows.length && options.every((option) => option.snapshot?.liveStatus === "unavailable" && !option.snapshot?.lastObservation?.arrivalsMin?.length);

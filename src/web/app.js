@@ -62,7 +62,15 @@ function stopTitle(stop) {
   const name = String(stop?.stationName || "").trim();
   return isSubway(stop) && name && !name.endsWith("역") ? `${name}역` : name;
 }
-const BASIS = { realtime: "실시간", timetable: "시간표 기준", estimate: "배차간격 예상" };
+const BASIS = { realtime: "실시간", timetable: "시간표 기준", estimate: "배차간격 예상", schedule: "시간표 예상" };
+const BASIS_SHORT = { realtime: "실시간", timetable: "시간표", estimate: "배차예상", schedule: "시간표예상" };
+// What the leave time is based on, said in full under the headline.
+const BASIS_SENTENCE = {
+  realtime: "실시간 도착정보 기준 시간이에요",
+  timetable: "열차 시간표 기준 시간이에요",
+  estimate: "앞 차 실시간 정보에 배차간격을 더해 예상한 시간이에요 (실시간 아님)",
+  schedule: "실시간 정보가 아직 없어 시간표(배차간격)로 예상한 시간이에요",
+};
 function basisChip(basis) {
   const text = BASIS[basis];
   if (!text) return "";
@@ -340,9 +348,13 @@ function renderToday() {
   const urgency = departed ? "relaxed" : forecast.status === "too-late" ? "now" : urgencyFor(minutes, overdue);
   const status = String(forecast.status || "");
   const goalIssue = !departed && (status === "goal-passed" || status === "too-late");
-  const needsManual = !ready && !departed && !goalIssue && (status === "not-checked" || status === "no-live" || obj(data.refresh).state === "unknown");
+  // A bus is still possible but live arrivals have not come yet (e.g. it is
+  // waiting at the turnaround): no "0분", checks continue automatically.
+  const awaitingLive = !departed && status === "awaiting-live";
+  const needsManual = !ready && !departed && !goalIssue && !awaitingLive && (status === "not-checked" || status === "no-live" || obj(data.refresh).state === "unknown");
   const label = departed ? "오늘은 출발했어요"
     : goalIssue ? String(forecast.title || (status === "too-late" ? "이미 지각입니다." : "시간을 다시 설정해 보세요."))
+    : awaitingLive ? String(forecast.title || "아직 실시간 정보가 확인되지 않았습니다.")
     : needsManual ? "현재 시간이 조회되지 않습니다"
     : !ready ? (status === "no-catchable" ? "제시간 도착이 어려워요" : "경로를 확인하고 있어요")
     : urgency === "now" ? "지금 나가야 해요" : "출발까지";
@@ -375,6 +387,7 @@ function renderToday() {
     const arrive = kstClock(row.arriveAt);
     return `<div class="row ${cls}"><span class="at tab">${kstClock(row.boardingAt)}</span>
       <span class="what tab">${esc(arrive === "--:--" ? what : `${what} · ${arrive} 도착`)}</span>
+      ${BASIS_SHORT[row.basis] ? `<span class="bs" style="font-size:11px;font-weight:600;margin-right:6px;color:${row.basis === "realtime" ? "var(--ok)" : "var(--muted)"}">${BASIS_SHORT[row.basis]}</span>` : ""}
       <span class="st">${esc(rowStatus(row))}</span></div>`;
   }).join("") : '<div class="empty">표시할 교통편이 아직 없어요.</div>';
 
@@ -386,12 +399,14 @@ function renderToday() {
       <p class="today-label ${count ? "" : "big"}">${esc(label)}</p>
       <div class="count-box">${count ? `<span class="count tab" aria-label="${esc(count)}">${countMarkup(count)}</span>` : ""}</div>
       ${ready && !departed ? `<p class="leave tab">${kstClock(forecast.leaveAt)}에 나가세요</p>
+        ${BASIS_SENTENCE[forecast.basis] ? `<p class="note" style="font-size:14px;font-weight:600;margin:2px 0 6px">${BASIS_SENTENCE[forecast.basis]}</p>` : ""}
         <p class="info">출발&nbsp; <span class="v">${esc(vehicleLabel(route, subway))}</span><span class="t tab">${kstClock(forecast.boardingAt)}</span><span class="v">탑승</span></p>
         <p class="info">도착&nbsp; <span class="t tab">${kstClock(forecast.arriveAt)}</span>${slack !== null ? `<span class="v">${slack > 0 ? `${slack}분 여유` : "딱 맞게 도착"}</span>` : ""}</p>`
       : goalIssue ? `<p class="note" style="font-size:17px;font-weight:700">${esc(forecast.message || "")}</p>
         ${status === "too-late" ? "" : `<div class="manual"><label class="btn" style="width:auto;position:relative">${icon("schedule")} 도착 시각 바꾸기
           <input type="time" data-input="today-arrival" value="${esc(setup.requiredArrivalTime || "09:00")}" aria-label="도착 시각"
             style="position:absolute;inset:0;opacity:0;width:100%;cursor:pointer"></label></div>`}`
+      : awaitingLive ? `<p class="note" style="font-size:17px;font-weight:700">${esc(forecast.message || "실시간 정보가 확인되는 대로 다시 알려드릴게요.")}</p>`
       : `${!needsManual || status === "no-live" ? `<p class="note">${esc(notReadyText(forecast, String(data.forecastError || "")))}</p>` : ""}${manual}`}
       ${ready && forecast.urgent === true && !departed ? '<p class="note" style="font-weight:700;font-size:14px;margin-top:8px">이 차가 제시간에 도착하는 마지막 교통편이에요.</p>' : ""}
       ${app.error ? `<p class="note" style="font-size:13px;margin-top:8px">${esc(app.error)}</p>` : ""}
