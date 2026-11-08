@@ -336,10 +336,12 @@ function renderToday() {
   const remaining = Number.isFinite(leaveMs) ? leaveMs - app.now.getTime() : null;
   const minutes = ready && remaining !== null ? Math.max(0, Math.ceil(remaining / 60_000)) : null;
   const overdue = remaining !== null && remaining < 0;
-  const urgency = departed ? "relaxed" : urgencyFor(minutes, overdue);
+  const urgency = departed ? "relaxed" : forecast.status === "too-late" ? "now" : urgencyFor(minutes, overdue);
   const status = String(forecast.status || "");
-  const needsManual = !ready && !departed && (status === "not-checked" || status === "no-live" || obj(data.refresh).state === "unknown");
+  const goalIssue = !departed && (status === "goal-passed" || status === "too-late");
+  const needsManual = !ready && !departed && !goalIssue && (status === "not-checked" || status === "no-live" || obj(data.refresh).state === "unknown");
   const label = departed ? "오늘은 출발했어요"
+    : goalIssue ? String(forecast.title || (status === "too-late" ? "이미 지각입니다." : "시간을 다시 설정해 보세요."))
     : needsManual ? "현재 시간이 조회되지 않습니다"
     : !ready ? (status === "no-catchable" ? "제시간 도착이 어려워요" : "경로를 확인하고 있어요")
     : urgency === "now" ? "지금 나가야 해요" : "출발까지";
@@ -385,6 +387,10 @@ function renderToday() {
       ${ready && !departed ? `<p class="leave tab">${kstClock(forecast.leaveAt)}에 나가세요</p>
         <p class="info">출발&nbsp; <span class="v">${esc(vehicleLabel(route, subway))}</span><span class="t tab">${kstClock(forecast.boardingAt)}</span><span class="v">탑승</span></p>
         <p class="info">도착&nbsp; <span class="t tab">${kstClock(forecast.arriveAt)}</span>${slack !== null ? `<span class="v">${slack > 0 ? `${slack}분 여유` : "딱 맞게 도착"}</span>` : ""}</p>`
+      : goalIssue ? `<p class="note" style="font-size:17px;font-weight:700">${esc(forecast.message || "")}</p>
+        ${status === "too-late" ? "" : `<div class="manual"><label class="btn" style="width:auto;position:relative">${icon("schedule")} 도착 시각 바꾸기
+          <input type="time" data-input="today-arrival" value="${esc(setup.requiredArrivalTime || "09:00")}" aria-label="도착 시각"
+            style="position:absolute;inset:0;opacity:0;width:100%;cursor:pointer"></label></div>`}`
       : `${!needsManual || status === "no-live" ? `<p class="note">${esc(notReadyText(forecast, String(data.forecastError || "")))}</p>` : ""}${manual}`}
       ${ready && forecast.urgent === true && !departed ? '<p class="note" style="font-weight:700;font-size:14px;margin-top:8px">이 차가 제시간에 도착하는 마지막 교통편이에요.</p>' : ""}
       ${app.error ? `<p class="note" style="font-size:13px;margin-top:8px">${esc(app.error)}</p>` : ""}
@@ -1045,6 +1051,11 @@ root.addEventListener("click", async (event) => {
     default:
   }
 });
+// Desktop browsers do not open the time picker on a click by themselves.
+root.addEventListener("click", (event) => {
+  const input = event.target.closest('input[type="time"]');
+  if (input && !input.disabled) try { input.showPicker?.(); } catch { /* focus is enough */ }
+});
 root.addEventListener("submit", (event) => {
   const form = event.target.closest("[data-form]");
   if (!form) return;
@@ -1059,6 +1070,7 @@ root.addEventListener("change", (event) => {
   if (!input || !/^\d{2}:\d{2}$/.test(input.value)) return;
   if (input.dataset.input === "arrival") onboardState().arrival = input.value;
   if (input.dataset.input === "settings-arrival") save({ requiredArrivalTime: input.value }, "도착 시각을 바꿨어요.");
+  if (input.dataset.input === "today-arrival") run(() => server.saveSetup({ requiredArrivalTime: input.value }), `도착 시각을 바꿨어요 · ${koreanTime(input.value)}`);
 });
 
 history.replaceState({ depth: 0 }, "");

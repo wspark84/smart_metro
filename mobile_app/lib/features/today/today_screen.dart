@@ -12,6 +12,7 @@ import '../../core/network/inochi_api.dart';
 import '../../core/network/play_billing.dart';
 import '../common/basis_chip.dart';
 import '../settings/settings_screen.dart';
+import '../setup/commute_inputs.dart';
 import '../setup/onboarding_screen.dart';
 import '../stops/stop_widgets.dart';
 
@@ -273,6 +274,13 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
   Future<void> _toggleToday(bool armed) =>
       _run(() => widget.api.setToday(!armed), armed ? '오늘 출발 알림을 껐어요.' : '오늘 출발 알림을 켰어요.');
 
+  Future<void> _changeArrival(Map<String, dynamic> setup) async {
+    final current = parseHhmm('${setup['requiredArrivalTime'] ?? ''}') ?? const TimeOfDay(hour: 9, minute: 0);
+    final picked = await showTimePicker(context: context, initialTime: current, helpText: '도착해야 하는 시각');
+    if (picked == null || !mounted) return;
+    await _run(() => widget.api.saveSetup({'requiredArrivalTime': formatHhmm(picked)}), '도착 시각을 바꿨어요 · ${koreanTime(picked)}');
+  }
+
   Future<void> _openSettings() async {
     final data = _data;
     if (data == null) return;
@@ -331,7 +339,8 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
     final remaining = leaveAt?.difference(_now);
     final minutes = ready && remaining != null ? math.max(0, (remaining.inSeconds / 60).ceil()) : null;
     final overdue = remaining != null && remaining.isNegative;
-    final urgency = departed ? Urgency.relaxed : urgencyFor(minutes, overdue: overdue);
+    // "이미 지각입니다" uses the red field like any must-go-now moment.
+    final urgency = departed ? Urgency.relaxed : forecast['status'] == 'too-late' ? Urgency.now : urgencyFor(minutes, overdue: overdue);
     final (ground, tone) = switch (urgency) {
       Urgency.relaxed => (p.relaxedGround, p.relaxedTone),
       Urgency.soon => (p.soonGround, p.soonTone),
@@ -340,11 +349,15 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
     };
     final status = '${forecast['status'] ?? ''}';
     // Leave time unknown and no automatic checks: the person refreshes.
-    final needsManual = !ready && !departed &&
+    // The arrival time has passed, or leaving now is already too late.
+    final goalIssue = !departed && (status == 'goal-passed' || status == 'too-late');
+    final needsManual = !ready && !departed && !goalIssue &&
         (status == 'not-checked' || status == 'no-live' || asMap(data['refresh'])['state'] == 'unknown');
     final label = departed
         ? '오늘은 출발했어요'
-        : needsManual
+        : goalIssue
+            ? '${forecast['title'] ?? (status == 'too-late' ? '이미 지각입니다.' : '시간을 다시 설정해 보세요.')}'
+            : needsManual
             ? '현재 시간이 조회되지 않습니다'
             : !ready
             ? (status == 'no-catchable' ? '제시간 도착이 어려워요' : '경로를 확인하고 있어요')
@@ -399,7 +412,14 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
                   container: true,
                   label: '출발까지 남은 시간',
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text(label, style: textTheme.copyWith(fontSize: count.isEmpty ? 26 : 17, fontWeight: FontWeight.w700)),
+                    // Without a number the label is the headline: one line, shrunk to fit.
+                    count.isEmpty
+                        ? FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerLeft,
+                            child: Text(label, maxLines: 1, style: textTheme.copyWith(fontSize: 26, fontWeight: FontWeight.w700)),
+                          )
+                        : Text(label, style: textTheme.copyWith(fontSize: 17, fontWeight: FontWeight.w700)),
                     const SizedBox(height: 4),
                     Flexible(
                       child: Align(
@@ -445,6 +465,20 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
                         (kstClock(forecast['arriveAt']), true),
                         if (slack != null) (slack > 0 ? '$slack분 여유' : '딱 맞게 도착', false),
                       ]),
+                    ] else if (goalIssue) ...[
+                      Text('${forecast['message'] ?? ''}', style: textTheme.copyWith(fontSize: 17, fontWeight: FontWeight.w700)),
+                      if (status == 'goal-passed') ...[
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        height: 52,
+                        child: FilledButton.icon(
+                          style: FilledButton.styleFrom(minimumSize: const Size(0, 52), padding: const EdgeInsets.symmetric(horizontal: 20)),
+                          onPressed: _busy ? null : () => _changeArrival(setup),
+                          icon: const Icon(Icons.schedule),
+                          label: const Text('도착 시각 바꾸기', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+                        ),
+                      ),
+                      ],
                     ] else ...[
                       if (!needsManual || status == 'no-live')
                         Text(_notReadyText(forecast, '${data['forecastError'] ?? ''}'),

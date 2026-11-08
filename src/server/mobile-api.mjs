@@ -2,7 +2,7 @@
 // the server applies the same field changes the web client makes, so the
 // alarm engine keeps reading one consistent format.
 import { buildJourneyOptionsPlan } from "../logic/journey-options.js";
-import { normalizeBoardingAccessMin, isValidLocation, dateOnlyKey } from "../logic/commute.js";
+import { normalizeBoardingAccessMin, isValidLocation, dateOnlyKey, combineDateAndTime } from "../logic/commute.js";
 import { transitQueryForState } from "../logic/transit-journey.js";
 import { normalizeTripSchedules, scheduleValidation, normalizeAlarmLeads, ALARM_LEAD_CHOICES, DEFAULT_ALARM_LEADS, REMINDER_CHOICES } from "../logic/trip-schedules.js";
 import { parseSubwayRouteId, isTimetableSubwayRoute } from "../logic/station-search.js";
@@ -223,6 +223,10 @@ function rowBasis(row, options = []) {
 export function buildHomeForecast({ state, automatic, now = new Date() }) {
   const setup = setupSummary(state);
   if (!setup.complete) return { status: "setup-required", missing: setup.missing, rows: [] };
+  // The arrival time has passed, or even leaving right now cannot make it:
+  // ask for a new arrival time instead of looking like a lookup error.
+  const late = goalCheck({ setup, automatic, now });
+  if (late) return late;
   // Nothing checked yet today (automatic checks only run near the leave time).
   if (automatic === null) return { status: "not-checked", rows: [], warning: "현재 시간이 조회되지 않습니다.", checkedAt: null };
   const holidays = [...(state.holidayDates || []), ...(state.officialHolidays || []).map((item) => item?.date).filter(Boolean)];
@@ -276,6 +280,31 @@ export function buildHomeForecast({ state, automatic, now = new Date() }) {
       : "버스·지하철 도착정보를 받지 못하고 있어요. 잠시 후 다시 확인할게요.") : str(automatic?.warning, 300),
     checkedAt: now.toISOString(),
   };
+}
+
+function spokenTime(hhmm) {
+  const [hour, minute] = String(hhmm).split(":").map(Number);
+  return `${hour < 12 ? "오전" : "오후"} ${hour % 12 === 0 ? 12 : hour % 12}:${String(minute).padStart(2, "0")}`;
+}
+
+/** goal-passed: the arrival time is behind us today. too-late: walking out now
+ *  and taking the quickest saved route still arrives after it. */
+export function goalCheck({ setup, automatic, now = new Date() }) {
+  const goal = combineDateAndTime(now, setup.requiredArrivalTime);
+  if (!Number.isFinite(goal.getTime())) return null;
+  const label = spokenTime(setup.requiredArrivalTime);
+  const base = { rows: [], goalAt: goal.toISOString(), checkedAt: now.toISOString() };
+  if (now.getTime() >= goal.getTime()) {
+    return { ...base, status: "goal-passed", title: "시간을 다시 설정해 보세요.",
+      message: `도착 시각(${label})이 이미 지났어요.` };
+  }
+  const onboard = (Array.isArray(automatic?.options) ? automatic.options : [])
+    .map((option) => Number(option?.onboardDurationSec) / 60).filter((minutes) => Number.isFinite(minutes) && minutes > 0);
+  if (!onboard.length) return null;
+  const earliest = now.getTime() + (Number(setup.boardingAccessMin) || 0) * 60_000 + Math.min(...onboard) * 60_000;
+  if (earliest <= goal.getTime()) return null;
+  return { ...base, status: "too-late", title: "이미 지각입니다.",
+    message: "마음을 비우고 당장 출발하세요." };
 }
 
 // ---- HTTP layer -------------------------------------------------------------

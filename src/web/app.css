@@ -78,7 +78,7 @@ button { cursor: pointer; }
 .today-head .icon-btn { margin-left: auto; }
 .today-main { flex: 1; min-height: 0; overflow: hidden; padding: 8px 24px 16px; display: flex; flex-direction: column; }
 .today-label { font-size: 17px; font-weight: 700; margin: 0 0 4px; }
-.today-label.big { font-size: 26px; }
+.today-label.big { font-size: min(26px, 5.8vw); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .count-box { flex: 0 1 auto; min-height: 0; overflow: hidden; }
 .count { --d: min(168px, 46vw, 24dvh); font-family: "Black Han Sans", "Pretendard", sans-serif; font-weight: 900; line-height: 1;
   white-space: nowrap; color: var(--tone); padding-left: 3px; display: inline-block; animation: rise .2s var(--ease); }
