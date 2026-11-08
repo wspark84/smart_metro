@@ -74,12 +74,36 @@ export function historyTimetable(days = {}, {type, today, holidays = []} = {}) {
   }).filter((row) => row.days >= MIN_DAYS && row.latest - row.earliest <= 20);
 }
 
-/** Today's rows as minutes from `now` (a row is kept until its latest time). */
-export function upcomingFromHistory(days, now, holidays = []) {
+/** The timetable for each day type, small enough to keep with a snapshot. */
+export function passageTimetable(days, now, holidays = []) {
   const today = koreanServiceDate(now);
-  if (!today) return [];
-  const rows = historyTimetable(days, {type:dayTypeOf(today, holidays), today, holidays});
+  const table = Object.fromEntries(['weekday', 'saturday', 'holiday']
+    .map((type) => [type, historyTimetable(days, {type, today, holidays})]));
+  return Object.values(table).some((rows) => rows.length) ? table : null;
+}
+
+/** Today's rows as minutes from `now` (a row is kept until its latest time). */
+export function upcomingFromHistory(timetable, now, holidays = []) {
+  const today = koreanServiceDate(now);
+  if (!today || !timetable) return [];
+  const rows = timetable[dayTypeOf(today, holidays)] || [];
   const current = minuteOfDay(new Date(now)) + new Date(now).getUTCSeconds() / 60;
   return rows.map((row) => ({...row, earliestMin:row.earliest - current, latestMin:row.latest - current, typicalMin:row.typical - current}))
     .filter((row) => row.latestMin >= 0);
+}
+
+/** Shared records (all users) joined with this account's own, one bus kept once. */
+export function mergePassageDays(...sources) {
+  const merged = {};
+  for (const days of sources) {
+    for (const [date, values] of Object.entries(days || {})) {
+      if (!Array.isArray(values)) continue;
+      const list = merged[date] || [];
+      for (const value of values) {
+        if (Number.isFinite(value) && !list.some((other) => Math.abs(other - value) < SAME_BUS_GAP_MIN)) list.push(value);
+      }
+      merged[date] = list.sort((a, b) => a - b);
+    }
+  }
+  return merged;
 }

@@ -1,5 +1,6 @@
 import {koreanServiceDate} from '../logic/bus-headway.js';
-import {detectPassage,addPassage} from '../logic/bus-history.js';
+import {detectPassage,addPassage,mergePassageDays,passageTimetable} from '../logic/bus-history.js';
+import {recordBusPassage,loadBusPassageDays} from './bus-passage-store.mjs';
 
 const BUS_PROVIDERS = ['seoul','gyeonggi','tago'];
 const MAX_ENTRIES = 32;
@@ -27,7 +28,9 @@ function arrivalFailure(error) {
 
 // Cache belongs to the authenticated account's existing alarm-runtime document.
 // It is durable across requests/deploys and never accepts a client-supplied anchor.
-export async function loadStoredTransit(binding,{cache={},loadArrival,loadHeadway,saveCache,now=new Date()}) {
+// recordPassage/loadPassages: the shared DB records (이노치 예상시간표), best effort.
+export async function loadStoredTransit(binding,{cache={},loadArrival,loadHeadway,saveCache,now=new Date(),
+  recordPassage=recordBusPassage,loadPassages=loadBusPassageDays}) {
   if (!BUS_PROVIDERS.includes(binding.provider) || !binding.routeId) return loadArrival();
   const next = {
     headways:Array.isArray(cache.headways) ? structuredClone(cache.headways).slice(-MAX_ENTRIES) : [],
@@ -85,7 +88,10 @@ export async function loadStoredTransit(binding,{cache={},loadArrival,loadHeadwa
       const passedAt = detectPassage(observation, snapshot);
       if (passedAt) {
         const days = addPassage(next.passages.find(item=>item.key===stopKey)?.days, passedAt, now);
-        if (days) next.passages = replace(next.passages,{key:stopKey,days});
+        if (days) {
+          next.passages = replace(next.passages,{key:stopKey,days});
+          await Promise.resolve().then(()=>recordPassage(binding,passedAt)).catch(()=>false);
+        }
       }
       observation = snapshot;
       next.observations = replace(next.observations,{key:stopKey,snapshot});
@@ -93,6 +99,8 @@ export async function loadStoredTransit(binding,{cache={},loadArrival,loadHeadwa
     }
   }
   if (dirty) await saveCache(next);
+  const shared = await Promise.resolve().then(()=>loadPassages(binding)).catch(()=>null);
+  const passageDays = mergePassageDays(shared, next.passages.find(item=>item.key===stopKey)?.days);
   const headway = stored.profile ? {...stored.profile,checkedAt:stored.checkedAt,
     lastChangedAt:stored.lastChangedAt,stale:stored.refreshFailed} : {
     status:'unavailable',checkedAt:stored.checkedAt,message:stored.failure || '공식 배차간격을 아직 확인하지 못했습니다.',
@@ -106,7 +114,7 @@ export async function loadStoredTransit(binding,{cache={},loadArrival,loadHeadwa
     arrivalDiagnostics:real ? null : arrivalDiagnostics || null,
     retryAt:retryAt || null,
     lastObservation:observation,
-    passageDays:next.passages.find(item=>item.key===stopKey)?.days || null,
+    passageTimetable:passageTimetable(passageDays,now),
     messages:real ? payload.messages || [] : ['실시간 정보 없음 · 저장한 도착시각과 배차간격으로 예상합니다.']};
   return {...(real ? result : {}),value,cacheStatus:real ? result.cacheStatus : 'unavailable',
     fetchedAt:real ? fetchedAt : now.toISOString(),servedAt:now.toISOString(),stale:!real,

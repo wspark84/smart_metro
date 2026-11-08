@@ -19,7 +19,7 @@ export function buildJourneyOptionsPlan({options=[],now,requiredArrivalTime,boar
       route:{durationAvailable:durationValid,onboardToDestinationMin:option.onboardDurationSec/60,boardingAccessMin},
       arrivalsMin:live,snapshot:live.length ? snapshot : snapshot?.lastObservation || snapshot,
       officialHeadwayMin:headwayInfo?.minutes,headwayInfo,allowObservedHeadway:option.binding?.provider==='subway',
-      history:upcomingFromHistory(snapshot?.passageDays,now,holidays)});
+      history:upcomingFromHistory(snapshot?.passageTimetable,now,holidays)});
     return {option,plan};
   });
   const rows=plans.flatMap(({option,plan})=>plan.rows.map(row=>({...row,optionId:option.id,

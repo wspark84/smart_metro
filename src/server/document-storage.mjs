@@ -27,7 +27,8 @@ async function load(key) {
 }
 
 export async function runWithDocumentStorage(auth, gateway, operation) {
-  const context = { root: resolve(buildUserDataRoot(auth.user.id)), accessToken: auth.accessToken, gateway, backgroundWorker:auth.backgroundWorker===true, loaded: new Map(), writes: new Map() };
+  const context = { root: resolve(buildUserDataRoot(auth.user.id)), accessToken: auth.accessToken, gateway, backgroundWorker:auth.backgroundWorker===true,
+    jobId: auth.backgroundWorker === true ? auth.jobId || null : null, loaded: new Map(), writes: new Map() };
   return storage.run(context, async () => {
     const result = await operation();
     if (result.commit !== false && context.writes.size) {
@@ -41,6 +42,15 @@ export async function runWithDocumentStorage(auth, gateway, operation) {
 }
 
 export function isBackgroundAlarmWorker() { return storage.getStore()?.backgroundWorker === true; }
+
+/** Who the current request acts for: a signed-in person (accessToken) or a
+ *  running alarm job (jobId + its token). Null outside a request. */
+export function currentStorageCaller() {
+  const context = storage.getStore();
+  if (!context?.accessToken) return null;
+  return context.backgroundWorker ? (context.jobId ? { jobId: context.jobId, token: context.accessToken } : null)
+    : { accessToken: context.accessToken };
+}
 
 export async function getAlarmSchedulerStatus() {
   const context=storage.getStore();

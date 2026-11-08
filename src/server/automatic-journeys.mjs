@@ -112,8 +112,18 @@ export async function refreshJourneyOptions(query,{loadArrival,discover=discover
   if(!force && !manual && samePlan && Date.parse(previous.nextRefreshAt)>now.getTime()) return previous;
   // Once the leave time the person was given has passed, stop for the day:
   // later checks would only move the plan to the next bus.
-  if(!force && !manual && samePlan && Date.parse(previous.departureAt)<now.getTime())
+  if(!force && !manual && samePlan && Date.parse(previous.departureAt)<now.getTime()) {
+    // 기록용 조회 (대표 결정 2026-11-09): keep checking the stop of the bus the
+    // person was told to take, once a minute until it has passed, so its real
+    // passing time is recorded for everyone. The plan and alarms stay as told.
+    const watchUntil=Date.parse(previous.watchUntil || '');
+    if(previous.watchBinding && Number.isFinite(watchUntil) && now.getTime()<watchUntil) {
+      await Promise.resolve().then(()=>loadArrival(previous.watchBinding)).catch(()=>null);
+      return {...previous,autoRefresh:'departed',watchedAt:now.toISOString(),
+        nextRefreshAt:new Date(Math.min(now.getTime()+60_000,watchUntil)).toISOString()};
+    }
     return {...previous,autoRefresh:'departed',nextRefreshAt:nextServiceDayStart(now.toISOString())};
+  }
   const reused=previous?.queryKey===key && sameDay && previous.options?.length;
   const metadata=reused ? previous : await discover(query);
   metadata.options=metadata.options.map(option=>({...option,
@@ -130,11 +140,18 @@ export async function refreshJourneyOptions(query,{loadArrival,discover=discover
     }
     options.push({...option,snapshot:snapshots.get(id)});
   }
-  let departureAt=null,awaitingLive=false;
+  let departureAt=null,awaitingLive=false,watchBinding=null,watchUntil=null;
   if(planning) {
     const plan=buildJourneyOptionsPlan({...planning,options,now,incomplete:Boolean(metadata.unverifiedCount)});
     departureAt=plan.risk.departure?.leaveAt?.toISOString() || null;
     awaitingLive=!departureAt && plan.awaitingLive;
+    // The bus to take, watched after the leave time until it passes (+8 min for delays).
+    const target=plan.risk.targetResult;
+    const binding=options.find(option=>option.id===target?.optionId)?.binding;
+    if(departureAt && binding && binding.provider!=='subway' && Number.isFinite(target.arrivalMinutes)) {
+      watchBinding=binding;
+      watchUntil=new Date(now.getTime()+(target.arrivalMinutes+8)*60_000).toISOString();
+    }
   }
   // No leave time yet. Far from the expected one (route time from the saved paths),
   // e.g. a 3 a.m. check before buses run, simply wait for the 2-hour mark; close
@@ -149,7 +166,7 @@ export async function refreshJourneyOptions(query,{loadArrival,discover=discover
   // Waiting for live arrivals (bus at the turnaround): check again every
   // minute until one shows up, then the usual time-left schedule applies.
   if(awaitingLive && !waitUntil) waitUntil=new Date(now.getTime()+60_000).toISOString();
-  return {...metadata,options,updatedAt:now.toISOString(),planningKey,departureAt,awaitingLive,
+  return {...metadata,options,updatedAt:now.toISOString(),planningKey,departureAt,awaitingLive,watchBinding,watchUntil,
     autoRefresh:!planning ? null : waitUntil ? 'scheduled' : !departureAt ? 'unknown' : Date.parse(departureAt)<now.getTime() ? 'departed' : 'scheduled',
     manualRefreshAt:manual ? now.toISOString() : previous?.queryKey===key && sameDay ? previous.manualRefreshAt || null : null,
     nextRefreshAt:planning ? waitUntil || nextTransitRefreshAt(now.toISOString(),departureAt) : null};

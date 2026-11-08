@@ -25,7 +25,7 @@ export async function createAlarmJobGateway(input,{env=process.env,fetchImpl=glo
   if(!claim?.userId || !Array.isArray(claim.documents)) throw denied();
   const rows=new Map(claim.documents.map(row=>[row.document_key,row]));
   const assertToken=value=>{if(value!==token)throw denied();};
-  return {user:{id:claim.userId},accessToken:token,backgroundWorker:true,
+  return {user:{id:claim.userId},accessToken:token,backgroundWorker:true,jobId,
     gateway:{
       async readDocument(value,key){assertToken(value);return rows.get(key)||null;},
       async saveDocuments(value,documents){
