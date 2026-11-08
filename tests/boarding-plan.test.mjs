@@ -208,14 +208,18 @@ test('short outage retains explicitly estimated future departures, not stale liv
   const p=build({now:new Date(now.getTime()+3*60000),arrivalsMin:[]});
   assert.ok(p.rows.length>0);assert.ok(p.rows.every(r=>r.estimated));
 });
-test('no headway or no anchor never invents bus departures',()=>{
+test('no headway never invents bus departures; no anchor plans one full interval ahead',()=>{
   const p=build({arrivalsMin:[2],snapshot:null,officialHeadwayMin:null});
   assert.equal(p.rows.length,1);assert.equal(p.risk.departure,null);
   assert.equal(formatClock(p.latestBoardAt),'09:26');
-  assert.equal(build({arrivalsMin:[],snapshot:null,officialHeadwayMin:10}).rows.length,0);
+  // 2026-11-08 (대표): with no arrival seen yet, plan from the published interval.
+  const planned=build({arrivalsMin:[],snapshot:null,officialHeadwayMin:10});
+  assert.equal(planned.rows.length,1);assert.equal(planned.rows[0].estimated,true);
+  assert.equal(formatClock(new Date(now.getTime()+planned.rows[0].arrivalMinutes*60000)),'09:16','at the stop one interval before 09:26');
 });
 test('stale anchor, unknown journey and past target disable extrapolation',()=>{
-  assert.equal(build({arrivalsMin:[],now:new Date(now.getTime()+24*60*60000)}).rows.length,0);
+  const nextDay=build({arrivalsMin:[],now:new Date(now.getTime()+24*60*60000)});
+  assert.ok(nextDay.rows.length<=1 && nextDay.rows.every(row=>row.estimated),'a stale anchor is not extrapolated; at most the interval plan');
   assert.ok(build({arrivalsMin:[],now:new Date(now.getTime()+31*60000)}).rows.every(row=>row.estimated));
   assert.equal(build({route:{...route,durationAvailable:false}}).hasEstimates,false);
   assert.equal(build({requiredArrivalTime:'07:00'}).hasEstimates,false);

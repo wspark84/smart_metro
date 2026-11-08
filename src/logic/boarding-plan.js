@@ -54,6 +54,18 @@ export function validHeadway(value) {
   return Number.isFinite(n) && n >= 2 && n <= 180 ? n : null;
 }
 
+// Within the route's first–last bus (Korea time). Unknown hours: assume running.
+export function inServiceHours(headwayInfo, at) {
+  const toMin = clock => /^\d{2}:\d{2}$/.test(clock || '') ? Number(clock.slice(0, 2)) * 60 + Number(clock.slice(3)) : null;
+  const first = toMin(headwayInfo?.firstTime), last = toMin(headwayInfo?.lastTime);
+  if (first === null || last === null) return true;
+  const kst = new Date(at.getTime() + 9 * 3600_000);
+  let minute = kst.getUTCHours() * 60 + kst.getUTCMinutes();
+  const end = last <= first ? last + 1440 : last;
+  if (minute < first && end > 1440) minute += 1440;
+  return minute >= first && minute <= end;
+}
+
 // Planning estimates may drive labeled reminders, never confirmed-vehicle claims.
 export function buildBoardingPlan({ now, requiredArrivalTime, route, arrivalsMin = [], snapshot,
   officialHeadwayMin, observedHeadwayMin, allowObservedHeadway = false, headwayInfo = null }) {
@@ -84,6 +96,18 @@ export function buildBoardingPlan({ now, requiredArrivalTime, route, arrivalsMin
     for (let count=0; next <= latestMin + interval && count<722; count++, next+=interval) {
       if (next >= 0 && !planned.some(row => Math.abs(row.minutes-next)<0.01)) planned.push({minutes:next,estimated:true});
     }
+  }
+  // No live arrival and none seen earlier today (차고지·회차 대기, 지연,
+  // 조회 실패): plan from the published interval. Being at the stop one full
+  // interval before the last on-time boarding catches a bus whatever the
+  // timing, so the alarm still goes off; live arrivals replace this as soon
+  // as they come. Never after the route's last bus.
+  const scheduleMax = validHeadway(headwayInfo?.max) || validHeadway(officialHeadwayMin);
+  if (!real.length && !raw.length && duration && scheduleMax && latestMin >= 0 && latestMin <= 1440) {
+    const access = Number.isFinite(route.boardingAccessMin) ? route.boardingAccessMin : 0;
+    const minutes = Math.max(latestMin - scheduleMax, access);
+    if (minutes <= latestMin && inServiceHours(headwayInfo, addMinutes(now, minutes)))
+      planned.push({minutes, estimated:true, intervalPlan:true});
   }
   planned.sort((a,b)=>a.minutes-b.minutes);
   const evaluated = evaluateLateRisk({now, requiredArrivalTime, route, busArrivalsMin:planned.map(row=>row.minutes)});

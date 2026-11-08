@@ -9,6 +9,25 @@ const caches = new WeakMap();
 const xml = (text,key) => text.match(new RegExp(`<${key}>([\\s\\S]*?)</${key}>`))?.[1]?.trim() || '';
 const rows = value => Array.isArray(value) ? value : value ? [value] : [];
 
+// "05:30", "0530" or Seoul's "20261108053000" → "05:30"; '' when unusable.
+export function serviceClock(value) {
+  const text = String(value ?? '').trim();
+  const digits = text.replace(/\D/g, '');
+  const hhmm = digits.length >= 12 ? digits.slice(8, 12) : digits.length === 4 ? digits : digits.length === 3 ? `0${digits}` : '';
+  const hour = Number(hhmm.slice(0, 2)), minute = Number(hhmm.slice(2, 4));
+  return hhmm && hour >= 0 && hour <= 29 && minute >= 0 && minute <= 59 ? `${String(hour % 24).padStart(2, '0')}:${hhmm.slice(2, 4)}` : '';
+}
+// First and last bus of the day (either direction), so an interval-based
+// estimate is never made after the last bus has gone.
+export function serviceWindow(firsts, lasts) {
+  const toMin = clock => clock ? Number(clock.slice(0, 2)) * 60 + Number(clock.slice(3, 5)) : null;
+  const first = firsts.map(serviceClock).filter(Boolean).sort((a, b) => toMin(a) - toMin(b))[0] || '';
+  // A last bus after midnight (00:30) is the end of the same service day.
+  const shifted = lasts.map(serviceClock).filter(Boolean).map(clock => ({ clock, min: toMin(clock) < 240 ? toMin(clock) + 1440 : toMin(clock) }));
+  const last = shifted.sort((a, b) => b.min - a.min)[0]?.clock || '';
+  return first && last ? { firstTime: first, lastTime: last } : {};
+}
+
 export function normalizeGyeonggiHeadway(payload, routeId) {
   const response = payload.response || payload;
   if (String(response.msgHeader?.resultCode) !== '0') throw new Error('Route metadata unavailable');
@@ -16,7 +35,8 @@ export function normalizeGyeonggiHeadway(payload, routeId) {
   if (!row) throw new Error('Route metadata mismatch');
   return {source:'경기도 버스노선 조회',weekday:headwayRange(row.peekAlloc,row.nPeekAlloc),
     saturday:headwayRange(row.satPeekAlloc,row.satNPeekAlloc),sunday:headwayRange(row.sunPeekAlloc,row.sunNPeekAlloc),
-    holiday:headwayRange(row.wePeekAlloc,row.weNPeekAlloc)};
+    holiday:headwayRange(row.wePeekAlloc,row.weNPeekAlloc),
+    ...serviceWindow([row.upFirstTime,row.downFirstTime],[row.upLastTime,row.downLastTime])};
 }
 
 export function normalizeTagoHeadway(text, routeId) {
@@ -26,7 +46,8 @@ function tagoHeadwayFromBody(body,routeId) {
   const row = rows(body.items?.item).find(row => String(row.routeid) === String(routeId));
   if (!row) throw new Error('Route metadata mismatch');
   return {source:'TAGO 버스노선정보',weekday:headwayRange(row.intervaltime),
-    saturday:headwayRange(row.intervalsattime),sunday:headwayRange(row.intervalsuntime),holiday:null};
+    saturday:headwayRange(row.intervalsattime),sunday:headwayRange(row.intervalsuntime),holiday:null,
+    ...serviceWindow([row.startvehicletime],[row.endvehicletime])};
 }
 
 export function normalizeSeoulHeadway(text, routeId) {
@@ -34,7 +55,8 @@ export function normalizeSeoulHeadway(text, routeId) {
   const blocks = [...text.matchAll(/<itemList>([\s\S]*?)<\/itemList>/g)].map(match => match[1]);
   const block = blocks.find(block => xml(block,'busRouteId') === String(routeId));
   if (!block) throw new Error('Route metadata mismatch');
-  return {source:'서울 버스노선정보',allDays:headwayRange(xml(block,'term'))};
+  return {source:'서울 버스노선정보',allDays:headwayRange(xml(block,'term')),
+    ...serviceWindow([xml(block,'firstBusTm')],[xml(block,'lastBusTm')])};
 }
 
 export async function fetchBusHeadway(binding,{env=process.env,fetchImpl=fetch,now=new Date()}={}) {

@@ -33,6 +33,7 @@ export function selectBusHeadway(profile, now, holidayDates = []) {
   // Midpoint of the published range, not an observed mean of actual arrivals.
   const minutes = (range.min + range.max) / 2;
   return {...range,minutes,source:profile.source,label,weekdayFallback,checkedAt:profile.checkedAt || profile.fetchedAt,
+    firstTime:profile.firstTime || '',lastTime:profile.lastTime || '',
     fetchedAt:profile.fetchedAt,stale:profile.stale === true,lastChangedAt:profile.lastChangedAt,
     text:`${label} ${range.min === range.max ? range.max : `${range.min}~${range.max}`}분`};
 }
