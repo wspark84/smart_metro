@@ -11,6 +11,7 @@ import 'mobile_push_runtime.dart';
 class PushRegistration {
   static StreamSubscription<String>? _refreshSubscription;
   static DateTime? _lastSync;
+  static bool _lastAllowed = false;
 
   static String get _deviceName => defaultTargetPlatform == TargetPlatform.iOS ? 'iPhone' : 'Android 휴대폰';
 
@@ -21,14 +22,16 @@ class PushRegistration {
   /// token was sent, null when nothing could be checked.
   static Future<bool?> sync(InochiApi api, {bool force = false}) async {
     final last = _lastSync;
-    if (!force && last != null && DateTime.now().difference(last) < const Duration(hours: 1)) return true;
+    if (!force && _lastAllowed && last != null && DateTime.now().difference(last) < const Duration(hours: 1)) return true;
     final result = await MobilePushRuntime.instance.tokenIfAllowed();
     if (result == null) return null;
-    if (!result.ready) return false;
-    await api.registerPushToken(token: result.token, platform: result.platform, deviceName: _deviceName);
-    _lastSync = DateTime.now();
-    _listen(api, result.platform);
-    return true;
+    if (result.token.isNotEmpty) {
+      await api.registerPushToken(token: result.token, platform: result.platform, deviceName: _deviceName);
+      _lastSync = DateTime.now();
+      _listen(api, result.platform);
+    }
+    _lastAllowed = result.ready;
+    return result.ready;
   }
 
   static void _listen(InochiApi api, String platform) {
@@ -53,6 +56,7 @@ class PushRegistration {
     }
     await api.registerPushToken(token: result.token, platform: result.platform, deviceName: _deviceName);
     _lastSync = DateTime.now();
+    _lastAllowed = true;
     await api.updateDevice({
       'pushEnabled': true,
       'soundEnabled': true,

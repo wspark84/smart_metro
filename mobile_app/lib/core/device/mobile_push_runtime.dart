@@ -228,13 +228,21 @@ class MobilePushRuntime {
     if (!initializedStatus.firebaseReady) return null;
     try {
       final settings = await FirebaseMessaging.instance.getNotificationSettings();
-      if (!_permissionGranted(settings)) {
+      var allowed = _permissionGranted(settings);
+      final android = defaultTargetPlatform == TargetPlatform.android;
+      // Ask Android itself too: Firebase's answer alone showed "off" while
+      // notifications were allowed (2026-11-08).
+      if (!allowed && android) allowed = await _display.androidNotificationsEnabled() == true;
+      if (!allowed && !android) {
         return MobilePushTokenResult(ready: false, token: '', platform: _platformName, message: 'PERMISSION');
       }
       if (defaultTargetPlatform == TargetPlatform.iOS && await _waitForApnsToken() == null) return null;
+      // An Android token is issued without notification permission. Sending it
+      // anyway keeps the server's copy current after a reinstall, so alarms
+      // are not refused as "unregistered" while permission is being given.
       final token = (await FirebaseMessaging.instance.getToken())?.trim() ?? '';
       if (token.isEmpty) return null;
-      return MobilePushTokenResult(ready: true, token: token, platform: _platformName, message: '');
+      return MobilePushTokenResult(ready: allowed, token: token, platform: _platformName, message: allowed ? '' : 'PERMISSION');
     } catch (_) {
       return null;
     }
@@ -332,6 +340,17 @@ class _PushNotificationDisplay {
       await android?.createNotificationChannel(_alarmChannel());
     }
     _initialized = true;
+  }
+
+  /// Android's own answer to whether this app may show notifications.
+  Future<bool?> androidNotificationsEnabled() async {
+    final android = _notifications.resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>();
+    try {
+      return await android?.areNotificationsEnabled();
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<void> requestAndroidNotificationPermission() async {

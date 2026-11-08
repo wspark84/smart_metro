@@ -518,7 +518,7 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
                         style: OutlinedButton.styleFrom(minimumSize: const Size(0, 48), side: BorderSide(color: p.ink)),
                         onPressed: _turnOnPush,
                         icon: Icon(Icons.notifications_off_outlined, color: p.ink),
-                        label: Text('알림이 꺼져 있어요 · 눌러서 켜기', style: TextStyle(color: p.ink, fontWeight: FontWeight.w700)),
+                        label: Text('휴대폰 알림 권한 꺼짐 · 눌러서 허용', style: TextStyle(color: p.ink, fontWeight: FontWeight.w700)),
                       ),
                     ],
                   ]),
