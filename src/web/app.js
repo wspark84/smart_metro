@@ -119,7 +119,8 @@ const server = {
   logout: () => api("POST", "/api/auth/logout", { body: {} }),
   home: () => api("GET", "/api/mobile/home"),
   saveSetup: (patch) => api("POST", "/api/mobile/setup", { body: patch }),
-  setToday: (enabled) => api("POST", "/api/mobile/today", { body: { enabled } }),
+  // The bell turns today's alarms on/off; 출발했어요 also marks today as departed.
+  setToday: (enabled, departed = false) => api("POST", "/api/mobile/today", { body: departed ? { enabled, departed } : { enabled } }),
   refresh: () => api("POST", "/api/mobile/refresh", { body: {} }),
   departed: () => api("POST", "/api/alarm-delivery/actions", { body: { type: "ACK_DEPARTED" } }),
   testPush: () => api("POST", "/api/push-gateway/test-dispatch", { body: {} }),
@@ -945,7 +946,7 @@ root.addEventListener("click", async (event) => {
     case "departed":
       return run(async () => {
         try { await server.departed(); } catch { /* no alarm ringing right now */ }
-        return server.setToday(false);
+        return server.setToday(false, true);
       }, "오늘 남은 알림을 멈췄어요. 잘 다녀오세요!");
     case "toggle-today": {
       const armed = obj(app.data?.today).armed === true;

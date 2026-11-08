@@ -46,6 +46,8 @@ export function normalizeTripSchedules(values) {
     repeatIntervalMin: ALARM_INTERVAL_CHOICES.includes(Number(value.repeatIntervalMin)) ? Number(value.repeatIntervalMin) : 5,
     skipHolidays:value.skipHolidays !== false,
     snoozeDate: /^\d{4}-\d{2}-\d{2}$/.test(value.snoozeDate || '') ? value.snoozeDate : null,
+    // Set only by 출발했어요 (the bell alone just pauses today).
+    departedDate: /^\d{4}-\d{2}-\d{2}$/.test(value.departedDate || '') ? value.departedDate : null,
   }));
 }
 export function scheduleValidation(trip) {

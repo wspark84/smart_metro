@@ -46,6 +46,11 @@ test("today alarm toggles the free one-day alarm", () => {
   assert.equal(todayAlarmStatus(state, now).armed, true);
   state = applyTodayAlarm(state, false, now);
   assert.equal(todayAlarmStatus(state, now).armed, false);
+  // 2026-11-08: turning the bell off showed "오늘은 출발했어요".
+  assert.equal(todayAlarmStatus(state, now).departedToday, false);
+  const departed = applyTodayAlarm(state, false, now, { departed: true });
+  assert.equal(todayAlarmStatus(departed, now).departedToday, true);
+  assert.equal(todayAlarmStatus(applyTodayAlarm(departed, true, now), now).departedToday, false, "turning it back on clears 출발");
   assert.equal(applyTodayAlarm(state, true, now).schedule.snoozeDate, null);
 });
 
@@ -150,7 +155,8 @@ test("today status and departed follow the repeat days, holidays and pause", asy
   assert.equal(todayAlarmStatus({ ...on, officialHolidays: [{ date: "2026-10-12" }] }, monday).armed, false, "공휴일에는 쉬어요");
   const paused = applyTodayAlarm(on, false, monday);
   assert.equal(todayAlarmStatus(paused, monday).armed, false);
-  assert.equal(todayAlarmStatus(paused, monday).departedToday, true);
+  assert.equal(todayAlarmStatus(paused, monday).departedToday, false, "the bell only turns alarms off");
+  assert.equal(todayAlarmStatus(applyTodayAlarm(on, false, monday, { departed: true }), monday).departedToday, true);
   assert.equal(todayAlarmStatus(paused, new Date("2026-10-13T07:00:00+09:00")).armed, true, "pause lasts one day");
   assert.equal(todayAlarmStatus(applyTodayAlarm(paused, true, monday), monday).armed, true);
 });

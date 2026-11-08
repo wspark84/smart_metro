@@ -84,8 +84,9 @@ export function applyCommuteSetup(previous, patch = {}, now = new Date()) {
   if (commuteChanged(previous, state)) {
     const today = dateOnlyKey(now);
     if (state.schedule.snoozeDate === today) state.schedule.snoozeDate = null;
+    state.schedule.departedDate = null;
     if (Array.isArray(state.tripSchedules)) {
-      state.tripSchedules = state.tripSchedules.map((trip) => trip?.snoozeDate === today ? { ...trip, snoozeDate: null } : trip);
+      state.tripSchedules = state.tripSchedules.map((trip) => trip?.snoozeDate === today ? { ...trip, snoozeDate: null, departedDate: null } : trip);
     }
   }
   state.commute.routingMode = "all-routes";
@@ -169,21 +170,28 @@ export function todayAlarmStatus(state, now = new Date()) {
   const trip = repeatTrip(state);
   if (trip?.enabled) {
     const repeatDay = trip.daysOfWeek.includes(weekday(today)) && !(trip.skipHolidays !== false && holidayKeys(state).has(today));
-    return { armed: repeatDay && trip.snoozeDate !== today, date: today, departedToday: trip.snoozeDate === today, repeat: true, repeatDay };
+    return { armed: repeatDay && trip.snoozeDate !== today, date: today,
+      departedToday: trip.snoozeDate === today && trip.departedDate === today, repeat: true, repeatDay };
   }
   const armed = schedule.enabled !== false && schedule.oneTimeDate === today && schedule.snoozeDate !== today;
-  return { armed, date: today, departedToday: schedule.snoozeDate === today && schedule.oneTimeDate === today, repeat: false, repeatDay: false };
+  return { armed, date: today, departedToday: schedule.snoozeDate === today && schedule.oneTimeDate === today && schedule.departedDate === today,
+    repeat: false, repeatDay: false };
 }
 
 // Free home alarm: arm for today only (server enforces the one-day window).
-export function applyTodayAlarm(previous, enabled, now = new Date()) {
+// The bell turns today's alarms off or on; 출발했어요 also turns them off but
+// is remembered as "departed", so the screen can say 오늘은 출발했어요 only then.
+export function applyTodayAlarm(previous, enabled, now = new Date(), { departed = false } = {}) {
   const state = clone(previous), today = dateOnlyKey(now);
   state.schedule = { ...(state.schedule || {}) };
+  const departedDate = !enabled && departed ? today : null;
   const trip = repeatTrip(state);
   if (trip?.enabled) {
     // Pausing or resuming today's repeat alarm never needs a subscription check.
-    state.tripSchedules = state.tripSchedules.map((item) => item?.id === REPEAT_TRIP_ID ? { ...item, snoozeDate: enabled ? null : today } : item);
+    state.tripSchedules = state.tripSchedules.map((item) => item?.id === REPEAT_TRIP_ID
+      ? { ...item, snoozeDate: enabled ? null : today, departedDate } : item);
     if (!enabled) state.schedule.snoozeDate = today;
+    state.schedule.departedDate = departedDate;
     return state;
   }
   if (enabled) {
@@ -194,6 +202,7 @@ export function applyTodayAlarm(previous, enabled, now = new Date()) {
   } else {
     state.schedule.snoozeDate = today;
   }
+  state.schedule.departedDate = departedDate;
   return state;
 }
 
@@ -419,7 +428,7 @@ export async function handleMobileApi(request, response, deps) {
       if (action === "trips") return { trips: state.tripSchedules || [], subscription: await subscription() };
       let next;
       if (action === "setup") next = applySetupRequest(state, input, input?.repeat?.enabled === true || repeatSummary(state).enabled ? await subscription() : null, now);
-      else if (action === "today") next = applyTodayAlarm(state, input?.enabled === true, now);
+      else if (action === "today") next = applyTodayAlarm(state, input?.enabled === true, now, { departed: input?.departed === true });
       else {
         next = applyTrips(state, input?.trips);
         deps.assertTripScheduleChange(state, next, (await subscription()).active === true);
