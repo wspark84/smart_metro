@@ -386,7 +386,8 @@ class _PushNotificationDisplay {
       body: message.notification?.body,
       data: Map<String, dynamic>.from(message.data),
     );
-    await AlarmVoice.ring(payload, skipFirstTone: show);
+    // Always ring from the app: 무음 mode silences the notification's tone.
+    await AlarmVoice.ring(payload);
   }
 
   static Future<void> _logged(String step, Future<Object?> Function() action) async {

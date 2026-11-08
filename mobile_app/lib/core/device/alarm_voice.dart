@@ -145,6 +145,14 @@ class AlarmVoice {
     }
   }
 
+  /// True when [event] completes within [limit]. Maps to bool first: the
+  /// player's completion future is really typed by its event, and a
+  /// `() => false` timeout on it threw a TypeError that silenced the whole
+  /// alarm (2026-11-08 19:09, vibration only).
+  @visibleForTesting
+  static Future<bool> finishedWithin(Future<Object?> event, Duration limit) =>
+      event.then((_) => true).timeout(limit, onTimeout: () => false);
+
   static Future<void> _playAndWait(AudioPlayer player, Source source, Duration limit) async {
     final done = player.onPlayerComplete.first;
     final what = source is AssetSource ? '알람음' : '음성';
@@ -155,8 +163,7 @@ class AlarmVoice {
       await AlarmLog.add('$what 재생 실패 ${AlarmLog.describe(error)}');
       return;
     }
-    var finished = true;
-    await done.timeout(limit, onTimeout: () => finished = false);
+    final finished = await finishedWithin(done, limit);
     await AlarmLog.add('$what ${finished ? '재생 완료' : '재생 끝 확인 못 함'}');
   }
 
