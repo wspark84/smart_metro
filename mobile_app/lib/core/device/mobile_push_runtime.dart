@@ -7,6 +7,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import '../../firebase_options.dart';
 import 'package:vibration/vibration.dart';
 
+import 'alarm_log.dart';
 import 'alarm_style.dart';
 import 'alarm_voice.dart';
 import 'push_alarm_payload.dart';
@@ -298,8 +299,9 @@ Future<void> busWakeUpFirebaseMessagingBackgroundHandler(
     final display = _PushNotificationDisplay();
     await display.initialize();
     await display.alarm(message, foreground: false);
-  } catch (_) {
+  } catch (error) {
     // The OS may stop the background isolate quickly; avoid crashing it.
+    await AlarmLog.add('백그라운드 처리 실패 ${AlarmLog.describe(error)}');
   }
 }
 
@@ -346,24 +348,35 @@ class _PushNotificationDisplay {
     final show = foreground || message.notification == null;
     final android = !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
     final style = android ? await AlarmStyleStore.read() : AlarmStyle.sound;
+    await AlarmLog.add('받음 ${foreground ? '앱 화면' : '백그라운드'} · ${style.name} · ${message.data['title'] ?? message.notification?.title ?? ''}');
     if (style == AlarmStyle.vibrate) {
       // 진동만: a text pop-up and one long vibration, no sound.
-      if (show) await showMessage(message, vibrateOnly: true);
-      try {
-        await Vibration.vibrate(duration: vibrateOnlyMs, amplitude: 255);
-      } catch (_) {}
+      if (show) await _logged('알림 표시', () => showMessage(message, vibrateOnly: true));
+      await _logged('진동', () => Vibration.vibrate(duration: vibrateOnlyMs, amplitude: 255));
       return;
     }
     // Loud before the notification's own tone plays.
     await AlarmVoice.maxVolume();
-    if (show) await showMessage(message);
+    if (show) await _logged('알림 표시', () => showMessage(message));
     if (!android) return;
+    // The phone's 무음 mode silences the notification's own tone and
+    // vibration; an alarm vibration from the app still comes through.
+    await _logged('진동', () => Vibration.vibrate(pattern: const [0, 1000, 400, 1000, 400, 1000]));
     final payload = PushAlarmPayload.fromRemoteFields(
       title: message.notification?.title,
       body: message.notification?.body,
       data: Map<String, dynamic>.from(message.data),
     );
     await AlarmVoice.ring(payload, skipFirstTone: show);
+  }
+
+  static Future<void> _logged(String step, Future<Object?> Function() action) async {
+    try {
+      await action();
+      await AlarmLog.add('$step 성공');
+    } catch (error) {
+      await AlarmLog.add('$step 실패 ${AlarmLog.describe(error)}');
+    }
   }
 
   Future<void> showMessage(RemoteMessage message, {bool vibrateOnly = false}) async {

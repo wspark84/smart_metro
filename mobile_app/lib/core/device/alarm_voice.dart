@@ -9,6 +9,7 @@ import 'package:flutter_volume_controller/flutter_volume_controller.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'alarm_log.dart';
 import 'push_alarm_payload.dart';
 
 /// Rings and reads the time left aloud on the ALARM volume, turned all the way
@@ -57,8 +58,10 @@ class AlarmVoice {
         if (before != null) await prefs.setDouble(key, before);
       }
       await FlutterVolumeController.setVolume(1.0, stream: stream);
-    } catch (_) {
+      await AlarmLog.add('음량 최대 ${stream.name} → ${await FlutterVolumeController.getVolume(stream: stream)}');
+    } catch (error) {
       // Some phones refuse volume changes in 방해 금지; ring at the set level.
+      await AlarmLog.add('음량 올리기 실패 ${AlarmLog.describe(error)}');
     }
   }
 
@@ -100,6 +103,7 @@ class AlarmVoice {
       unawaited(voice.stop());
       unawaited(tts.stop());
     });
+    await AlarmLog.add('알람 소리 시작');
     try {
       await tone.setAudioContext(_alarm);
       await voice.setAudioContext(_alarm);
@@ -125,9 +129,11 @@ class AlarmVoice {
         }
         if (!stopped) await Future<void>.delayed(const Duration(milliseconds: 700));
       }
-    } catch (_) {
+    } catch (error) {
       // Ringing is best effort; the notification is already on screen.
+      await AlarmLog.add('알람 소리 실패 ${AlarmLog.describe(error)}');
     } finally {
+      await AlarmLog.add('알람 소리 끝 ${replaced ? '(다음 알람으로 교체)' : stopped ? '(앱 열어서 멈춤)' : ''}');
       await listener.cancel();
       port.close();
       if (!replaced) {
@@ -141,8 +147,17 @@ class AlarmVoice {
 
   static Future<void> _playAndWait(AudioPlayer player, Source source, Duration limit) async {
     final done = player.onPlayerComplete.first;
-    await player.play(source, volume: 1.0);
-    await done.timeout(limit, onTimeout: () => null);
+    final what = source is AssetSource ? '알람음' : '음성';
+    try {
+      await player.play(source, volume: 1.0);
+    } catch (error) {
+      // A failed tone must not cancel the spoken time left (or the reverse).
+      await AlarmLog.add('$what 재생 실패 ${AlarmLog.describe(error)}');
+      return;
+    }
+    var finished = true;
+    await done.timeout(limit, onTimeout: () => finished = false);
+    await AlarmLog.add('$what ${finished ? '재생 완료' : '재생 끝 확인 못 함'}');
   }
 
   static Future<String?> _synthesize(FlutterTts tts, String text, int round) async {
@@ -156,8 +171,10 @@ class AlarmVoice {
       final result = await tts
           .synthesizeToFile(text, path, true)
           .timeout(const Duration(seconds: 8), onTimeout: () => 0);
+      await AlarmLog.add('음성 만들기 ${result == 1 ? '성공' : '실패($result)'}');
       return result == 1 ? path : null;
-    } catch (_) {
+    } catch (error) {
+      await AlarmLog.add('음성 만들기 실패 ${AlarmLog.describe(error)}');
       return null;
     }
   }

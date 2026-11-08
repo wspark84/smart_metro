@@ -30,8 +30,12 @@ class InochiApi {
   Future<Map<String, dynamic>> home() => _send('GET', '/api/mobile/home', timeout: const Duration(seconds: 45));
   Future<Map<String, dynamic>> saveSetup(Map<String, dynamic> patch) =>
       _send('POST', '/api/mobile/setup', body: patch, timeout: const Duration(seconds: 45));
-  Future<Map<String, dynamic>> setToday(bool enabled) =>
-      _send('POST', '/api/mobile/today', body: {'enabled': enabled}, timeout: const Duration(seconds: 45));
+  /// The bell turns today's alarms on/off; 출발했어요 passes [departed].
+  Future<Map<String, dynamic>> setToday(bool enabled, {bool departed = false}) =>
+      _send('POST', '/api/mobile/today', body: {'enabled': enabled, if (departed) 'departed': true}, timeout: const Duration(seconds: 45));
+  /// What the phone did with the last alarms (see AlarmLog).
+  Future<Map<String, dynamic>> reportAlarmLog(String detail) => _send('POST', '/api/alarm-events',
+      body: {'kind': 'CLIENT_ALARM', 'level': 'INFO', 'title': '휴대폰 알람 처리 기록', 'detail': detail, 'source': 'app'});
   /// A person asked to check arrivals now (allowed once every 3 minutes).
   Future<Map<String, dynamic>> refresh() =>
       _send('POST', '/api/mobile/refresh', body: const {}, timeout: const Duration(seconds: 45));

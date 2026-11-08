@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../app/inochi_theme.dart';
+import '../../core/device/alarm_log.dart';
 import '../../core/device/alarm_voice.dart';
 import '../../core/device/local_alarm_scheduler.dart';
 import '../../core/device/push_registration.dart';
@@ -152,6 +153,7 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
   // Sends this phone's current push token so alarms keep arriving after a
   // reinstall or a token change; notes when notifications are off.
   Future<void> _syncPush() async {
+    unawaited(AlarmLog.upload(widget.api));
     try {
       final ok = await PushRegistration.sync(widget.api);
       if (ok != null && mounted) setState(() => _pushOff = !ok);
@@ -267,7 +269,7 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
       } catch (_) {
         // No alarm ringing right now; pausing today below is what matters.
       }
-      return widget.api.setToday(false);
+      return widget.api.setToday(false, departed: true);
     }, '오늘 남은 알림을 멈췄어요. 잘 다녀오세요!');
   }
 
