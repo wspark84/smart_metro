@@ -313,6 +313,19 @@ Future<void> busWakeUpFirebaseMessagingBackgroundHandler(
   }
 }
 
+/// The notification's "알람 끄기" button (or a tap on it): stop the ringing
+/// in whichever isolate it plays, then put the volume back. Runs in a
+/// background isolate when the app is not open.
+@pragma('vm:entry-point')
+void stopAlarmFromNotification(NotificationResponse response) {
+  AlarmVoice.stop();
+  unawaited(Vibration.cancel().then((_) {}, onError: (_) {}));
+  unawaited(AlarmLog.add('알람 끄기 ${response.actionId == stopAlarmActionId ? '버튼' : '알림 누름'}'));
+  unawaited(Future<void>.delayed(const Duration(seconds: 1), AlarmVoice.restoreVolume));
+}
+
+const String stopAlarmActionId = 'inochi_stop_alarm';
+
 class _PushNotificationDisplay {
   static const AndroidNotificationSound _tone = RawResourceAndroidNotificationSound('inochi_ring');
   final FlutterLocalNotificationsPlugin _notifications =
@@ -331,7 +344,11 @@ class _PushNotificationDisplay {
         requestSoundPermission: false,
       ),
     );
-    await _notifications.initialize(settings: initializationSettings);
+    await _notifications.initialize(
+      settings: initializationSettings,
+      onDidReceiveNotificationResponse: stopAlarmFromNotification,
+      onDidReceiveBackgroundNotificationResponse: stopAlarmFromNotification,
+    );
     if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
       final android = _notifications.resolvePlatformSpecificImplementation<
           AndroidFlutterLocalNotificationsPlugin>();
@@ -428,6 +445,10 @@ class _PushNotificationDisplay {
         audioAttributesUsage: AudioAttributesUsage.alarm,
         fullScreenIntent: payload.isCritical,
         category: AndroidNotificationCategory.alarm,
+        // Stops the ringing without opening the app; the notice stays.
+        actions: const <AndroidNotificationAction>[
+          AndroidNotificationAction(stopAlarmActionId, '알람 끄기', cancelNotification: false),
+        ],
       ),
       iOS: DarwinNotificationDetails(
         presentAlert: true,

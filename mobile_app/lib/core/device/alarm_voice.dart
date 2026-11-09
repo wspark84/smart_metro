@@ -34,14 +34,18 @@ class AlarmVoice {
   );
 
   static const _savedAlarmKey = 'inochi.alarmVolumeBefore';
+  static const _stopAtKey = 'inochi.alarmStopAt';
   static const _savedMediaKey = 'inochi.mediaVolumeBefore';
 
   static bool get supported => !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
 
-  /// Stop a ringing alarm in whichever isolate it is playing.
+  /// Stop a ringing alarm in whichever isolate it is playing. Also leaves a
+  /// stop time in storage, which the ringing side checks twice a second, in
+  /// case the message between isolates does not arrive (2026-11-09).
   static void stop() {
     if (!supported) return;
     IsolateNameServer.lookupPortByName(_portName)?.send('stop');
+    unawaited(SharedPreferencesAsync().setInt(_stopAtKey, DateTime.now().millisecondsSinceEpoch).then((_) {}, onError: (_) {}));
   }
 
   /// Turns the alarm volume all the way up, remembering the person's level
@@ -96,12 +100,24 @@ class AlarmVoice {
     final tone = AudioPlayer();
     final voice = AudioPlayer();
     final tts = FlutterTts();
-    final listener = port.listen((message) {
+    final stopSignal = Completer<void>();
+    void halt(bool byReplace) {
+      if (stopped) return;
       stopped = true;
-      replaced = message == 'replace';
+      stopSignal.complete();
+      replaced = byReplace;
       unawaited(tone.stop());
       unawaited(voice.stop());
       unawaited(tts.stop());
+    }
+    final listener = port.listen((message) => halt(message == 'replace'));
+    final startedAt = DateTime.now().millisecondsSinceEpoch;
+    final prefs = SharedPreferencesAsync();
+    final watch = Timer.periodic(const Duration(milliseconds: 500), (_) async {
+      try {
+        final stopAt = await prefs.getInt(_stopAtKey);
+        if (stopAt != null && stopAt > startedAt) halt(false);
+      } catch (_) {}
     });
     await AlarmLog.add('알람 소리 시작');
     try {
@@ -109,7 +125,7 @@ class AlarmVoice {
       await voice.setAudioContext(_alarm);
       for (var round = 0; round < rounds && !stopped; round++) {
         if (round > 0 || !skipFirstTone) {
-          await _playAndWait(tone, AssetSource('audio/inochi_ring.wav'), const Duration(seconds: 6));
+          await _playAndWait(tone, AssetSource('audio/inochi_ring.wav'), const Duration(seconds: 6), stopSignal.future);
         } else {
           await Future<void>.delayed(const Duration(milliseconds: 4600));
         }
@@ -119,7 +135,7 @@ class AlarmVoice {
         final file = await _synthesize(tts, text, round);
         if (stopped) break;
         if (file != null) {
-          await _playAndWait(voice, DeviceFileSource(file), const Duration(seconds: 25));
+          await _playAndWait(voice, DeviceFileSource(file), const Duration(seconds: 25), stopSignal.future);
         } else {
           // No speech file (TTS engine missing Korean voice etc.): speak on the
           // media volume, also turned up, instead of staying silent.
@@ -134,6 +150,7 @@ class AlarmVoice {
       await AlarmLog.add('알람 소리 실패 ${AlarmLog.describe(error)}');
     } finally {
       await AlarmLog.add('알람 소리 끝 ${replaced ? '(다음 알람으로 교체)' : stopped ? '(앱 열어서 멈춤)' : ''}');
+      watch.cancel();
       await listener.cancel();
       port.close();
       if (!replaced) {
@@ -153,8 +170,9 @@ class AlarmVoice {
   static Future<bool> finishedWithin(Future<Object?> event, Duration limit) =>
       event.then((_) => true).timeout(limit, onTimeout: () => false);
 
-  static Future<void> _playAndWait(AudioPlayer player, Source source, Duration limit) async {
-    final done = player.onPlayerComplete.first;
+  static Future<void> _playAndWait(AudioPlayer player, Source source, Duration limit, Future<void> stop) async {
+    // A stop ends the wait at once (a stopped player never reports completion).
+    final done = Future.any<Object?>([player.onPlayerComplete.first, stop]);
     final what = source is AssetSource ? '알람음' : '음성';
     try {
       await player.play(source, volume: 1.0);

@@ -417,7 +417,7 @@ function renderToday() {
       <div class="sheet-title"><b>${subway ? "곧 오는 열차" : "곧 오는 버스"}</b>${basisChip(basis)}</div>
       <div class="rows">${rowHtml}</div>
       <div class="actions">
-        <button class="btn" data-action="departed" ${app.busy || departed || !armed ? "disabled" : ""}>${departed ? "오늘은 출발 완료" : "출발했어요"}</button>
+        <button class="btn" data-action="departed" ${app.busy || departed ? "disabled" : ""}>${departed ? "오늘은 출발 완료" : "출발했어요"}</button>
         <button class="bell ${armed ? "" : "off"}" data-action="toggle-today" role="switch" aria-checked="${armed}" aria-label="오늘 출발 알림" ${app.busy ? "disabled" : ""}>${icon(armed ? "notifications_active" : "notifications_off")}</button>
       </div>
       <p class="footer tab">${esc(`${repeatLabel} · 도착 ${setup.requiredArrivalTime || ""} · ${where}까지 걸어서 ${setup.boardingAccessMin ?? "-"}분${!armed && !departed ? " · 오늘 알림 꺼짐" : ""}`)}</p>

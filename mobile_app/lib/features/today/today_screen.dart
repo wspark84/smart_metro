@@ -120,6 +120,9 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    // Opening the app (also from the alarm notification) answers a ringing alarm.
+    AlarmVoice.stop();
+    unawaited(Future<void>.delayed(const Duration(seconds: 1), AlarmVoice.restoreVolume));
     unawaited(_load());
     unawaited(_syncPush());
     _refresh = Timer.periodic(const Duration(seconds: 60), (_) {
@@ -273,8 +276,11 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
     }, '오늘 남은 알림을 멈췄어요. 잘 다녀오세요!');
   }
 
-  Future<void> _toggleToday(bool armed) =>
-      _run(() => widget.api.setToday(!armed), armed ? '오늘 출발 알림을 껐어요.' : '오늘 출발 알림을 켰어요.');
+  Future<void> _toggleToday(bool armed) {
+    // Turning today's alarms off also silences one that is ringing now.
+    if (armed) AlarmVoice.stop();
+    return _run(() => widget.api.setToday(!armed), armed ? '오늘 출발 알림을 껐어요.' : '오늘 출발 알림을 켰어요.');
+  }
 
   Future<void> _changeArrival(Map<String, dynamic> setup) async {
     final current = parseHhmm('${setup['requiredArrivalTime'] ?? ''}') ?? const TimeOfDay(hour: 9, minute: 0);
@@ -537,7 +543,8 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
               busy: _busy,
               armed: armed,
               departed: departed,
-              onDeparted: armed ? _departed : null,
+              // 출발했어요 ends the day even after the bell silenced the alarms.
+              onDeparted: departed ? null : _departed,
               onToggle: () => _toggleToday(armed),
               footer: '$repeatLabel · 도착 ${setup['requiredArrivalTime'] ?? ''} · $mode까지 걸어서 ${setup['boardingAccessMin'] ?? '-'}분'
                   '${!armed && !departed ? ' · 오늘 알림 꺼짐' : ''}',
