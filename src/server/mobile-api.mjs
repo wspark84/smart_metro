@@ -278,7 +278,7 @@ export function buildHomeForecast({ state, automatic, now = new Date() }) {
   // Even the first bus that can still be caught arrives after the arrival
   // time (2026-11-08 19:14: "20:26 딱 맞게 도착" for a 20:00 goal). That is
   // late, not a leave time: say so, and keep the buses listed.
-  if (Number.isFinite(target?.arrivalMinutes) && Number.isFinite(target?.deltaMinutes) && target.deltaMinutes < 0 && !plan.urgentBoarding) {
+  if (Number.isFinite(target?.arrivalMinutes) && Number.isFinite(target?.deltaMinutes) && target.deltaMinutes < 0 && !plan.urgentBoarding && !plan.awaitingLive) {
     const goal = combineDateAndTime(now, setup.requiredArrivalTime);
     const late = lateMinutes(target.arriveWorkAt, goal);
     const vehicle = target.binding?.provider === "subway" ? str(target.routeNumber, 40) : `${str(target.routeNumber, 40)}번 버스`;
@@ -287,7 +287,7 @@ export function buildHomeForecast({ state, automatic, now = new Date() }) {
       lateMinutes: late, basis: rowBasis(target, options), arriveAt: shown ? iso(shown.arriveWorkAt) : null,
       slackMinutes: slack(target.deltaMinutes), checkedAt: now.toISOString() };
   }
-  if (!Number.isFinite(target?.arrivalMinutes) && plan.awaitingLive) {
+  if (plan.awaitingLive) {
     return { status: "awaiting-live", title: "아직 실시간 정보가 확인되지 않았습니다.",
       message: "실시간 정보가 확인되는 대로 다시 알려드릴게요.", rows, basis: null, checkedAt: now.toISOString() };
   }

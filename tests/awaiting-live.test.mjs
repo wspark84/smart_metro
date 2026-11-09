@@ -68,3 +68,24 @@ test("when even the first catchable bus arrives late, it is 'already late', not 
   assert.ok(forecast.rows.length > 0, "the buses stay listed");
   assert.equal(forecast.leaveAt, undefined, "no leave time to count down to");
 });
+
+test("a sighting from this morning does not time tonight's buses (2026-11-09 22:00, 7번)", () => {
+  // 1번: live, 3 min away (cannot be caught with a 5-minute walk). 7번: no live
+  // data since 11:33. The alarm had said "7번 22:09 탑승" from the 11:33 sighting.
+  const at = new Date("2026-11-09T13:00:00Z"); // Mon 22:00 KST, goal 23:00
+  const hw = { status: "ready", source: "경기도 버스노선 조회", weekday: { min: 20, max: 40 }, saturday: { min: 20, max: 40 }, sunday: { min: 20, max: 40 }, holiday: null };
+  const opt = (id, routeNumber, snapshot) => ({ id, binding: { provider: "gyeonggi", routeNumber }, onboardDurationSec: 2080, verified: true,
+    fetchedAt: at.toISOString(), dailyMetadataDate: "2026-11-09", snapshot: { headway: hw, provider: "gyeonggi", cacheStatus: "live", ...snapshot } });
+  const one = opt("o1", "1", { fetchedAt: "2026-11-09T12:59:58Z", liveStatus: "ready", arrivalsMin: [3],
+    lastObservation: { fetchedAt: "2026-11-09T12:59:58Z", arrivalsMin: [3] } });
+  const seven = opt("o7", "7", { fetchedAt: at.toISOString(), liveStatus: "unavailable", arrivalsMin: [], cacheStatus: "unavailable",
+    lastObservation: { fetchedAt: "2026-11-09T02:33:52Z", arrivalsMin: [7] } });
+  const plan = buildJourneyOptionsPlan({ requiredArrivalTime: "23:00", boardingAccessMin: 5, options: [one, seven], now: at, holidays: [] });
+  assert.ok(!plan.rows.some((row) => row.routeNumber === "7"), "no 7번 times carried from the morning");
+  const state = { user: { requiredArrivalTime: "23:00", workLocation: { lat: 37.39, lng: 127.11 }, workAddress: "판교" },
+    commute: { boardingAccessMin: 5, stopLocation: { lat: 37.27, lng: 127.05 } },
+    live: { provider: "gyeonggi", stationId: "203000426", stationName: "더샵", nodeId: "" } };
+  const forecast = buildHomeForecast({ state, automatic: { options: [one, seven] }, now: at });
+  assert.equal(forecast.status, "awaiting-live");
+  assert.equal(forecast.title, "아직 실시간 정보가 확인되지 않았습니다.");
+});

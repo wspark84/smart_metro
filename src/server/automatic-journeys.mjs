@@ -143,8 +143,9 @@ export async function refreshJourneyOptions(query,{loadArrival,discover=discover
   let departureAt=null,awaitingLive=false,watchBinding=null,watchUntil=null;
   if(planning) {
     const plan=buildJourneyOptionsPlan({...planning,options,now,incomplete:Boolean(metadata.unverifiedCount)});
-    departureAt=plan.risk.departure?.leaveAt?.toISOString() || null;
-    awaitingLive=!departureAt && plan.awaitingLive;
+    awaitingLive=Boolean(plan.awaitingLive);
+    // Waiting for live data: a late fallback bus is not a leave time to stop at.
+    departureAt=awaitingLive ? null : plan.risk.departure?.leaveAt?.toISOString() || null;
     // The bus to take, watched after the leave time until it passes (+8 min for delays).
     const target=plan.risk.targetResult;
     const binding=options.find(option=>option.id===target?.optionId)?.binding;

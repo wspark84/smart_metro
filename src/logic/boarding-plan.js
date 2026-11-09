@@ -79,8 +79,14 @@ export function buildBoardingPlan({ now, requiredArrivalTime, route, arrivalsMin
     -duration - base.etaRiskBufferMin) : null;
   const latestMin = latestBoardAt ? (latestBoardAt - now) / 60000 : null;
   const age = Math.max(0, (now - Date.parse(snapshot?.fetchedAt || '')) / 60000);
+  // An earlier sighting times later buses only for a while: intervals drift.
+  // 2026-11-09 22:00 a 7번 sighting from 11:33 was carried 10 hours forward by
+  // the interval and the alarm said "22:09 탑승". Keep it for up to three
+  // intervals (at least 60, at most 120 minutes), then treat the route as
+  // having no live data (이노치 예상시간표 / 시간표 / 실시간 대기).
+  const anchorSpan = Math.min(120, Math.max(60, 3 * (validHeadway(headwayInfo?.max) || validHeadway(officialHeadwayMin) || 0)));
   const recent = Number.isFinite(age) && now - Date.parse(snapshot?.fetchedAt || '') >= -CLOCK_SKEW_MS && (validHeadway(officialHeadwayMin)
-    ? koreanServiceDate(snapshot?.fetchedAt) === koreanServiceDate(now) : age <= 30);
+    ? koreanServiceDate(snapshot?.fetchedAt) === koreanServiceDate(now) && age <= anchorSpan : age <= 30);
   const raw = recent && Array.isArray(snapshot?.arrivalsMin) ? snapshot.arrivalsMin
     .filter(v => v !== null && v !== '' && Number.isFinite(Number(v)) && Number(v) >= 0)
     .map(Number).sort((a,b) => a-b) : [];

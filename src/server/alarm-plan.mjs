@@ -341,7 +341,7 @@ function buildDepartureAlarmPlan(state, today, options) {
   // Live arrivals not there yet (bus waiting at the turnaround) and the
   // timetable interval cannot time the leave: say so once instead of a
   // misleading "leave now", then alert once as soon as live data times it.
-  const awaitingLive = Boolean(scheduleState.firing && !departureAt && boarding.awaitingLive);
+  const awaitingLive = Boolean(scheduleState.firing && !valid && boarding.awaitingLive);
   const wasAwaiting = Boolean(prior?.stageKey===stageKey && prior.awaitingLive);
   const notice = (kind, key, title, body, leaveAt, level) => ({triggerAt:today.toISOString(),triggerKind:kind,
     triggerLabel:kind==='awaiting-live' ? '실시간 정보 대기 안내' : '실시간 정보 확인 알림',reminderKey:key,
