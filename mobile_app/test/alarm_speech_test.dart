@@ -37,6 +37,9 @@ void main() {
     final found = alarm({'triggerKind': 'live-found', 'title': '실시간 정보 확인 · 집에서 출발까지 3분',
         'departureAt': '2026-11-03T11:50:00Z', 'routeNumber': '7'});
     expect(alarmSpeech(found, now), startsWith('실시간 정보가 확인됐어요. 집에서 출발까지 3분 남았습니다.'));
+    final earlier = alarm({'triggerKind': 'leave-earlier', 'title': '지금 바로 뛰어나가세요!',
+        'departureAt': '2026-11-03T11:47:00Z', 'routeNumber': '1'});
+    expect(alarmSpeech(earlier, now), '출발 시각이 앞당겨졌어요. 지금 집에서 출발하세요! 1번 버스를 타야 해요.');
     final estimate = alarm({'title': '예상 · 집에서 출발까지 3분', 'departureAt': '2026-11-03T11:50:00Z', 'routeNumber': '7'});
     expect(alarmSpeech(estimate, now), endsWith('실시간 정보가 아닌 예상 시간이에요.'));
   });

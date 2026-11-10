@@ -29,7 +29,9 @@ export function buildJourneyOptionsPlan({options=[],now,requiredArrivalTime,boar
   const ontime=rows.filter(r=>r.level!=='UNKNOWN' && r.deltaMinutes>=0 && r.arrivalMinutes>0);
   const reachable=ontime.filter(r=>r.catchable);
   const urgent=!reachable.length ? ontime.filter(r=>!r.estimated).at(-1) : null;
-  const target=reachable.at(-1) || urgent || rows.find(r=>r.catchable) || null;
+  // A bus seen live beats a later one that is only estimated (대표 2026-11-10:
+  // 실시간 우선). Estimates lead only when no live bus can be caught in time.
+  const target=reachable.filter(r=>!r.estimated).at(-1) || reachable.at(-1) || urgent || rows.find(r=>r.catchable) || null;
   const base=plans.find(({option})=>option.id===target?.optionId)?.plan || plans[0]?.plan || buildBoardingPlan({now,requiredArrivalTime,
     route:{durationAvailable:false,boardingAccessMin},arrivalsMin:[]});
   const following=target ? rows.find(r=>r.arrivalMinutes>target.arrivalMinutes && r.deltaMinutes<0) : null;

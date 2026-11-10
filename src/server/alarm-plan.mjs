@@ -344,13 +344,25 @@ function buildDepartureAlarmPlan(state, today, options) {
   const awaitingLive = Boolean(scheduleState.firing && !valid && boarding.awaitingLive);
   const wasAwaiting = Boolean(prior?.stageKey===stageKey && prior.awaitingLive);
   const notice = (kind, key, title, body, leaveAt, level) => ({triggerAt:today.toISOString(),triggerKind:kind,
-    triggerLabel:kind==='awaiting-live' ? '실시간 정보 대기 안내' : '실시간 정보 확인 알림',reminderKey:key,
+    triggerLabel:kind==='awaiting-live' ? '실시간 정보 대기 안내' : kind==='leave-earlier' ? '출발 시각 앞당김 긴급 알림' : '실시간 정보 확인 알림',reminderKey:key,
     riskLevel:level,urgency:'HURRY',source:'live-snapshot',arrivalsMin:[],departureAt:leaveAt,departureEstimated:false,message:body,
     notificationSpec:{...getNotificationSpec({riskLevel:level,urgency:'HURRY',routeNumber:line.number,escalationEnabled:false,
       preferredSoundPresetId:state.notification.soundPresetId}),title,body,spokenText:body,alertPhraseKo:body,
       departureAt:leaveAt,expiresAt:addMinutes(today,10).toISOString(),riskLevel:level}});
   let noticeTrigger = null;
-  if (!emergencyTrigger && awaitingLive)
+  // The core alert (대표 2026-11-10): the moment a check moves the leave time
+  // earlier (a live bus seen, a later estimate gone) and it is close, ring at
+  // once with the new time; the regular stages may already have passed.
+  const priorLeave = prior?.stageKey===stageKey ? Date.parse(prior.prediction?.leaveAt || '') : NaN;
+  const newLeave = Date.parse(departureAt || '');
+  const earlierMin = (priorLeave - newLeave) / 60000;
+  if (!emergencyTrigger && scheduleState.firing && valid && earlierMin >= 2 && newLeave - today.getTime() <= 15 * 60_000) {
+    const copy = buildDepartureReminder(boarding,today,line.number);
+    const left = Math.ceil((newLeave - today.getTime()) / 60000);
+    const title = left <= 1 ? '지금 바로 뛰어나가세요!' : `출발이 ${Math.round(earlierMin)}분 앞당겨졌어요 · ${left}분 안에 나가세요`;
+    noticeTrigger = notice('leave-earlier',`leave-earlier:${stageKey}:${Math.floor(newLeave/60000)}`,title,
+      `실시간 정보로 출발 시각이 ${formatClock(new Date(newLeave))}로 앞당겨졌어요. ${copy.body}`,departureAt,'RED');
+  } else if (!emergencyTrigger && awaitingLive)
     noticeTrigger = notice('awaiting-live',`awaiting-live:${stageKey}`,'아직 실시간 정보가 확인되지 않았습니다',
       '실시간 정보가 확인되는 대로 다시 알려드릴게요.',null,'ORANGE');
   else if (!emergencyTrigger && scheduleState.firing && valid && wasAwaiting && Date.parse(departureAt) >= today.getTime() - 60_000) {

@@ -105,7 +105,8 @@ String alarmSpeech(PushAlarmPayload payload, DateTime now) {
   final departure = DateTime.tryParse(payload.departureAt);
   if (departure != null) {
     final minutes = (departure.difference(now).inSeconds / 60).ceil();
-    final found = payload.triggerKind == 'live-found' ? '실시간 정보가 확인됐어요. ' : '';
+    final found = payload.triggerKind == 'live-found' ? '실시간 정보가 확인됐어요. '
+        : payload.triggerKind == 'leave-earlier' ? '출발 시각이 앞당겨졌어요. ' : '';
     // Times planned without live data are said to be estimates.
     final estimate = payload.title.startsWith('예상') ? ' 실시간 정보가 아닌 예상 시간이에요.' : '';
     if (minutes <= 0) return '$found지금 집에서 출발하세요!$ride$estimate';

@@ -43,3 +43,25 @@ test('awaiting live data: one notice, then one alert when live arrivals time the
   assert.deepEqual(found.dueEvents.map(e=>e.triggerKind),['live-found']);
   assert.match(found.dueEvents[0].notificationSpec?.title || found.plan.emergencyTrigger.notificationSpec.title,/^실시간 정보 확인/);
 });
+
+test('a check that moves the leave time earlier and close rings at once (2026-11-10 대표)', () => {
+  // 09:00: no live bus, an 08:56 sighting times buses every 10 min → leave 09:21.
+  const t1 = new Date('2026-09-23T09:00:00+09:00');
+  const s1 = state(t1, []);
+  s1.live.snapshot.headway.weekday = {min:10, max:10};
+  s1.live.snapshot.lastObservation = {fetchedAt:new Date('2026-09-23T08:55:00+09:00').toISOString(), arrivalsMin:[1], lineNumber:'1'};
+  const first = reconcileAlarmRuntime(s1, undefined, t1);
+  assert.ok(first.plan.departureAt);
+  // 09:05: live data shows the buses earlier than estimated → leave time moves earlier.
+  const t2 = new Date('2026-09-23T09:05:00+09:00');
+  const s2 = state(t2, [9, 19]);
+  s2.live.snapshot.headway.weekday = {min:10, max:10};
+  const second = reconcileAlarmRuntime(s2, first.runtime, t2);
+  assert.ok(Date.parse(second.plan.departureAt) <= Date.parse(first.plan.departureAt) - 2 * 60_000, 'earlier by 2+ min');
+  assert.deepEqual(second.dueEvents.map(e => e.triggerKind), ['leave-earlier']);
+  assert.match(second.plan.emergencyTrigger.notificationSpec.title, /앞당겨졌어요|뛰어나가세요/);
+  // Rung once: the next check with the same time stays quiet.
+  const t3 = new Date('2026-09-23T09:05:30+09:00');
+  const third = reconcileAlarmRuntime(state(t3, [8.5, 18.5]), second.runtime, t3);
+  assert.ok(!third.dueEvents.some(e => e.triggerKind === 'leave-earlier'));
+});
