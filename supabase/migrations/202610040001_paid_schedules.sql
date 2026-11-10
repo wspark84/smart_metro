@@ -29,18 +29,27 @@ revoke all on function public.inochi_save_play_subscription(jsonb) from public,a
 grant execute on function public.inochi_save_play_subscription(jsonb) to service_role;
 
 -- Protect direct Supabase writes, not only the web API. Preserve existing schedules on expiration.
+-- Only adding or changing an enabled (반복) schedule needs the subscription.
+-- Turning one off, deleting it, and today's marks (snoozeDate: 종 버튼으로
+-- 오늘 알림 끄기, departedDate: 출발했어요) never do (검토 2026-11-10).
 create or replace function public.inochi_guard_schedule_write()
 returns trigger language plpgsql security definer set search_path='' as $$
-declare before_trips jsonb;after_trips jsonb;
+declare before_trips jsonb;after_trips jsonb;trip jsonb;
 begin
   if new.document_key not in ('app-state','domain-store') then return new;end if;
-  after_trips=coalesce(case when new.document_key='app-state' then new.payload->'tripSchedules' else new.payload#>'{schedule,tripSchedules}' end,'[]'::jsonb);
-  before_trips=case when tg_op='INSERT' then '[]'::jsonb else coalesce(case when old.document_key='app-state' then old.payload->'tripSchedules' else old.payload#>'{schedule,tripSchedules}' end,'[]'::jsonb) end;
-  if after_trips<>before_trips and not exists(select 1 from public.inochi_play_subscriptions s where s.user_id=new.user_id
-    and s.state in ('SUBSCRIPTION_STATE_ACTIVE','SUBSCRIPTION_STATE_IN_GRACE_PERIOD','SUBSCRIPTION_STATE_CANCELED')
-    and s.expires_at>now() and s.verified_at>now()-interval '5 minutes') then
-    raise exception 'Schedule subscription required' using errcode='PT402';
-  end if;
+  after_trips=case when new.document_key='app-state' then new.payload->'tripSchedules' else new.payload#>'{schedule,tripSchedules}' end;
+  before_trips=case when tg_op='INSERT' then null when old.document_key='app-state' then old.payload->'tripSchedules' else old.payload#>'{schedule,tripSchedules}' end;
+  if jsonb_typeof(after_trips) is distinct from 'array' then after_trips='[]'::jsonb;end if;
+  if jsonb_typeof(before_trips) is distinct from 'array' then before_trips='[]'::jsonb;end if;
+  for trip in select value-'snoozeDate'-'departedDate' from jsonb_array_elements(after_trips) where value->>'enabled'='true' loop
+    if not exists(select 1 from jsonb_array_elements(before_trips) b
+        where b.value->>'enabled'='true' and b.value-'snoozeDate'-'departedDate'=trip)
+      and not exists(select 1 from public.inochi_play_subscriptions s where s.user_id=new.user_id
+        and s.state in ('SUBSCRIPTION_STATE_ACTIVE','SUBSCRIPTION_STATE_IN_GRACE_PERIOD','SUBSCRIPTION_STATE_CANCELED')
+        and s.expires_at>now() and s.verified_at>now()-interval '5 minutes') then
+      raise exception 'Schedule subscription required' using errcode='PT402';
+    end if;
+  end loop;
   return new;
 end; $$;
 revoke all on function public.inochi_guard_schedule_write() from public,anon,authenticated;
