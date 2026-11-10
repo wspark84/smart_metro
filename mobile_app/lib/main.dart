@@ -12,6 +12,7 @@ Future<void> main() async {
     MobilePushRuntime.instance.initialize(),
     ThemeModeStore.instance.load(),
     AlarmStyleStore.instance.load(),
+    AlarmToneStore.instance.load(),
     KakaoMapSetup.initialize(),
   ]);
   runApp(const BusWakeUpApp());

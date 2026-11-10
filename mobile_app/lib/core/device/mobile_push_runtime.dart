@@ -327,7 +327,6 @@ void stopAlarmFromNotification(NotificationResponse response) {
 const String stopAlarmActionId = 'inochi_stop_alarm';
 
 class _PushNotificationDisplay {
-  static const AndroidNotificationSound _tone = RawResourceAndroidNotificationSound('inochi_ring');
   final FlutterLocalNotificationsPlugin _notifications =
       FlutterLocalNotificationsPlugin();
   bool _initialized = false;
@@ -429,20 +428,19 @@ class _PushNotificationDisplay {
         payload.androidChannelId,
         payload.isCritical ? '지금 출발·지각 위험 알람' : '출발 전 알람',
         channelDescription: payload.isCritical
-            ? '나갈 시각과 지각 위험 알람. 무음 모드에서도 알람 음량으로 울려요.'
-            : '나갈 시각 전 알람. 무음 모드에서도 알람 음량으로 울려요.',
+            ? '나갈 시각과 지각 위험 알람. 고른 알람 소리를 앱이 알람 음량으로 울려요.'
+            : '나갈 시각 전 알람. 고른 알람 소리를 앱이 알람 음량으로 울려요.',
         icon: 'ic_stat_buswakeup',
         importance: Importance.max,
         priority: Priority.max,
-        playSound: true,
-        sound: _tone,
+        // Silent: the app rings the chosen 알람 소리 itself (also in 무음 mode).
+        playSound: false,
         enableVibration: true,
         vibrationPattern: Int64List.fromList(
           payload.isCritical
               ? const <int>[0, 1000, 200, 1000, 200, 1000]
               : const <int>[0, 400, 200, 400],
         ),
-        audioAttributesUsage: AudioAttributesUsage.alarm,
         fullScreenIntent: payload.isCritical,
         category: AndroidNotificationCategory.alarm,
         // Stops the ringing without opening the app; the notice stays.
@@ -508,13 +506,11 @@ class _PushNotificationDisplay {
       '지금 출발·지각 위험 알람',
       description: '나갈 시각과 지각 위험 알람. 무음 모드에서도 알람 음량으로 울려요.',
       importance: Importance.max,
-      playSound: true,
-      sound: _tone,
+      playSound: false,
       enableVibration: true,
       vibrationPattern: Int64List.fromList(
         const <int>[0, 1000, 200, 1000, 200, 1000],
       ),
-      audioAttributesUsage: AudioAttributesUsage.alarm,
     );
   }
 
@@ -524,11 +520,9 @@ class _PushNotificationDisplay {
       '출발 전 알람',
       description: '나갈 시각 전 알람. 무음 모드에서도 알람 음량으로 울려요.',
       importance: Importance.max,
-      playSound: true,
-      sound: _tone,
+      playSound: false,
       enableVibration: true,
       vibrationPattern: Int64List.fromList(const <int>[0, 400, 200, 400]),
-      audioAttributesUsage: AudioAttributesUsage.alarm,
     );
   }
 }

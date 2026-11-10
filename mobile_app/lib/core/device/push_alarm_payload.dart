@@ -74,8 +74,12 @@ class PushAlarmPayload {
   }
 }
 
-const alarmChannelId = 'inochi-alarm-v2';
-const urgentAlarmChannelId = 'inochi-urgent-v2';
+// v3: the notification itself is silent; the app rings the tone chosen in
+// 설정 (알람 소리) on the alarm volume. v2 (with its own sound) stays for the
+// phone's local backup alarm.
+const alarmChannelId = 'inochi-alarm-v3';
+const urgentAlarmChannelId = 'inochi-urgent-v3';
+const backupAlarmChannelId = 'inochi-urgent-v2';
 
 /// "오후 8시 55분" in Korea time, written the way it should be read aloud.
 String spokenClock(DateTime at) {

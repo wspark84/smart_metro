@@ -253,7 +253,7 @@ class LocalAlarmScheduler {
           playSound: false,
           enableVibration: true,
         ) : AndroidNotificationDetails(
-          urgentAlarmChannelId,
+          backupAlarmChannelId,
           '지금 출발·지각 위험 알람',
           channelDescription: '나갈 시각과 지각 위험 알람. 무음 모드에서도 알람 음량으로 울려요.',
           icon: 'ic_stat_buswakeup',

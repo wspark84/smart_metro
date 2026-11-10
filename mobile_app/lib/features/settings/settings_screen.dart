@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -321,6 +322,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 style: TextStyle(fontSize: 13, color: p.muted),
               ),
             ),
+            if (style == AlarmStyle.sound) ...[
+              const SizedBox(height: 16),
+              const _AlarmTonePicker(),
+            ],
           ]),
         ),
         const _Header('알림'),
@@ -406,6 +411,93 @@ class _Header extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(4, 24, 4, 8),
         child: Text(text, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: InochiPalette.of(context).muted)),
       );
+}
+
+/// 알람 소리: pick one; ▶ plays a short preview at the current media volume.
+class _AlarmTonePicker extends StatefulWidget {
+  const _AlarmTonePicker();
+
+  @override
+  State<_AlarmTonePicker> createState() => _AlarmTonePickerState();
+}
+
+class _AlarmTonePickerState extends State<_AlarmTonePicker> {
+  final AudioPlayer _preview = AudioPlayer();
+  String? _playing;
+
+  @override
+  void initState() {
+    super.initState();
+    _preview.onPlayerComplete.listen((_) {
+      if (mounted) setState(() => _playing = null);
+    });
+  }
+
+  @override
+  void dispose() {
+    unawaited(_preview.dispose());
+    super.dispose();
+  }
+
+  Future<void> _toggle(AlarmTone tone) async {
+    await _preview.stop();
+    if (_playing == tone.id) {
+      setState(() => _playing = null);
+      return;
+    }
+    setState(() => _playing = tone.id);
+    try {
+      await _preview.play(AssetSource('audio/${tone.file}'));
+    } catch (_) {
+      if (mounted) setState(() => _playing = null);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = InochiPalette.of(context);
+    return ValueListenableBuilder<AlarmTone>(
+      valueListenable: AlarmToneStore.instance.tone,
+      builder: (context, selected, _) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
+          child: Text('알람 소리', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: p.ink)),
+        ),
+        _Group(children: [
+          for (final tone in AlarmTone.all)
+            InkWell(
+              onTap: () => unawaited(AlarmToneStore.instance.set(tone)),
+              child: Semantics(
+                selected: selected.id == tone.id,
+                button: true,
+                label: '알람 소리 ${tone.label}',
+                child: Container(
+                constraints: const BoxConstraints(minHeight: 52),
+                padding: const EdgeInsets.fromLTRB(8, 2, 8, 2),
+                child: Row(children: [
+                  SizedBox(
+                    width: 40,
+                    child: Icon(selected.id == tone.id ? Icons.radio_button_checked : Icons.radio_button_unchecked,
+                        color: selected.id == tone.id ? p.ink : p.muted, size: 22),
+                  ),
+                  Expanded(
+                    child: Text(tone.label,
+                        style: TextStyle(fontSize: 16, fontWeight: selected.id == tone.id ? FontWeight.w700 : FontWeight.w500, color: p.ink)),
+                  ),
+                  IconButton(
+                    tooltip: _playing == tone.id ? '미리듣기 멈춤' : '미리듣기',
+                    onPressed: () => unawaited(_toggle(tone)),
+                    icon: Icon(_playing == tone.id ? Icons.stop_circle_outlined : Icons.play_circle_outline, color: p.ink),
+                    constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+                  ),
+                ]),
+              ),
+              ),
+            ),
+        ]),
+      ]),
+    );
+  }
 }
 
 class _Group extends StatelessWidget {

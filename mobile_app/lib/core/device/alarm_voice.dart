@@ -10,6 +10,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'alarm_log.dart';
+import 'alarm_style.dart';
 import 'push_alarm_payload.dart';
 
 /// Rings and reads the time left aloud on the ALARM volume, turned all the way
@@ -119,13 +120,14 @@ class AlarmVoice {
         if (stopAt != null && stopAt > startedAt) halt(false);
       } catch (_) {}
     });
-    await AlarmLog.add('알람 소리 시작');
+    final ringTone = await AlarmToneStore.read();
+    await AlarmLog.add('알람 소리 시작 (${ringTone.label})');
     try {
       await tone.setAudioContext(_alarm);
       await voice.setAudioContext(_alarm);
       for (var round = 0; round < rounds && !stopped; round++) {
         if (round > 0 || !skipFirstTone) {
-          await _playAndWait(tone, AssetSource('audio/inochi_ring.wav'), const Duration(seconds: 6), stopSignal.future);
+          await _playAndWait(tone, AssetSource('audio/${ringTone.file}'), const Duration(seconds: 6), stopSignal.future);
         } else {
           await Future<void>.delayed(const Duration(milliseconds: 4600));
         }
