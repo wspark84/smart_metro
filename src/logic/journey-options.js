@@ -5,6 +5,9 @@ import {upcomingFromHistory} from './bus-history.js';
 import {buildDepartureGuidance} from './commute.js';
 import {TRANSIT_ROUTE_MAX_AGE_MS} from './transit-journey.js';
 
+// A live bus this early (minutes of slack) is not pressed on the person.
+export const EARLY_ENOUGH_MIN = 30;
+
 export function buildJourneyOptionsPlan({options=[],now,requiredArrivalTime,boardingAccessMin,holidays=[],incomplete=false}) {
   const plans=options.map(option=>{
     const snapshot=option.snapshot;
@@ -30,8 +33,12 @@ export function buildJourneyOptionsPlan({options=[],now,requiredArrivalTime,boar
   const reachable=ontime.filter(r=>r.catchable);
   const urgent=!reachable.length ? ontime.filter(r=>!r.estimated).at(-1) : null;
   // A bus seen live beats a later one that is only estimated (대표 2026-11-10:
-  // 실시간 우선). Estimates lead only when no live bus can be caught in time.
-  const target=reachable.filter(r=>!r.estimated).at(-1) || reachable.at(-1) || urgent || rows.find(r=>r.catchable) || null;
+  // 실시간 우선) — unless the live bus would arrive 30+ minutes early: then the
+  // later estimated bus, closer to the arrival time, is kept (정시 도착도 핵심).
+  const liveTarget=reachable.filter(r=>!r.estimated).at(-1);
+  const latestTarget=reachable.at(-1);
+  const target=(liveTarget && !(liveTarget.deltaMinutes>=EARLY_ENOUGH_MIN && latestTarget!==liveTarget) ? liveTarget : latestTarget)
+    || urgent || rows.find(r=>r.catchable) || null;
   const base=plans.find(({option})=>option.id===target?.optionId)?.plan || plans[0]?.plan || buildBoardingPlan({now,requiredArrivalTime,
     route:{durationAvailable:false,boardingAccessMin},arrivalsMin:[]});
   const following=target ? rows.find(r=>r.arrivalMinutes>target.arrivalMinutes && r.deltaMinutes<0) : null;

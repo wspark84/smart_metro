@@ -89,3 +89,19 @@ test("a sighting from this morning does not time tonight's buses (2026-11-09 22:
   assert.equal(forecast.status, "awaiting-live");
   assert.equal(forecast.title, "아직 실시간 정보가 확인되지 않았습니다.");
 });
+
+test("live first, but not 30+ minutes early when a later estimated bus is closer to on time (대표 2026-11-10)", () => {
+  const at = new Date("2026-11-09T13:00:00Z"); // 22:00 KST
+  const hw = { status: "ready", source: "경기도 버스노선 조회", weekday: { min: 10, max: 10 }, saturday: { min: 10, max: 10 }, sunday: { min: 10, max: 10 }, holiday: null };
+  const opt = (arrivals) => ({ id: "o1", binding: { provider: "gyeonggi", routeNumber: "1" }, onboardDurationSec: 2080, verified: true,
+    fetchedAt: at.toISOString(), dailyMetadataDate: "2026-11-09",
+    snapshot: { headway: hw, provider: "gyeonggi", cacheStatus: "live", fetchedAt: at.toISOString(), liveStatus: "ready", arrivalsMin: arrivals,
+      lastObservation: { fetchedAt: at.toISOString(), arrivalsMin: arrivals } } });
+  // Goal 23:00: live bus at 22:10 has ~15 min slack; estimates follow every 10 min up to 22:20.
+  const tight = buildJourneyOptionsPlan({ requiredArrivalTime: "23:00", boardingAccessMin: 5, options: [opt([10])], now: at, holidays: [] });
+  assert.equal(tight.risk.targetResult.estimated, false, "live bus kept with under 30 min slack");
+  // Goal 23:40: the live bus would arrive ~55 min early; the latest estimated on-time bus is chosen.
+  const early = buildJourneyOptionsPlan({ requiredArrivalTime: "23:40", boardingAccessMin: 5, options: [opt([10])], now: at, holidays: [] });
+  assert.equal(early.risk.targetResult.estimated, true, "a later estimated bus closer to on time");
+  assert.ok(early.risk.targetResult.deltaMinutes >= 0 && early.risk.targetResult.deltaMinutes < 30);
+});
