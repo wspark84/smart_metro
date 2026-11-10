@@ -19,7 +19,7 @@ class SubscriptionScreen extends StatelessWidget {
           const Text('매일 자동 알림 구독 중'),
           Text('이용 기한: ${billing.status['expiresAt'] ?? ''}'),
         ] else ...[
-          Text('월 ${billing.product?.price ?? '5,000원'}'),
+          Text('월 ${billing.product?.price ?? '3,000원'}'),
           const Text('매월 자동 갱신됩니다. Google Play에서 언제든 해지할 수 있으며, 해지 후에도 결제한 기간까지 이용할 수 있습니다.'),
           const SizedBox(height: 16),
           const Text('유료 구독을 하시겠어요?'),

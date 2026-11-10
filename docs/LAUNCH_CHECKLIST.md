@@ -39,7 +39,7 @@
 - **전체 화면 알림(USE_FULL_SCREEN_INTENT) 신고**: 앱 콘텐츠 → "알람" 핵심 기능으로 신고
 - 정확한 알람(SCHEDULE_EXACT_ALARM): 사용자가 설정에서 허용하는 방식 (앱의 설정 탭에서 안내)
 - 콘텐츠 등급 설문, 타겟 연령(만 14세 이상), 광고 없음
-- 구독 상품 `inochi_schedule_monthly` (월 5,000원, 기본 요금제 `monthly`) 등록 → 라이선스 테스터로 결제 시험 → 그 후 `INOCHI_BILLING_ENABLED=true`
+- 구독 상품 `inochi_schedule_monthly` (월 3,000원, 기본 요금제 `monthly`) 등록 → 라이선스 테스터로 결제 시험 → 그 후 `INOCHI_BILLING_ENABLED=true`
 - 내부 테스트 트랙으로 먼저 업로드 → 실제 휴대폰에서 로그인·설정·알림·탈퇴 확인 → 프로덕션 출시
 
 ## D. 결정이 필요한 사항

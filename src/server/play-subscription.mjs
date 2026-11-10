@@ -20,7 +20,7 @@ export function evaluateSubscription(purchase, userId, now=new Date()) {
     autoRenew:line.autoRenewingPlan?.autoRenewEnabled===true};
 }
 export function subscriptionRequired() {
-  return fail('SUBSCRIPTION_REQUIRED','일정 자동 알림은 월 5,000원 구독 기능입니다. 홈의 일회성 알림은 무료입니다.',402);
+  return fail('SUBSCRIPTION_REQUIRED','일정 자동 알림은 월 3,000원 구독 기능입니다. 홈의 일회성 알림은 무료입니다.',402);
 }
 export function assertTripScheduleChange(previous,next,active) {
   if(!active && JSON.stringify(previous?.tripSchedules || [])!==JSON.stringify(next?.tripSchedules || [])) throw subscriptionRequired();

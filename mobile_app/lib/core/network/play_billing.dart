@@ -47,7 +47,7 @@ class PlayBilling extends ChangeNotifier {
             offer.pricingPhases.length == 1 && offer.pricingPhases.first.billingPeriod == 'P1M' &&
             item.currencyCode == 'KRW' && item.rawPrice == 5000) { product = item; break; }
       }
-      message = product == null ? '월 5,000원 구독 상품을 불러오지 못했습니다. Play 스토어 설치와 상품 등록 상태를 확인해 주세요.' : '';
+      message = product == null ? '월 3,000원 구독 상품을 불러오지 못했습니다. Play 스토어 설치와 상품 등록 상태를 확인해 주세요.' : '';
     } catch (_) { message = '구독 상태를 확인하지 못했습니다. 다시 확인해 주세요.'; status = {}; }
     finally { busy = false; _notify(); }
   }

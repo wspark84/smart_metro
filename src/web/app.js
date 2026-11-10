@@ -601,7 +601,7 @@ function renderSettings(screen) {
         ${switchRow("매일 자동 알림", "끄면 오늘 하루만 알려 드려요", repeatOn, "repeat-toggle", busy, ' <span class="pill filled">유료</span>')}
         <div class="days" role="group" aria-label="반복 요일" style="padding-top:8px;padding-bottom:8px">${[1, 2, 3, 4, 5, 6, 0].map((d) =>
           `<button class="day" aria-pressed="${days.has(d)}" data-action="repeat-day" data-day="${d}" aria-label="${WEEKDAYS[d]}요일" ${!repeatOn || busy ? "disabled" : ""}>${WEEKDAYS[d]}</button>`).join("")}</div>
-        ${switchRow("공휴일에는 쉬어요", subscribed ? "월 5,000원 구독 중" : "월 5,000원 · 구독하면 켤 수 있어요", skipHolidays, "repeat-holidays", !repeatOn || busy)}
+        ${switchRow("공휴일에는 쉬어요", subscribed ? "월 3,000원 구독 중" : "월 3,000원 · 구독하면 켤 수 있어요", skipHolidays, "repeat-holidays", !repeatOn || busy)}
       </div>
 
       <h2 class="h">화면</h2>

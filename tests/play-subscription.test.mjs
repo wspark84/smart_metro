@@ -49,6 +49,6 @@ test('refund/renewal rechecked after one minute; verification failure does not g
  await assert.rejects(broken.status(user));
 });
 test('paywall explains paid recurring schedules and free home; no fake checkout',()=>{
- const html=subscriptionPaywall({available:true});assert.match(html,/월 5,000원/);assert.match(html,/유료 구독을 하시겠어요/);assert.match(html,/계속 무료/);
+ const html=subscriptionPaywall({available:true});assert.match(html,/월 3,000원/);assert.match(html,/유료 구독을 하시겠어요/);assert.match(html,/계속 무료/);
  assert.match(subscriptionPaywall(),/disabled/);assert.doesNotMatch(subscriptionPaywall({error:'<script>'}),/<script>/);
 });

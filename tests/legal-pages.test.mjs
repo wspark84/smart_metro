@@ -8,7 +8,7 @@ test("store-required legal pages render in Korean", () => {
   assert.match(privacy, /<html lang="ko">/);
   for (const text of ["처리하는 개인정보", "보유 기간과 파기", "국외 이전", "개인정보 보호책임자", "위치정보를 수집하지 않습니다", "5년"]) assert.ok(privacy.includes(text), text);
   const terms = renderLegalPage("/terms/");
-  for (const text of ["월 5,000원", "자동 갱신", "회원 탈퇴만으로는 구독이 해지되지 않습니다", "시간표 기준"]) assert.ok(terms.includes(text), text);
+  for (const text of ["월 3,000원", "자동 갱신", "회원 탈퇴만으로는 구독이 해지되지 않습니다", "시간표 기준"]) assert.ok(terms.includes(text), text);
   const remove = renderLegalPage("/account/delete");
   assert.match(remove, /\/api\/account\/delete/);
   assert.match(remove, /구독 관리에서 해지/);

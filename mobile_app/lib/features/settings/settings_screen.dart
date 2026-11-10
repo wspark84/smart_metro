@@ -260,7 +260,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             value: skipHolidays,
             onChanged: !repeatOn || _busy ? null : (value) => _setRepeat(skipHolidays: value),
             title: const Text('공휴일에는 쉬어요', style: TextStyle(fontSize: 15)),
-            subtitle: Text(_subscribed ? '월 5,000원 구독 중' : '월 5,000원 · 구독하면 켤 수 있어요', style: TextStyle(fontSize: 13, color: p.muted)),
+            subtitle: Text(_subscribed ? '월 3,000원 구독 중' : '월 3,000원 · 구독하면 켤 수 있어요', style: TextStyle(fontSize: 13, color: p.muted)),
           ),
         ]),
         const _Header('화면'),
