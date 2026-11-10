@@ -8,6 +8,9 @@ import 'mobile_social_auth.dart';
 class PlayBilling extends ChangeNotifier {
   PlayBilling(this.api, this.userId);
   static const productId = 'inochi_schedule_monthly';
+  // Must match the price set in Play Console (₩3,000, 2026-11-10). A different
+  // price is not sold, so a console change cannot charge an unexpected amount.
+  static const expectedPriceKrw = 3000;
   final MobileApiClient api;
   final String userId;
   final _store = InAppPurchase.instance;
@@ -45,7 +48,7 @@ class PlayBilling extends ChangeNotifier {
         final offer = item.productDetails.subscriptionOfferDetails![index];
         if (offer.basePlanId == 'monthly' && offer.offerId == null &&
             offer.pricingPhases.length == 1 && offer.pricingPhases.first.billingPeriod == 'P1M' &&
-            item.currencyCode == 'KRW' && item.rawPrice == 5000) { product = item; break; }
+            item.currencyCode == 'KRW' && item.rawPrice == expectedPriceKrw) { product = item; break; }
       }
       message = product == null ? '월 3,000원 구독 상품을 불러오지 못했습니다. Play 스토어 설치와 상품 등록 상태를 확인해 주세요.' : '';
     } catch (_) { message = '구독 상태를 확인하지 못했습니다. 다시 확인해 주세요.'; status = {}; }

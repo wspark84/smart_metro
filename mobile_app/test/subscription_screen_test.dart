@@ -12,8 +12,10 @@ void main() {
   testWidgets('unconfigured subscription explains free home and cannot charge', (tester) async {
     final billing=PlayBilling(MobileApiClient(),'test');
     await tester.pumpWidget(MaterialApp(home:SubscriptionScreen(billing:billing)));
-    expect(find.text('오늘 하루 알림은 로그인만 하면 무료예요.'),findsOneWidget);
-    expect(find.text('유료 구독을 하시겠어요?'),findsOneWidget);
+    expect(find.text('100원'),findsOneWidget);
+    expect(find.text('왜 유료인가요?'),findsOneWidget);
+    expect(find.text('오늘 하루 알림은 구독하지 않아도 계속 무료예요.'),findsOneWidget);
+    expect(find.text('월 3,000원 · 매월 자동 갱신'),findsOneWidget);
     expect(tester.widget<FilledButton>(find.byType(FilledButton)).onPressed,isNull);
     await tester.pumpWidget(const SizedBox());billing.dispose();
   });
