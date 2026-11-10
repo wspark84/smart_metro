@@ -103,7 +103,10 @@ export function buildBoardingPlan({ now, requiredArrivalTime, route, arrivalsMin
       .forEach(minutes=>planned.push({minutes,estimated:true}));
     let next = anchor + interval;
     if (next < 0) next += Math.ceil(-next / interval) * interval;
-    for (let count=0; next <= latestMin + interval && count<722; count++, next+=interval) {
+    // Not further ahead of the sighting than an old sighting may be used
+    // (2026-11-10: a 15:42 bus carried 5 hours forward gave "21:01 탑승").
+    const until = Math.min(latestMin + interval, anchor + anchorSpan);
+    for (let count=0; next <= until && count<722; count++, next+=interval) {
       if (next >= 0 && !planned.some(row => Math.abs(row.minutes-next)<0.01)) planned.push({minutes:next,estimated:true});
     }
   }
@@ -118,14 +121,19 @@ export function buildBoardingPlan({ now, requiredArrivalTime, route, arrivalsMin
   // than a misleading "leave now".
   const scheduleMax = validHeadway(headwayInfo?.max) || validHeadway(officialHeadwayMin);
   let awaitingLive = false;
+  // Do live buses (and the ones timed from them) reach the arrival deadline?
+  // When they all come well before it (a check hours ahead), the deadline is
+  // planned like a route without live data, the same as before any check.
+  const reachesDeadline = latestMin !== null && planned.some(row => row.minutes >= latestMin - (scheduleMax || interval || 0));
+  const noLiveNearDeadline = !reachesDeadline;
   // 이노치 예상시간표 first: when buses actually passed this stop on earlier
   // days of the same type. Be at the stop by the earliest time seen; judge
   // being on time by the latest. Falls back to the interval plan below.
-  const learned = !real.length && !raw.length && duration && latestMin >= 0 && latestMin <= 1440
+  const learned = noLiveNearDeadline && duration && latestMin >= 0 && latestMin <= 1440
     ? (Array.isArray(history) ? history : []).filter(row => Number.isFinite(row?.earliestMin) && row.earliestMin >= 0) : [];
   for (const row of learned) planned.push({minutes:row.earliestMin, estimated:true, historyPlan:true,
     spreadMin:Math.max(0, row.latestMin - row.earliestMin), typicalMin:row.typicalMin});
-  if (!learned.length && !real.length && !raw.length && duration && scheduleMax && latestMin >= 0 && latestMin <= 1440) {
+  if (!learned.length && noLiveNearDeadline && duration && scheduleMax && latestMin >= 0 && latestMin <= 1440) {
     const access = Number.isFinite(route.boardingAccessMin) ? route.boardingAccessMin : 0;
     const atStop = latestMin - scheduleMax;
     if (atStop >= access && inServiceHours(headwayInfo, addMinutes(now, atStop)))

@@ -11,14 +11,19 @@ test('DB rejects unpaid schedule changes, protects token ownership and preserves
    create table public.smart_metro_documents(user_id uuid,document_key text,payload jsonb);`);
   await db.exec(await readFile(new URL('../supabase/migrations/202610040001_paid_schedules.sql',import.meta.url),'utf8'));
   await db.query("insert into public.smart_metro_documents values($1,'app-state',$2)",[a,{tripSchedules:[],user:{requiredArrivalTime:'09:00'}}]);
-  await assert.rejects(db.query("update public.smart_metro_documents set payload=$1",[{tripSchedules:[{id:'a'}]}]),/subscription required/);
+  await assert.rejects(db.query("update public.smart_metro_documents set payload=$1",[{tripSchedules:[{id:'a',enabled:true}]}]),/subscription required/);
   const row={token_hash:'hash',user_id:a,purchase_token:'secret-token',product_id:'inochi_schedule_monthly',state:'SUBSCRIPTION_STATE_ACTIVE',expires_at:'2099-01-01T00:00:00Z',auto_renew:true,verified_at:new Date().toISOString()};
   await db.query('select public.inochi_save_play_subscription($1)',[row]);
-  await db.query("update public.smart_metro_documents set payload=$1",[{tripSchedules:[{id:'a'}]}]);
+  await db.query("update public.smart_metro_documents set payload=$1",[{tripSchedules:[{id:'a',enabled:true}]}]);
   await assert.rejects(db.query('select public.inochi_save_play_subscription($1)',[{...row,user_id:b}]),/ownership/);
   await db.exec("update public.inochi_play_subscriptions set expires_at=now()-interval '1 second'");
-  await db.query("update public.smart_metro_documents set payload=$1",[{tripSchedules:[{id:'a'}],user:{requiredArrivalTime:'10:00'}}]);
-  await assert.rejects(db.query("update public.smart_metro_documents set payload=$1",[{tripSchedules:[{id:'b'}]}]),/subscription required/);
+  await db.query("update public.smart_metro_documents set payload=$1",[{tripSchedules:[{id:'a',enabled:true}],user:{requiredArrivalTime:'10:00'}}]);
+  await assert.rejects(db.query("update public.smart_metro_documents set payload=$1",[{tripSchedules:[{id:'b',enabled:true}]}]),/subscription required/);
+  // Expired: today's marks (종 버튼, 출발했어요), turning off and deleting stay allowed (2026-11-10).
+  await db.query("update public.smart_metro_documents set payload=$1",[{tripSchedules:[{id:'a',enabled:true,snoozeDate:'2026-11-10',departedDate:'2026-11-10'}],user:{requiredArrivalTime:'10:00'}}]);
+  await db.query("update public.smart_metro_documents set payload=$1",[{tripSchedules:[{id:'a',enabled:false}]}]);
+  await assert.rejects(db.query("update public.smart_metro_documents set payload=$1",[{tripSchedules:[{id:'a',enabled:true}]}]),/subscription required/);
+  await db.query("update public.smart_metro_documents set payload=$1",[{tripSchedules:[]}]);
   await db.exec('set role authenticated');
   await assert.rejects(db.query('select * from public.inochi_play_subscriptions'),/permission denied/);
  }finally{await db.close();}

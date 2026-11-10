@@ -105,3 +105,21 @@ test("live first, but not 30+ minutes early when a later estimated bus is closer
   assert.equal(early.risk.targetResult.estimated, true, "a later estimated bus closer to on time");
   assert.ok(early.risk.targetResult.deltaMinutes >= 0 && early.risk.targetResult.deltaMinutes < 30);
 });
+
+test("a live bus hours before the deadline does not time the deadline bus (2026-11-10 15:35, goal 21:45)", () => {
+  const at = new Date("2026-11-10T06:35:00Z"); // Tue 15:35 KST
+  const hw = { status: "ready", source: "경기도 버스노선 조회", weekday: { min: 13, max: 45 }, saturday: { min: 18, max: 50 }, sunday: { min: 18, max: 50 }, holiday: null };
+  const opt = (snapshot) => ({ id: "o1", binding: { provider: "gyeonggi", routeNumber: "1" }, onboardDurationSec: 2080, verified: true,
+    fetchedAt: at.toISOString(), dailyMetadataDate: "2026-11-10", snapshot: { headway: hw, provider: "gyeonggi", cacheStatus: "live", ...snapshot } });
+  const before = buildJourneyOptionsPlan({ requiredArrivalTime: "21:45", boardingAccessMin: 5, holidays: [], now: at,
+    options: [opt({ fetchedAt: at.toISOString(), liveStatus: "ready", arrivalsMin: [] })] });
+  const after = buildJourneyOptionsPlan({ requiredArrivalTime: "21:45", boardingAccessMin: 5, holidays: [], now: at,
+    options: [opt({ fetchedAt: at.toISOString(), liveStatus: "ready", arrivalsMin: [7, 36], lastObservation: { fetchedAt: at.toISOString(), arrivalsMin: [7, 36] } })] });
+  const leave = (plan) => new Date(plan.risk.departure.leaveAt).toISOString();
+  // Same leave time whether or not a 15:42 bus was seen: 21:10 last boarding − 45 min − 5 min walk.
+  assert.equal(leave(before), "2026-11-10T11:20:20.000Z");
+  assert.equal(leave(after), leave(before));
+  assert.equal(after.risk.targetResult.intervalPlan, true);
+  // No bus timed from the last live bus (16:11) more than two hours ahead.
+  assert.ok(!after.rows.some((row) => row.estimated && !row.intervalPlan && row.arrivalMinutes > 36 + 120));
+});
