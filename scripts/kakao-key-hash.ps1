@@ -12,7 +12,12 @@ $keytool = Join-Path $javaHome "bin\keytool.exe"
 function HashOf([string]$keystore, [string]$alias, [string]$storePass) {
   $cert = [System.IO.Path]::GetTempFileName()
   try {
-    & $keytool -exportcert -alias $alias -keystore $keystore -storepass $storePass -file $cert 2>&1 | Out-Null
+    # keytool reports success on stderr; with "Stop" Windows PowerShell treats
+    # that as an error and quits (2026-11-10). Ignore its messages here and
+    # check the exit code instead.
+    $ErrorActionPreference = "Continue"
+    & $keytool -exportcert -alias $alias -keystore $keystore -storepass $storePass -file $cert *> $null
+    if ($LASTEXITCODE -ne 0) { return "읽기 실패 (키 파일 또는 비밀번호 확인 필요)" }
     $sha1 = [System.Security.Cryptography.SHA1]::Create().ComputeHash([System.IO.File]::ReadAllBytes($cert))
     return [Convert]::ToBase64String($sha1)
   } finally { Remove-Item $cert -ErrorAction SilentlyContinue }
