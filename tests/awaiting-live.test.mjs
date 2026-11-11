@@ -14,9 +14,11 @@ const option = (snapshot) => ({ id: "o1", binding: { provider: "gyeonggi", route
 const turnaround = { headway, provider: "gyeonggi", fetchedAt: "2026-11-07T22:39:50Z", liveStatus: "ready", arrivalsMin: [], cacheStatus: "live",
   lastObservation: { fetchedAt: "2026-11-03T08:01:40Z", arrivalsMin: [4] } };
 const now = new Date("2026-11-07T22:40:00Z"); // Sun 07:40 KST: last on-time boarding 08:25:20, a bus can be 50 min apart
+// 07:55: under one typical Sunday interval (34 min, 18~50) before 08:25:20 — no leave time from the interval.
+const awaitNow = new Date("2026-11-07T22:55:00Z");
 
 test("no live arrival inside one interval: awaiting live, not 'leave now'", () => {
-  const plan = buildJourneyOptionsPlan({ requiredArrivalTime: "09:00", boardingAccessMin: 9, options: [option(turnaround)], now, holidays: [] });
+  const plan = buildJourneyOptionsPlan({ requiredArrivalTime: "09:00", boardingAccessMin: 9, options: [option(turnaround)], now: awaitNow, holidays: [] });
   assert.equal(plan.risk.departure, null);
   assert.equal(plan.awaitingLive, true);
 });
@@ -25,7 +27,7 @@ test("the home screen says live data is not confirmed yet", () => {
   const state = { user: { requiredArrivalTime: "09:00", workLocation: { lat: 37.39, lng: 127.11 }, workAddress: "판교" },
     commute: { boardingAccessMin: 9, stopLocation: { lat: 37.27, lng: 127.05 } },
     live: { provider: "gyeonggi", stationId: "203000426", stationName: "더샵", nodeId: "" } };
-  const forecast = buildHomeForecast({ state, automatic: { options: [option(turnaround)] }, now });
+  const forecast = buildHomeForecast({ state, automatic: { options: [option(turnaround)] }, now: awaitNow });
   assert.equal(forecast.status, "awaiting-live");
   assert.equal(forecast.title, "아직 실시간 정보가 확인되지 않았습니다.");
   assert.equal(forecast.message, "실시간 정보가 확인되는 대로 다시 알려드릴게요.");
@@ -116,8 +118,8 @@ test("a live bus hours before the deadline does not time the deadline bus (2026-
   const after = buildJourneyOptionsPlan({ requiredArrivalTime: "21:45", boardingAccessMin: 5, holidays: [], now: at,
     options: [opt({ fetchedAt: at.toISOString(), liveStatus: "ready", arrivalsMin: [7, 36], lastObservation: { fetchedAt: at.toISOString(), arrivalsMin: [7, 36] } })] });
   const leave = (plan) => new Date(plan.risk.departure.leaveAt).toISOString();
-  // Same leave time whether or not a 15:42 bus was seen: 21:10 last boarding − 45 min − 5 min walk.
-  assert.equal(leave(before), "2026-11-10T11:20:20.000Z");
+  // Same leave time whether or not a 15:42 bus was seen: 21:10:20 last boarding − 29 min (seen gap / middle of 13~45) − 5 min walk.
+  assert.equal(leave(before), "2026-11-10T11:36:20.000Z");
   assert.equal(leave(after), leave(before));
   assert.equal(after.risk.targetResult.intervalPlan, true);
   // No bus timed from the last live bus (16:11) more than two hours ahead.

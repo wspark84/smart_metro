@@ -111,20 +111,32 @@ export function buildBoardingPlan({ now, requiredArrivalTime, route, arrivalsMin
     }
   }
   // No live arrival and none seen earlier today (차고지·회차 대기, 지연,
-  // 조회 실패): plan from the published interval. Being at the stop one full
-  // interval before the last on-time boarding catches a bus whatever the
-  // timing, so the alarm still goes off; live arrivals replace this as soon
-  // as they come. Never after the route's last bus.
+  // 조회 실패): plan from the interval below (planGap): at the stop one
+  // typical interval before the last on-time boarding, so the alarm still
+  // goes off; live arrivals replace this as soon as they come. Never after
+  // the route's last bus.
   // When even that point is already behind us (the interval is longer than
   // the time left), the interval cannot say when to leave: report that live
   // arrivals are awaited (e.g. a bus still waiting at the turnaround) rather
   // than a misleading "leave now".
   const scheduleMax = validHeadway(headwayInfo?.max) || validHeadway(officialHeadwayMin);
+  // The interval used to plan without live data (대표 결정 2026-11-10: B, 실제
+  // 간격 기준): the gap between two buses seen today, else the middle of the
+  // published range — not the longest published gap, which sent people out
+  // 15+ minutes early. Kept inside the published range.
+  const seen = Array.isArray(snapshot?.arrivalsMin) && koreanServiceDate(snapshot?.fetchedAt) === koreanServiceDate(now)
+    ? snapshot.arrivalsMin.filter(v => Number.isFinite(Number(v))).map(Number).sort((a,b)=>a-b) : [];
+  const observed = real.length >= 2 ? real[1] - real[0] : seen.length >= 2 ? seen[1] - seen[0] : null;
+  const lo = validHeadway(headwayInfo?.min), hi = scheduleMax;
+  const planGap = validHeadway(observed) && lo && hi ? Math.min(hi, Math.max(lo, observed))
+    : validHeadway(observed) || validHeadway(headwayInfo?.minutes) || validHeadway(officialHeadwayMin) || scheduleMax;
   let awaitingLive = false;
   // Do live buses (and the ones timed from them) reach the arrival deadline?
   // When they all come well before it (a check hours ahead), the deadline is
   // planned like a route without live data, the same as before any check.
-  const reachesDeadline = latestMin !== null && planned.some(row => row.minutes >= latestMin - (scheduleMax || interval || 0));
+  const nearFrom = latestMin - (planGap || interval || 0);
+  const reachesDeadline = latestMin !== null && (planned.some(row => row.minutes >= nearFrom) ||
+    raw.some(value => value - age >= nearFrom));
   const noLiveNearDeadline = !reachesDeadline;
   // 이노치 예상시간표 first: when buses actually passed this stop on earlier
   // days of the same type. Be at the stop by the earliest time seen; judge
@@ -133,9 +145,9 @@ export function buildBoardingPlan({ now, requiredArrivalTime, route, arrivalsMin
     ? (Array.isArray(history) ? history : []).filter(row => Number.isFinite(row?.earliestMin) && row.earliestMin >= 0) : [];
   for (const row of learned) planned.push({minutes:row.earliestMin, estimated:true, historyPlan:true,
     spreadMin:Math.max(0, row.latestMin - row.earliestMin), typicalMin:row.typicalMin});
-  if (!learned.length && noLiveNearDeadline && duration && scheduleMax && latestMin >= 0 && latestMin <= 1440) {
+  if (!learned.length && noLiveNearDeadline && duration && planGap && latestMin >= 0 && latestMin <= 1440) {
     const access = Number.isFinite(route.boardingAccessMin) ? route.boardingAccessMin : 0;
-    const atStop = latestMin - scheduleMax;
+    const atStop = latestMin - planGap;
     if (atStop >= access && inServiceHours(headwayInfo, addMinutes(now, atStop)))
       planned.push({minutes:atStop, estimated:true, intervalPlan:true});
     else if (access <= latestMin && inServiceHours(headwayInfo, addMinutes(now, access)))

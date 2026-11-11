@@ -15,14 +15,15 @@ const option = (snapshot) => ({ id: "o1", binding: { provider: "gyeonggi", route
 const noLive = { headway, provider: "gyeonggi", fetchedAt: "2026-11-07T22:19:00Z", liveStatus: "ready", arrivalsMin: [], cacheStatus: "live",
   lastObservation: { fetchedAt: "2026-11-03T08:01:40Z", arrivalsMin: [4] } };
 
-test("no live arrival: leave so that a bus comes within one full interval", () => {
+test("no live arrival: leave by the typical interval (대표 결정 B)", () => {
   const now = new Date("2026-11-07T22:19:30Z"); // Sun 07:19:30 KST
   const plan = buildJourneyOptionsPlan({ requiredArrivalTime: "09:00", boardingAccessMin: 9, options: [option(noLive)], now, holidays: [] });
   const leave = plan.risk.departure?.leaveAt;
   assert.ok(leave, "a leave time");
   assert.equal(plan.risk.targetResult.estimated, true);
-  // Board by 08:25:20 at the latest (09:00 - 34m40s); a Sunday bus can be 50 min apart → at the stop 07:35:20, leave 07:26:20.
-  assert.equal(new Date(leave).toISOString(), "2026-11-07T22:26:20.000Z");
+  // Board by 08:25:20 at the latest (09:00 - 34m40s); a typical Sunday interval is 34 min (18~50, 대표 결정 B)
+  // → at the stop 07:51:20, leave 07:42:20.
+  assert.equal(new Date(leave).toISOString(), "2026-11-07T22:42:20.000Z");
 });
 
 test("live arrivals take over as soon as they come", () => {
