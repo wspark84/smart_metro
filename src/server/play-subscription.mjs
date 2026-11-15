@@ -54,11 +54,20 @@ export function createPlaySubscriptions({env=process.env,fetchImpl=globalThis.fe
       const assertion=`${input}.${createSign('RSA-SHA256').update(input).sign(account.private_key,'base64url')}`;
       const response=await fetchImpl('https://oauth2.googleapis.com/token',{method:'POST',body:new URLSearchParams({grant_type:'urn:ietf:params:oauth:grant-type:jwt-bearer',assertion}),signal:AbortSignal.timeout(10000)});
       const data=await response.json();
-      if(!response.ok || !data.access_token)throw fail('PLAY_AUTH_FAILED','구글플레이 결제 확인 서버에 연결하지 못했습니다.');
+      if(!response.ok || !data.access_token){
+        console.error('[play-subscription] OAuth token',response.status,String(data?.error_description || data?.error || '').slice(0,300));
+        throw fail('PLAY_AUTH_FAILED','구글플레이 결제 확인 서버에 연결하지 못했습니다.');
+      }
       oauthCache={key:fingerprint,token:data.access_token,expiresAt:Date.now()+Math.min(Number(data.expires_in)||300,3600)*1000};
     }
     const response=await fetchImpl(`https://androidpublisher.googleapis.com/androidpublisher/v3/applications/${PLAY_PACKAGE}/${path}`,{method,headers:{Authorization:`Bearer ${oauthCache.token}`,'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{}),signal:AbortSignal.timeout(10000)});
-    if(!response.ok)throw fail(response.status===410?'PLAY_TOKEN_EXPIRED':'PLAY_VERIFY_FAILED','구글플레이에서 결제를 확인하지 못했습니다. 잠시 후 구매 복원을 눌러 주세요.');
+    if(!response.ok){
+      // Google's own reason (e.g. 401 "insufficient permissions") in the server
+      // log, so a failed check can be diagnosed. No token or key is logged.
+      const reason=await response.text().then(text=>{try{return JSON.parse(text)?.error?.message || text;}catch{return text;}}).catch(()=>'');
+      console.error('[play-subscription] Google Play API',method,path.split('/')[0],response.status,String(reason).slice(0,300));
+      throw fail(response.status===410?'PLAY_TOKEN_EXPIRED':'PLAY_VERIFY_FAILED','구글플레이에서 결제를 확인하지 못했습니다. 잠시 후 구매 복원을 눌러 주세요.');
+    }
     return response.status===204?{}:response.text().then(text=>text?JSON.parse(text):{});
   });
   async function verify(userId,token) {
