@@ -80,13 +80,31 @@ String vehicleLabel(String route, {required bool subway}) {
   return RegExp(r'^[0-9A-Za-z-]+$').hasMatch(route) ? '$route번 버스' : route;
 }
 
-/// Row status: 추천 / n분 여유 / 놓쳐요 / n분 늦음.
+/// "62분" → "1시간 2분".
+String spanText(int minutes) {
+  final h = minutes ~/ 60, m = minutes % 60;
+  return h == 0 ? '$m분' : m == 0 ? '$h시간' : '$h시간 $m분';
+}
+
+/// Row status: 추천 / n분 일찍 / 놓쳐요 / n분 늦음. "일찍" (not "여유") so
+/// "실시간 61분 여유" can no longer read as "real time says 61 minutes"
+/// (대표 2026-11-15: the 7번 bus was 6 minutes away, 61 minutes early).
 String rowStatus(Map<String, dynamic> row) {
   final slack = row['slackMinutes'] is num ? (row['slackMinutes'] as num).toInt() : null;
-  if (row['onTime'] != true) return slack == null ? '지각' : '${-slack}분 늦음';
+  if (row['onTime'] != true) return slack == null ? '지각' : '${spanText(-slack)} 늦음';
   if (row['target'] == true) return '추천';
   if (row['catchable'] != true) return '놓쳐요';
-  return slack == null ? '정시' : '$slack분 여유';
+  return slack == null || slack == 0 ? '정시' : '${spanText(slack)} 일찍';
+}
+
+/// Second line of a vehicle row: where its time comes from, said in full.
+String rowBasisLine(Map<String, dynamic> row, {required bool subway}) {
+  final basis = '${row['basis'] ?? ''}';
+  final minutes = row['minutes'] is num ? (row['minutes'] as num).toInt() : null;
+  final place = subway ? '역' : '정류장';
+  if (basis == 'realtime') return minutes == null ? '실시간' : minutes <= 0 ? '실시간 · 곧 $place 도착' : '실시간 · $minutes분 후 $place 도착';
+  final label = BasisChip.label(basis);
+  return label.isEmpty ? '' : '$label (실시간 아님)';
 }
 
 /// 오늘 화면 (C안): the colour field and the big number say how long until
@@ -125,8 +143,13 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
     unawaited(Future<void>.delayed(const Duration(seconds: 1), AlarmVoice.restoreVolume));
     unawaited(_load());
     unawaited(_syncPush());
-    _refresh = Timer.periodic(const Duration(seconds: 60), (_) {
-      if (!_busy) unawaited(_load());
+    // Every 60 s; every 10 s while live arrivals are awaited, so a bus found
+    // by the server's 1-minute check shows within seconds (대표 2026-11-15:
+    // "실시간 정보 확인에 너무 오래걸림"). These reads never call the providers.
+    _refresh = Timer.periodic(const Duration(seconds: 10), (_) {
+      final waiting = '${asMap(_data?['forecast'])['status'] ?? ''}' == 'awaiting-live';
+      if (_busy || (!waiting && DateTime.now().difference(_loadedAt).inSeconds < 58)) return;
+      unawaited(_load());
     });
     _tick = Timer.periodic(const Duration(seconds: 15), (_) {
       if (mounted) setState(() => _now = DateTime.now());
@@ -172,7 +195,10 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(problem ?? '알림을 켰어요. 나갈 시각에 알려 드릴게요.')));
   }
 
+  DateTime _loadedAt = DateTime.now();
+
   Future<void> _load() async {
+    _loadedAt = DateTime.now();
     try {
       final data = await widget.api.home();
       if (!mounted) return;
@@ -505,6 +531,12 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
                     ] else if (awaitingLive) ...[
                       Text('${forecast['message'] ?? '실시간 정보가 확인되는 대로 다시 알려드릴게요.'}',
                           style: textTheme.copyWith(fontSize: 17, fontWeight: FontWeight.w700)),
+                      const SizedBox(height: 6),
+                      Text(
+                          '${forecast['liveCheckedAt'] == null ? '' : '마지막 확인 ${kstClock(forecast['liveCheckedAt'])} · '}'
+                          '${armed ? '1분마다 자동으로 다시 확인하고 있어요.' : '오늘 알림이 꺼져 있어 자동 확인은 하지 않아요.'} '
+                          '버스가 아직 차고지에서 출발하기 전이면 실시간 위치가 잡히지 않아요.',
+                          style: textTheme.copyWith(fontSize: 13, fontWeight: FontWeight.w500)),
                     ] else ...[
                       if (!needsManual || status == 'no-live')
                         Text(_notReadyText(forecast, '${data['forecastError'] ?? ''}'),
@@ -627,7 +659,7 @@ class _Sheet extends StatefulWidget {
 }
 
 class _SheetState extends State<_Sheet> {
-  static const _rowHeight = 48.0;
+  static const _rowHeight = 54.0; // two lines: vehicle · arrival, then the time basis
 
   @override
   Widget build(BuildContext context) {
@@ -721,6 +753,7 @@ class _VehicleRow extends StatelessWidget {
     final faded = !onTime || !catchable;
     final route = vehicleLabel('${row['routeNumber'] ?? ''}'.trim(), subway: subway);
     final arrive = kstClock(row['arriveAt']);
+    final basisLine = rowBasisLine(row, subway: subway);
     return Container(
       decoration: BoxDecoration(border: last ? null : Border(bottom: BorderSide(color: p.line))),
       child: Row(children: [
@@ -730,19 +763,21 @@ class _VehicleRow extends StatelessWidget {
               style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: faded ? p.muted : p.ink, fontFeatures: tabular)),
         ),
         Expanded(
-          child: Text(
-            arrive == '--:--' ? route : '$route · $arrive 도착',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontSize: 14, color: p.muted, fontFeatures: tabular),
-          ),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+            Text(
+              arrive == '--:--' ? route : '$route · $arrive 도착',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 14, color: p.muted, fontFeatures: tabular),
+            ),
+            if (basisLine.isNotEmpty)
+              Text(basisLine,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: row['basis'] == 'realtime' ? p.ok : p.muted)),
+          ]),
         ),
         const SizedBox(width: 8),
-        if (BasisChip.short('${row['basis'] ?? ''}').isNotEmpty) ...[
-          Text(BasisChip.short('${row['basis']}'),
-              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: row['basis'] == 'realtime' ? p.ok : p.muted)),
-          const SizedBox(width: 6),
-        ],
         Text(status, style: TextStyle(fontSize: 13, fontWeight: weight, color: color)),
       ]),
     );

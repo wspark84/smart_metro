@@ -50,7 +50,7 @@ export function rowStatus(row) {
   if (row.onTime !== true) return slack === null ? "지각" : `${-slack}분 늦음`;
   if (row.target === true) return "추천";
   if (row.catchable !== true) return "놓쳐요";
-  return slack === null ? "정시" : `${slack}분 여유`;
+  return slack === null || slack === 0 ? "정시" : `${slack >= 60 ? `${Math.floor(slack / 60)}시간${slack % 60 ? ` ${slack % 60}분` : ""}` : `${slack}분`} 일찍`;
 }
 const isSubway = (stop) => stop?.mode === "subway" || stop?.provider === "subway";
 function stopKindLabel(stop) {

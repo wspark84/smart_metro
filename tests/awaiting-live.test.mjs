@@ -27,8 +27,9 @@ test("the home screen says live data is not confirmed yet", () => {
   const state = { user: { requiredArrivalTime: "09:00", workLocation: { lat: 37.39, lng: 127.11 }, workAddress: "판교" },
     commute: { boardingAccessMin: 9, stopLocation: { lat: 37.27, lng: 127.05 } },
     live: { provider: "gyeonggi", stationId: "203000426", stationName: "더샵", nodeId: "" } };
-  const forecast = buildHomeForecast({ state, automatic: { options: [option(turnaround)] }, now: awaitNow });
+  const forecast = buildHomeForecast({ state, automatic: { options: [option(turnaround)], updatedAt: "2026-11-07T22:54:30.000Z" }, now: awaitNow });
   assert.equal(forecast.status, "awaiting-live");
+  assert.equal(forecast.liveCheckedAt, "2026-11-07T22:54:30.000Z");
   assert.equal(forecast.title, "아직 실시간 정보가 확인되지 않았습니다.");
   assert.equal(forecast.message, "실시간 정보가 확인되는 대로 다시 알려드릴게요.");
   assert.equal(forecast.leaveAt, undefined);

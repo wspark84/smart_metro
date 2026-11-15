@@ -33,7 +33,10 @@ void main() {
     expect(vehicleLabel('M4102', subway: false), 'M4102번 버스');
     expect(vehicleLabel('신분당선', subway: true), '신분당선');
     expect(vehicleLabel('', subway: false), '대중교통');
-    expect(rowStatus({'onTime': true, 'catchable': true, 'slackMinutes': 7}), '7분 여유');
+    expect(rowStatus({'onTime': true, 'catchable': true, 'slackMinutes': 7}), '7분 일찍');
+    expect(rowStatus({'onTime': true, 'catchable': true, 'slackMinutes': 61}), '1시간 1분 일찍');
+    expect(rowBasisLine({'basis': 'realtime', 'minutes': 6}, subway: false), '실시간 · 6분 후 정류장 도착');
+    expect(rowBasisLine({'basis': 'estimate', 'minutes': 53}, subway: false), '배차간격 예상 (실시간 아님)');
     expect(rowStatus({'onTime': true, 'catchable': true, 'target': true, 'slackMinutes': 3}), '추천');
     expect(rowStatus({'onTime': true, 'catchable': false, 'slackMinutes': 40}), '놓쳐요');
     expect(rowStatus({'onTime': false, 'catchable': true, 'slackMinutes': -4}), '4분 늦음');

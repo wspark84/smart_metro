@@ -289,7 +289,10 @@ export function buildHomeForecast({ state, automatic, now = new Date() }) {
   }
   if (plan.awaitingLive) {
     return { status: "awaiting-live", title: "아직 실시간 정보가 확인되지 않았습니다.",
-      message: "실시간 정보가 확인되는 대로 다시 알려드릴게요.", rows, basis: null, checkedAt: now.toISOString() };
+      message: "실시간 정보가 확인되는 대로 다시 알려드릴게요.", rows, basis: null, checkedAt: now.toISOString(),
+      // When the arrival APIs were last actually asked (not this screen read),
+      // so the person sees the checks are running.
+      liveCheckedAt: Number.isFinite(Date.parse(automatic?.updatedAt || "")) ? new Date(automatic.updatedAt).toISOString() : null };
   }
   // No vehicle at all because the arrival APIs gave nothing usable is not
   // "no transit": say that the information is missing.
