@@ -147,8 +147,14 @@ export function buildBoardingPlan({ now, requiredArrivalTime, route, arrivalsMin
     spreadMin:Math.max(0, row.latestMin - row.earliestMin), typicalMin:row.typicalMin});
   if (!learned.length && noLiveNearDeadline && duration && planGap && latestMin >= 0 && latestMin <= 1440) {
     const access = Number.isFinite(route.boardingAccessMin) ? route.boardingAccessMin : 0;
-    const atStop = latestMin - planGap;
-    if (atStop >= access && inServiceHours(headwayInfo, addMinutes(now, atStop)))
+    // 대표 결정 2026-11-15: right after setup a leave time is shown at once
+    // from the interval, then live arrivals replace it. When one typical gap
+    // before the deadline is already behind us, plan with the shortest
+    // published gap instead; only when even that cannot be reached are live
+    // arrivals awaited.
+    const atStop = [planGap, lo].filter(Boolean).map(gap => latestMin - gap)
+      .find(minutes => minutes >= access && inServiceHours(headwayInfo, addMinutes(now, minutes)));
+    if (atStop !== undefined)
       planned.push({minutes:atStop, estimated:true, intervalPlan:true});
     else if (access <= latestMin && inServiceHours(headwayInfo, addMinutes(now, access)))
       awaitingLive = true;

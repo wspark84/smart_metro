@@ -6,7 +6,7 @@ import {reconcileAlarmDelivery} from '../src/server/alarm-delivery.mjs';
 import {reconcileDispatchQueue} from '../src/server/dispatch-engine.mjs';
 import {transitQueryKey,transitQueryForState} from '../src/logic/transit-journey.js';
 
-// Bus still at the turnaround, too close to the goal for the interval to time
+// Bus still at the turnaround, too close to the goal for even the shortest interval to time
 // the leave: one "not confirmed yet" notice, then one alert once live data
 // times the leave.
 function state(at,arrivals) {
@@ -23,7 +23,7 @@ function state(at,arrivals) {
 }
 
 test('awaiting live data: one notice, then one alert when live arrivals time the leave',()=>{
-  const t1=new Date('2026-09-23T09:10:00+09:00');
+  const t1=new Date('2026-09-23T09:14:00+09:00');
   const first=reconcileAlarmRuntime(state(t1,[]),undefined,t1);
   assert.equal(first.plan.departureAt,null);
   assert.deepEqual(first.dueEvents.map(e=>e.triggerKind),['awaiting-live']);
@@ -33,11 +33,11 @@ test('awaiting live data: one notice, then one alert when live arrivals time the
   assert.equal(sent.newBundles[0].notificationSpec.title,'아직 실시간 정보가 확인되지 않았습니다');
   assert.equal(sent.newBundles[0].notificationSpec.body,'실시간 정보가 확인되는 대로 다시 알려드릴게요.');
 
-  const t2=new Date('2026-09-23T09:11:00+09:00');
+  const t2=new Date('2026-09-23T09:15:00+09:00');
   const again=reconcileAlarmRuntime(state(t2,[]),first.runtime,t2);
   assert.equal(again.dueEvents.length,0,'said once');
 
-  const t3=new Date('2026-09-23T09:12:00+09:00');
+  const t3=new Date('2026-09-23T09:16:00+09:00');
   const found=reconcileAlarmRuntime(state(t3,[8]),again.runtime,t3);
   assert.ok(found.plan.departureAt);
   assert.deepEqual(found.dueEvents.map(e=>e.triggerKind),['live-found']);
