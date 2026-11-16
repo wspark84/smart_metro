@@ -1,7 +1,7 @@
 name: buswakeup_mobile
 description: 이노치(이거 놓치면 지각) 출근 알림 앱.
 publish_to: "none"
-version: 0.1.1+2
+version: 0.1.1+3
 
 environment:
   sdk: ">=3.10.0 <4.0.0"
