@@ -85,7 +85,7 @@ class PlayBilling extends ChangeNotifier {
         if (!sameAccount || _disposed) continue;
         status = verified;
         if (purchase.pendingCompletePurchase) await _store.completePurchase(purchase);
-        message = active ? '구독이 확인되었습니다. 일정 자동 알림을 사용할 수 있습니다.' : '현재 이용 가능한 구독이 없습니다.';
+        message = active ? '구독이 확인되었습니다.\n일정 자동 알림을 사용할 수 있습니다.' : '현재 이용 가능한 구독이 없습니다.';
       } catch (_) { message = '결제 확인이 지연되고 있습니다. 다시 결제하지 말고 구매 복원을 눌러 주세요.'; }
       finally { _processing.remove(token); busy = false; _notify(); }
     }

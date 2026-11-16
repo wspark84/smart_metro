@@ -20,9 +20,10 @@ void main() {
     await tester.pumpWidget(const SizedBox());billing.dispose();
   });
   testWidgets('verified subscriber does not see a duplicate purchase button', (tester) async {
-    final billing=PlayBilling(MobileApiClient(),'test')..status={'active':true,'expiresAt':'2026-11-04'};
+    final billing=PlayBilling(MobileApiClient(),'test')..status={'active':true,'autoRenew':true,'expiresAt':'2026-12-16T02:03:56.696Z'};
     await tester.pumpWidget(MaterialApp(home:SubscriptionScreen(billing:billing)));
     expect(find.text('매일 자동 알림 구독 중'),findsOneWidget);
+    expect(find.text('다음 결제일: 2026년 12월 16일(수) 오전 11:03'),findsOneWidget);
     expect(find.byType(FilledButton),findsNothing);
     expect(find.text('구독 관리 · 해지'),findsOneWidget);
     await tester.pumpWidget(const SizedBox());billing.dispose();

@@ -25,3 +25,10 @@ String kstClockKorean(Object? iso) {
 }
 
 const weekdayLabels = ['일', '월', '화', '수', '목', '금', '토'];
+
+/// "2026년 12월 16일(수) 오전 11:03" (KST) or "" — dates people read, never a raw ISO string.
+String kstDateTimeKorean(Object? iso) {
+  final value = parseKst(iso);
+  if (value == null) return '';
+  return '${value.year}년 ${value.month}월 ${value.day}일(${weekdayLabels[value.weekday % 7]}) ${kstClockKorean(iso)}';
+}

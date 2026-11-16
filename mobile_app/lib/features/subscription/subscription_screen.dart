@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../app/inochi_theme.dart';
+import '../../core/format/kst_format.dart';
 import '../../core/network/play_billing.dart';
 
 /// 매일 자동 알림 구독 (하루 100원). Says plainly what it does, why it costs
@@ -123,7 +124,8 @@ class SubscriptionScreen extends StatelessWidget {
             Text('함께해 주셔서 고맙습니다. 구독료는 매일 아침 알람을 보내는 서버를 지키는 데 쓰여요.',
                 style: TextStyle(fontSize: 15, height: 1.5, color: p.relaxedTone)),
             const SizedBox(height: 12),
-            Text('이용 기한: ${billing.status['expiresAt'] ?? ''}',
+            // Auto-renewing: the next charge date; cancelled: the last day of use.
+            Text('${billing.status['autoRenew'] == true ? '다음 결제일' : '이용 기한'}: ${kstDateTimeKorean(billing.status['expiresAt'])}',
                 style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: p.relaxedTone, fontFeatures: tabular)),
           ]),
         ),
