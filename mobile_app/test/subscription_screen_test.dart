@@ -10,6 +10,9 @@ void main() {
   setUp(() { SharedPreferencesAsyncPlatform.instance=InMemorySharedPreferencesAsync.empty(); });
   tearDown(() { SharedPreferencesAsyncPlatform.instance=null; });
   testWidgets('unconfigured subscription explains free home and cannot charge', (tester) async {
+    // Tall enough that the whole (lazily built) list is on screen.
+    await tester.binding.setSurfaceSize(const Size(800, 3200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
     final billing=PlayBilling(MobileApiClient(),'test');
     await tester.pumpWidget(MaterialApp(home:SubscriptionScreen(billing:billing)));
     expect(find.text('100원'),findsOneWidget);
