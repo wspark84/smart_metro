@@ -100,6 +100,18 @@ export async function discoverJourneyOptions(query,{lookup=lookupBoardingRoutes,
     warning:'조회 제공처가 반환하고 탑승 위치·방향을 확인한 경로를 비교합니다. 환승 대기 및 운행 지연은 예상과 다를 수 있습니다.'};
 }
 
+// 기록용 조회 when today's alarms are off (대표 승인 2026-11-16: also after
+// "출발했어요"): the bus the person was last told to take is still checked about
+// once a minute until it has passed (boarding + 8 min), so its real passing time
+// is recorded for everyone. The plan itself is not changed and nothing rings.
+export async function watchWhileOff(previous,{loadArrival,now=new Date()}={}) {
+  const until=Date.parse(previous?.watchUntil || '');
+  if(!previous?.watchBinding || !Number.isFinite(until) || now.getTime()>=until) return previous;
+  if(Date.parse(previous.watchedAt || '')>now.getTime()-55_000) return previous;
+  await Promise.resolve().then(()=>loadArrival(previous.watchBinding)).catch(()=>null);
+  return {...previous,watchedAt:now.toISOString()};
+}
+
 // force: the setup changed; manual: a person pressed refresh. cachedOnly: read the
 // saved result without calling any provider (the app's periodic screen refresh).
 export async function refreshJourneyOptions(query,{loadArrival,discover=discoverJourneyOptions,previous=null,now=new Date(),planning=null,force=false,manual=false,cachedOnly=false}={}) {

@@ -4,7 +4,7 @@ import { reconcileAlarmDelivery } from './alarm-delivery.mjs';
 import { isAlarmRefreshWindow } from './alarm-arrival-refresh.mjs';
 
 // Per-trip observations and handled reminders are isolated from the home trip.
-export async function reconcileTripSchedules(base, previous = {}, now = new Date(), {refresh, accuracyRuntime} = {}) {
+export async function reconcileTripSchedules(base, previous = {}, now = new Date(), {refresh, watch, accuracyRuntime} = {}) {
   const trips=normalizeTripSchedules(base.tripSchedules);
   const entries=trips.map(trip=>({trip,state:tripScheduleState(base,trip),old:previous[trip.id] || {}}));
   // Bound upstream work per tick. Cached plans for every trip are still reconciled each tick.
@@ -19,6 +19,9 @@ export async function reconcileTripSchedules(base, previous = {}, now = new Date
       lastRefreshAttempt=now.toISOString();
       try {runtime={...runtime,automaticOptions:await refresh(state,runtime.automaticOptions,now)};}
       catch(e){lastError=e.message || '일정 경로를 조회하지 못했습니다.';}
+    } else if(watch && !isAlarmRefreshWindow(state,now) && runtime.automaticOptions?.watchBinding) {
+      // Alarms off for this trip today: keep recording the told bus (기록용 조회).
+      runtime={...runtime,automaticOptions:await watch(runtime.automaticOptions,now)};
     }
     state.commute.automaticOptions=runtime.automaticOptions || null;
     const result=reconcileAlarmRuntime(state,runtime,now,{accuracyRuntime});

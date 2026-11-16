@@ -85,7 +85,7 @@ import { getPlaceApiConfig, searchAddressPlaces } from "./src/server/place-provi
 import { loadWithCache } from "./src/server/request-cache.mjs";
 import { estimateCommuteRoute, getRouteApiConfig } from "./src/server/route-providers.mjs";
 import { fetchTransitRoutes, refreshTransitJourney } from "./src/server/transit-providers.mjs";
-import {refreshJourneyOptions} from './src/server/automatic-journeys.mjs';
+import {refreshJourneyOptions,watchWhileOff} from './src/server/automatic-journeys.mjs';
 import {transitQueryForState} from './src/logic/transit-journey.js';
 import { buildTestPushPreview } from "./src/server/test-push.mjs";
 import { buildUserDataFilePath } from "./src/server/user-storage.mjs";
@@ -1059,6 +1059,9 @@ async function tickAlarmRuntime(now = new Date()) {
       alarmRuntimeState={...alarmRuntimeState,automaticOptions};
       state={...state,commute:{...state.commute,automaticOptions}};
     } catch {state={...state,commute:{...state.commute,automaticOptions:null}};}
+  } else if(state.commute?.routingMode==='all-routes' && alarmRuntimeState.automaticOptions?.watchBinding) {
+    // Alarms off today (출발했어요 / 알림 끄기): keep recording the told bus.
+    alarmRuntimeState={...alarmRuntimeState,automaticOptions:await watchWhileOff(alarmRuntimeState.automaticOptions,{loadArrival:loadSavedTransit,now})};
   }
   if (state.commute?.routingMode!=='all-routes' && isAlarmRefreshWindow(state, now)) state = await refreshTransitJourney(state, now, async (query) => {
     const cached = await loadWithCache({ key: ['transit-route', query], ttlMs: 5 * 60_000,
@@ -1102,6 +1105,7 @@ async function tickAlarmRuntime(now = new Date()) {
     accuracyRuntime:busAccuracyRuntimeState,
     refresh:(trip,previous,at)=>refreshJourneyOptions(transitQueryForState(trip),{loadArrival:loadSavedTransit,previous,now:at,
       planning:{requiredArrivalTime:trip.user.requiredArrivalTime,boardingAccessMin:trip.commute.boardingAccessMin}}),
+    watch:(previous,at)=>watchWhileOff(previous,{loadArrival:loadSavedTransit,now:at}),
   });
   alarmRuntimeState={...alarmRuntimeState,tripContexts:scheduled.contexts};
   // Deleted, paused and completed schedules must not leave retrying push bundles behind.
