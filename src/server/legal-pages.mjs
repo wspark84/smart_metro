@@ -11,7 +11,7 @@ export const OPERATOR = Object.freeze({
   registrationNumber: "214-59-00854",
   mailOrderNumber: "제2026-화성동탄-2521호",
   address: "경기도 화성시 동탄구 동탄중심상가1길 36, 8층 801-137A호(반송동, 원영빌딩)",
-  email: "lifelogics@naver.com",
+  email: "master@lifelogics.kr",
   privacyOfficer: "박우석 (대표)",
   effectiveDate: "2026-11-01",
 });

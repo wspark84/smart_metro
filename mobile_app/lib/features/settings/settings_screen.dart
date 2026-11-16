@@ -377,7 +377,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           TextButton(onPressed: () => _open('/terms'), child: const Text('이용약관')),
           TextButton(onPressed: () => _open('/privacy'), child: const Text('개인정보처리방침')),
           TextButton(
-            onPressed: () => launchUrl(Uri.parse('mailto:lifelogics@naver.com?subject=%EC%9D%B4%EB%85%B8%EC%B9%98%20%EB%AC%B8%EC%9D%98')),
+            onPressed: () => launchUrl(Uri.parse('mailto:master@lifelogics.kr?subject=%EC%9D%B4%EB%85%B8%EC%B9%98%20%EB%AC%B8%EC%9D%98')),
             child: const Text('고객 문의'),
           ),
         ]),

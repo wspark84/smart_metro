@@ -628,7 +628,7 @@ function renderSettings(screen) {
         ${cell({ title: "로그아웃", detail: app.email || "", action: busy ? "" : "logout" })}
         ${cell({ title: "회원 탈퇴", danger: true, action: "delete-account" })}
       </div>
-      <nav class="links"><a href="/terms">이용약관</a><a href="/privacy">개인정보처리방침</a><a href="mailto:lifelogics@naver.com?subject=%EC%9D%B4%EB%85%B8%EC%B9%98%20%EB%AC%B8%EC%9D%98">고객 문의</a></nav>
+      <nav class="links"><a href="/terms">이용약관</a><a href="/privacy">개인정보처리방침</a><a href="mailto:master@lifelogics.kr?subject=%EC%9D%B4%EB%85%B8%EC%B9%98%20%EB%AC%B8%EC%9D%98">고객 문의</a></nav>
       <p class="credit">교통정보: 국토교통부(TAGO), 서울특별시, 경기도, 카카오. 지하철은 수도권 실시간, 그 밖의 지역은 공식 시간표 기준이에요.</p>
     </div></main>`;
 }
