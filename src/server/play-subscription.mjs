@@ -88,6 +88,18 @@ export function createPlaySubscriptions({env=process.env,fetchImpl=globalThis.fe
     const values=[];
     let verificationError;
     for(const row of rows){
+      // 심사·운영용 이용권 (대표 승인 2026-11-16, e.g. the Google Play review
+      // account): a row the operator inserted with a purchase_token starting
+      // "comp:". It is not a Google purchase, so it is never sent to Google;
+      // its own state and end date apply. verified_at is kept fresh so the DB
+      // schedule guard (5 minutes) accepts it like a checked purchase.
+      if(String(row.purchase_token || '').startsWith('comp:')){
+        if(now().getTime()-Date.parse(row.verified_at)>60000)
+          await repo.save({token_hash:row.token_hash,user_id:row.user_id,purchase_token:row.purchase_token,product_id:row.product_id,
+            state:row.state,expires_at:row.expires_at,auto_renew:false,verified_at:now().toISOString()});
+        values.push({active:ALLOWED.has(row.state)&&Date.parse(row.expires_at)>now().getTime(),expiresAt:row.expires_at,state:row.state,autoRenew:false,complimentary:true});
+        continue;
+      }
       // Recheck refunds/renewals while running alarms, including expired rows (renewals can arrive without opening the app).
       if(force || now().getTime()-Date.parse(row.verified_at)>60000){
         try { values.push(await verify(userId,row.purchase_token)); }

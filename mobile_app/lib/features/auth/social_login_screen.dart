@@ -31,6 +31,45 @@ class _SocialLoginScreenState extends State<SocialLoginScreen> {
     }
   }
 
+  Future<void> _emailLogin() async {
+    final email = TextEditingController(), password = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('이메일로 로그인'),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          TextField(controller: email, keyboardType: TextInputType.emailAddress, autofillHints: const [AutofillHints.email],
+              decoration: const InputDecoration(labelText: '이메일')),
+          TextField(controller: password, obscureText: true, autofillHints: const [AutofillHints.password],
+              decoration: const InputDecoration(labelText: '비밀번호')),
+          const SizedBox(height: 8),
+          const Text('안내받은 계정만 이용할 수 있어요. 처음이시면 구글·카카오로 시작해 주세요.', style: TextStyle(fontSize: 12)),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('취소')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('로그인')),
+        ],
+      ),
+    );
+    final address = email.text, secret = password.text;
+    email.dispose();
+    password.dispose();
+    if (ok != true || address.trim().isEmpty || secret.isEmpty) return;
+    setState(() {
+      _busy = true;
+      _error = '';
+    });
+    try {
+      await MobileSocialAuth.loginWithEmail(address, secret);
+    } on AuthException catch (_) {
+      if (mounted) setState(() => _error = '이메일 또는 비밀번호가 맞지 않습니다.');
+    } catch (_) {
+      if (mounted) setState(() => _error = '로그인하지 못했습니다. 연결을 확인하고 다시 시도해 주세요.');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   void _open(String path) => launchUrl(Uri.parse('${MobileSocialAuth.origin}$path'), mode: LaunchMode.externalApplication);
 
   @override
@@ -64,6 +103,7 @@ class _SocialLoginScreenState extends State<SocialLoginScreen> {
                   Text(message, textAlign: TextAlign.center, style: TextStyle(color: Theme.of(context).colorScheme.error)),
                 ],
                 TextButton(onPressed: _busy ? null : widget.onRetry, child: const Text('연결 다시 확인')),
+                TextButton(onPressed: _busy ? null : _emailLogin, child: const Text('이메일로 로그인', style: TextStyle(fontSize: 13))),
                 const SizedBox(height: 16),
                 Wrap(alignment: WrapAlignment.center, crossAxisAlignment: WrapCrossAlignment.center, children: [
                   const Text('시작하면 ', style: TextStyle(fontSize: 12)),

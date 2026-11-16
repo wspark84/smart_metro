@@ -52,3 +52,22 @@ test('paywall explains paid recurring schedules and free home; no fake checkout'
  const html=subscriptionPaywall({available:true});assert.match(html,/월 3,000원/);assert.match(html,/유료 구독을 하시겠어요/);assert.match(html,/계속 무료/);
  assert.match(subscriptionPaywall(),/disabled/);assert.doesNotMatch(subscriptionPaywall({error:'<script>'}),/<script>/);
 });
+
+// 대표 승인 2026-11-16: the Google Play review account gets the paid feature
+// from an operator-inserted "comp:" row; it is never sent to Google.
+test('a complimentary review pass is active without Google and keeps its check fresh',async()=>{
+  const at=new Date('2026-11-16T07:00:00Z');
+  const saved=[];
+  const row={token_hash:'comp:review',user_id:'u1',purchase_token:'comp:play-review',product_id:'inochi_schedule_monthly',
+    state:'SUBSCRIPTION_STATE_ACTIVE',expires_at:'2027-06-30T15:00:00Z',auto_renew:false,verified_at:'2026-11-16T06:00:00Z'};
+  const billing=createPlaySubscriptions({repository:{list:async()=>[row],save:async r=>saved.push(r)},now:()=>at,
+    playRequest:async()=>{throw new Error('Google must not be asked');}});
+  const value=await billing.status('u1');
+  assert.equal(value.active,true);
+  assert.equal(value.complimentary,true);
+  assert.equal(saved.length,1);
+  assert.equal(saved[0].verified_at,at.toISOString());
+  const expired=createPlaySubscriptions({repository:{list:async()=>[{...row,expires_at:'2026-11-01T00:00:00Z'}],save:async()=>{}},now:()=>at,
+    playRequest:async()=>{throw new Error('Google must not be asked');}});
+  assert.equal((await expired.status('u1')).active,false);
+});

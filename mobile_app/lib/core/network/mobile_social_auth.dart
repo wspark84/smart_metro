@@ -40,6 +40,12 @@ class MobileSocialAuth {
     if (session.isExpired) return (await client.auth.refreshSession()).session?.accessToken;
     return session.accessToken;
   }
+  /// 이메일 로그인 (대표 결정 2026-11-16): only for accounts the operator
+  /// creates (e.g. the Google Play review account). No sign-up in the app.
+  static Future<void> loginWithEmail(String email, String password) async {
+    if (!ready) await initialize();
+    await client.auth.signInWithPassword(email: email.trim(), password: password);
+  }
   static Future<void> login(OAuthProvider provider) async {
     if (!ready) await initialize();
     final launched = await client.auth.signInWithOAuth(provider, redirectTo: callback,
