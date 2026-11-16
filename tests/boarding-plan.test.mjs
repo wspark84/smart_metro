@@ -334,3 +334,19 @@ test('invalid input never sends a save; estimated rows show explicit sources and
   const html=v.run('renderHomeTimetable({homePlan:plan,risk:plan.risk,now:clock,stop:{name:"정류장"}},"1번","")');
   assert.match(html,/57분 여유/);assert.match(html,/배차간격 기준 예상 · 실시간 아님/);assert.match(html,/실시간/);
 });
+
+// 2026-11-16 대표: with 5·3·1분 전 chosen, the 3분 전 alert rang but 1분 전 never
+// did — an old "2 minutes before leaving" cut-off swallowed it.
+test('the 1분 전 stage rings when chosen, even on a tick that comes late',()=>{
+  const withOne=(at,arrivals)=>{const s=alarmState(at,arrivals);s.schedule.reminderMinutes=[5,3,1,0];return s;};
+  const t3=new Date('2026-09-23T09:11:00+09:00');            // leave 09:14 (bus 09:19, 5-minute walk)
+  const first=reconcileAlarmRuntime(withOne(t3,[8,18]),undefined,t3);
+  assert.deepEqual(first.dueEvents.map(e=>e.triggerLabel),['집 출발 3분 전']);
+  const delivery=reconcileAlarmDelivery(undefined,first,t3);
+  const sent=reconcileDispatchQueue(undefined,delivery,{},t3);
+  const t1=new Date('2026-09-23T09:13:38+09:00');            // the 09:13 stage, ticked 38 s late
+  const second=reconcileAlarmRuntime(withOne(t1,[5+22/60,15+22/60]),first.runtime,t1);
+  assert.deepEqual(second.dueEvents.map(e=>e.triggerLabel),['집 출발 1분 전']);
+  const delivery2=reconcileAlarmDelivery(delivery,second,t1);
+  assert.equal(reconcileDispatchQueue(sent.queue,delivery2,{},t1).newBundles.length,1);
+});

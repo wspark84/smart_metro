@@ -109,8 +109,10 @@ export function reconcileAlarmRuntime(
       // Stage keys stay stable when live ETAs move the departure deadline.
       // "지금 출발"/"지각 위험" alerts run past the leave time until their own expiry.
       const timed = ['leave-now','late'].includes(trigger.triggerKind);
+      // A "N분 전" stage is due until the leave time itself (2026-11-16: the
+      // 1분 전 stage was dropped by an old "2 minutes before" cut-off).
       const expired = timed ? currentNow.getTime() >= Date.parse(trigger.notificationSpec?.expiresAt) :
-        (plan.tripId ? currentNow.getTime() >= Date.parse(plan.departureAt) : currentNow.getTime() > Date.parse(plan.window.endAt) - 2*60_000);
+        currentNow.getTime() >= Date.parse(plan.tripId ? plan.departureAt : plan.window.endAt);
       if (trigger !== latestDepartureDue || latenessMs > 60_000 || expired) continue;
     } else if (latenessMs > 90_000 || currentNow.getTime() > Date.parse(plan.window.endAt) + 90_000) continue;
     const event = buildTriggeredEvent({
