@@ -412,7 +412,7 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
         : goalIssue
             ? '${forecast['title'] ?? (status == 'too-late' ? '지금 출발해도 지각이에요' : '시간을 다시 설정해 보세요.')}'
             : awaitingLive
-            ? '${forecast['title'] ?? '아직 실시간 정보가 확인되지 않았습니다.'}'
+            ? '${forecast['title'] ?? '제시간 도착이 어려워요.'}'
             : needsManual
             ? (_checking ? '도착정보를 확인하고 있어요' : '현재 시간이 조회되지 않습니다')
             : !ready
@@ -533,7 +533,8 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
                         const SizedBox(height: 6),
                         Text('${forecast['detail']}', style: textTheme.copyWith(fontSize: 15, fontWeight: FontWeight.w500, fontFeatures: tabular)),
                       ],
-                      if (status == 'goal-passed') ...[
+                      // Passed or late: a later arrival time is the way out (대표 2026-11-16).
+                      if (status == 'goal-passed' || status == 'too-late') ...[
                       const SizedBox(height: 12),
                       SizedBox(
                         height: 52,
@@ -546,14 +547,23 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
                       ),
                       ],
                     ] else if (awaitingLive) ...[
-                      Text('${forecast['message'] ?? '실시간 정보가 확인되는 대로 다시 알려드릴게요.'}',
+                      Text('${forecast['message'] ?? '곧 오는 버스가 확인되지 않아 지각할 수 있어요. 도착 시각을 조금 더 늦게 조정해 주세요.'}',
                           style: textTheme.copyWith(fontSize: 17, fontWeight: FontWeight.w700)),
                       const SizedBox(height: 6),
                       Text(
-                          '${forecast['liveCheckedAt'] == null ? '' : '마지막 확인 ${kstClock(forecast['liveCheckedAt'])} · '}'
-                          '${armed ? '1분마다 자동으로 다시 확인하고 있어요.' : '오늘 알림이 꺼져 있어 자동 확인은 하지 않아요.'} '
-                          '버스가 아직 차고지에서 출발하기 전이면 실시간 위치가 잡히지 않아요.',
+                          '${armed ? '제시간에 탈 수 있는 버스가 실시간으로 확인되면 바로 알려드릴게요.' : '오늘 알림이 꺼져 있어 자동 확인은 하지 않아요.'}'
+                          '${forecast['liveCheckedAt'] == null ? '' : ' (마지막 확인 ${kstClock(forecast['liveCheckedAt'])})'}',
                           style: textTheme.copyWith(fontSize: 13, fontWeight: FontWeight.w500)),
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        height: 52,
+                        child: FilledButton.icon(
+                          style: FilledButton.styleFrom(minimumSize: const Size(0, 52), padding: const EdgeInsets.symmetric(horizontal: 20)),
+                          onPressed: _busy ? null : () => _changeArrival(setup),
+                          icon: const Icon(Icons.schedule),
+                          label: const Text('도착 시각 바꾸기', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+                        ),
+                      ),
                     ] else ...[
                       if (!needsManual || status == 'no-live')
                         Text(_notReadyText(forecast, '${data['forecastError'] ?? ''}'),

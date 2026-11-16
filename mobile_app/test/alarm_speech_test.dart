@@ -34,6 +34,9 @@ void main() {
     final waiting = alarm({'triggerKind': 'awaiting-live', 'title': '아직 실시간 정보가 확인되지 않았습니다',
         'body': '실시간 정보가 확인되는 대로 다시 알려드릴게요.'});
     expect(alarmSpeech(waiting, now), '아직 실시간 정보가 확인되지 않았습니다. 실시간 정보가 확인되는 대로 다시 알려드릴게요.');
+    final late = alarm({'triggerKind': 'too-late', 'title': '지금 출발해도 최소 19분 지각이에요',
+        'body': '도착 시각을 조금 더 늦게 조정해 주세요.'});
+    expect(alarmSpeech(late, now), '지금 출발해도 최소 19분 지각이에요. 도착 시각을 조금 더 늦게 조정해 주세요.');
     final found = alarm({'triggerKind': 'live-found', 'title': '실시간 정보 확인 · 집에서 출발까지 3분',
         'departureAt': '2026-11-03T11:50:00Z', 'routeNumber': '7'});
     expect(alarmSpeech(found, now), startsWith('실시간 정보가 확인됐어요. 집에서 출발까지 3분 남았습니다.'));

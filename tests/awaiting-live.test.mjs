@@ -48,8 +48,8 @@ test("the home screen says live data is not confirmed yet", () => {
   const forecast = buildHomeForecast({ state, automatic: { options: [option(turnaround)], updatedAt: "2026-11-07T23:04:30.000Z" }, now: awaitNow });
   assert.equal(forecast.status, "awaiting-live");
   assert.equal(forecast.liveCheckedAt, "2026-11-07T23:04:30.000Z");
-  assert.equal(forecast.title, "아직 실시간 정보가 확인되지 않았습니다.");
-  assert.equal(forecast.message, "실시간 정보가 확인되는 대로 다시 알려드릴게요.");
+  assert.equal(forecast.title, "제시간 도착이 어려워요.");
+  assert.equal(forecast.message, "곧 오는 버스가 확인되지 않아 지각할 수 있어요. 도착 시각을 조금 더 늦게 조정해 주세요.");
   assert.equal(forecast.leaveAt, undefined);
 });
 
@@ -84,7 +84,7 @@ test("when even the first catchable bus arrives late, it is 'already late', not 
   assert.equal(forecast.title, "지금 출발하면 9분 지각이에요");
   assert.equal(forecast.lateMinutes, 9);
   assert.equal(forecast.detail, "1번 버스 08:04 탑승 → 08:39 도착 예상");
-  assert.equal(forecast.message, "마음을 비우고 당장 출발하세요.");
+  assert.equal(forecast.message, "도착 시각을 조금 더 늦게 조정해 주세요.");
   assert.ok(forecast.slackMinutes < 0);
   assert.ok(forecast.rows.length > 0, "the buses stay listed");
   assert.equal(forecast.leaveAt, undefined, "no leave time to count down to");

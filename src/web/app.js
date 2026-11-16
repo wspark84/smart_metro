@@ -355,7 +355,7 @@ function renderToday() {
   const needsManual = !ready && !departed && !goalIssue && !awaitingLive && (status === "not-checked" || status === "no-live" || obj(data.refresh).state === "unknown");
   const label = departed ? "오늘은 출발했어요"
     : goalIssue ? String(forecast.title || (status === "too-late" ? "지금 출발해도 지각이에요" : "시간을 다시 설정해 보세요."))
-    : awaitingLive ? String(forecast.title || "아직 실시간 정보가 확인되지 않았습니다.")
+    : awaitingLive ? String(forecast.title || "제시간 도착이 어려워요.")
     : needsManual ? "현재 시간이 조회되지 않습니다"
     : !ready ? (status === "no-catchable" ? "제시간 도착이 어려워요" : "경로를 확인하고 있어요")
     : urgency === "now" ? "지금 나가야 해요" : "출발까지";
@@ -408,7 +408,7 @@ function renderToday() {
         ${status === "too-late" ? "" : `<div class="manual"><label class="btn" style="width:auto;position:relative">${icon("schedule")} 도착 시각 바꾸기
           <input type="time" data-input="today-arrival" value="${esc(setup.requiredArrivalTime || "09:00")}" aria-label="도착 시각"
             style="position:absolute;inset:0;opacity:0;width:100%;cursor:pointer"></label></div>`}`
-      : awaitingLive ? `<p class="note" style="font-size:17px;font-weight:700">${esc(forecast.message || "실시간 정보가 확인되는 대로 다시 알려드릴게요.")}</p>`
+      : awaitingLive ? `<p class="note" style="font-size:17px;font-weight:700">${esc(forecast.message || "곧 오는 버스가 확인되지 않아 지각할 수 있어요. 도착 시각을 조금 더 늦게 조정해 주세요.")}</p>`
       : `${!needsManual || status === "no-live" ? `<p class="note">${esc(notReadyText(forecast, String(data.forecastError || "")))}</p>` : ""}${manual}`}
       ${ready && forecast.urgent === true && !departed ? '<p class="note" style="font-weight:700;font-size:14px;margin-top:8px">이 차가 제시간에 도착하는 마지막 교통편이에요.</p>' : ""}
       ${app.error ? `<p class="note" style="font-size:13px;margin-top:8px">${esc(app.error)}</p>` : ""}

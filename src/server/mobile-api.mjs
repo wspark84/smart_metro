@@ -282,14 +282,18 @@ export function buildHomeForecast({ state, automatic, now = new Date() }) {
     const goal = combineDateAndTime(now, setup.requiredArrivalTime);
     const late = lateMinutes(target.arriveWorkAt, goal);
     const vehicle = target.binding?.provider === "subway" ? str(target.routeNumber, 40) : `${str(target.routeNumber, 40)}번 버스`;
-    return { status: "too-late", title: `지금 출발하면 ${late}분 지각이에요`, message: "마음을 비우고 당장 출발하세요.", rows,
+    return { status: "too-late", title: `지금 출발하면 ${late}분 지각이에요`, message: "도착 시각을 조금 더 늦게 조정해 주세요.", rows,
       detail: `${vehicle} ${kstClock(addMinutesTo(now, target.arrivalMinutes))} 탑승 → ${kstClock(target.arriveWorkAt)} 도착 예상`,
       lateMinutes: late, basis: rowBasis(target, options), arriveAt: shown ? iso(shown.arriveWorkAt) : null,
       slackMinutes: slack(target.deltaMinutes), checkedAt: now.toISOString() };
   }
   if (plan.awaitingLive) {
-    return { status: "awaiting-live", title: "아직 실시간 정보가 확인되지 않았습니다.",
-      message: "실시간 정보가 확인되는 대로 다시 알려드릴게요.", rows, basis: null, checkedAt: now.toISOString(),
+    // 대표 2026-11-16: no bus is known that still makes the arrival time
+    // (time left is shorter than even the shortest interval) — say it is likely
+    // late and ask for a later arrival time; a live bus that makes it is still
+    // announced at once.
+    return { status: "awaiting-live", title: "제시간 도착이 어려워요.",
+      message: "곧 오는 버스가 확인되지 않아 지각할 수 있어요. 도착 시각을 조금 더 늦게 조정해 주세요.", rows, basis: null, checkedAt: now.toISOString(),
       // When the arrival APIs were last actually asked (not this screen read),
       // so the person sees the checks are running.
       liveCheckedAt: Number.isFinite(Date.parse(automatic?.updatedAt || "")) ? new Date(automatic.updatedAt).toISOString() : null };
@@ -340,7 +344,7 @@ export function goalCheck({ setup, automatic, now = new Date() }) {
   // Best case: a bus the moment you reach the stop. So "at least".
   const late = lateMinutes(new Date(earliest), goal);
   return { ...base, status: "too-late", title: `지금 출발해도 최소 ${late}분 지각이에요`,
-    message: "마음을 비우고 당장 출발하세요.", lateMinutes: late };
+    message: "도착 시각을 조금 더 늦게 조정해 주세요.", lateMinutes: late };
 }
 
 // Minutes late, counted on the clock shown (20:26 for a 20:00 goal is 26).

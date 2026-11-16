@@ -22,7 +22,7 @@ test("leaving right now still arriving late asks for a new time", () => {
   // Even with a bus right away: 08:30 + 9 + 34m40s = 09:13:40 → at least 13 min late.
   assert.equal(late.title, "지금 출발해도 최소 13분 지각이에요");
   assert.equal(late.lateMinutes, 13);
-  assert.equal(late.message, "마음을 비우고 당장 출발하세요.");
+  assert.equal(late.message, "도착 시각을 조금 더 늦게 조정해 주세요.");
   // 08:00 + 44 min = 08:44: still possible, plan as usual
   assert.equal(goalCheck({ setup, automatic, now: new Date("2026-11-07T23:00:00Z") }), null);
   // No saved route yet: only the passed-time case is known

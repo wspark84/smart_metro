@@ -30,8 +30,8 @@ test('awaiting live data: one notice, then one alert when live arrivals time the
   const delivery=reconcileAlarmDelivery(undefined,first,t1);
   const sent=reconcileDispatchQueue(undefined,delivery,{},t1);
   assert.equal(sent.newBundles.length,1);
-  assert.equal(sent.newBundles[0].notificationSpec.title,'아직 실시간 정보가 확인되지 않았습니다');
-  assert.equal(sent.newBundles[0].notificationSpec.body,'실시간 정보가 확인되는 대로 다시 알려드릴게요.');
+  assert.equal(sent.newBundles[0].notificationSpec.title,'제시간 도착이 어려워요');
+  assert.equal(sent.newBundles[0].notificationSpec.body,'곧 오는 버스가 확인되지 않아 지각할 수 있어요. 도착 시각을 조금 더 늦게 조정해 주세요. 제시간에 탈 수 있는 버스가 확인되면 바로 알려드릴게요.');
 
   const t2=new Date('2026-09-23T09:15:00+09:00');
   const again=reconcileAlarmRuntime(state(t2,[]),first.runtime,t2);
@@ -64,4 +64,18 @@ test('a check that moves the leave time earlier and close rings at once (2026-11
   const t3 = new Date('2026-09-23T09:05:30+09:00');
   const third = reconcileAlarmRuntime(state(t3, [8.5, 18.5]), second.runtime, t3);
   assert.ok(!third.dueEvents.some(e => e.triggerKind === 'leave-earlier'));
+});
+
+// 대표 2026-11-16: even leaving right now arrives after the goal — one notice
+// with how late it is, asking for a later arrival time.
+test('certainly late: one notice saying how late, asking for a later arrival time',()=>{
+  const t1=new Date('2026-09-23T09:40:00+09:00'); // 09:40 + 5 walk + 34 ride = 10:19 for a 10:00 goal
+  const first=reconcileAlarmRuntime(state(t1,[]),undefined,t1);
+  assert.deepEqual(first.dueEvents.map(e=>e.triggerKind),['too-late']);
+  const delivery=reconcileAlarmDelivery(undefined,first,t1);
+  const sent=reconcileDispatchQueue(undefined,delivery,{},t1);
+  assert.equal(sent.newBundles[0].notificationSpec.title,'지금 출발해도 최소 19분 지각이에요');
+  assert.equal(sent.newBundles[0].notificationSpec.body,'도착 시각을 조금 더 늦게 조정해 주세요.');
+  const t2=new Date('2026-09-23T09:41:00+09:00');
+  assert.equal(reconcileAlarmRuntime(state(t2,[]),first.runtime,t2).dueEvents.length,0,'said once');
 });

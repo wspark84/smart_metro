@@ -102,8 +102,8 @@ String alarmSpeech(PushAlarmPayload payload, DateTime now) {
   final vehicle = spokenVehicle(payload.routeNumber);
   final ride = vehicle.isEmpty ? '' : ' $vehicle${objectParticle(vehicle)} 타야 해요.';
   if (payload.triggerKind == 'late') return '지각 위험! 바로 뛰어나가세요.$ride';
-  // No leave time while live arrivals are awaited: read the notice as sent.
-  if (payload.triggerKind == 'awaiting-live') {
+  // No leave time (likely late / certainly late): read the notice as sent.
+  if (payload.triggerKind == 'awaiting-live' || payload.triggerKind == 'too-late') {
     return '${payload.title}. ${payload.body}'.replaceAll('..', '.');
   }
   final departure = DateTime.tryParse(payload.departureAt);

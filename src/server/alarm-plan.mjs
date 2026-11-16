@@ -342,9 +342,19 @@ function buildDepartureAlarmPlan(state, today, options) {
   // timetable interval cannot time the leave: say so once instead of a
   // misleading "leave now", then alert once as soon as live data times it.
   const awaitingLive = Boolean(scheduleState.firing && !valid && boarding.awaitingLive);
+  // 대표 2026-11-16: even leaving right now (bus the moment you reach the stop)
+  // arrives after the arrival time — say so once, with how late, and ask for
+  // a later arrival time. Minutes late on the clock, as on the home screen.
+  const rideMin = Math.min(...(state.commute.routingMode==='all-routes'
+    ? (state.commute.automaticOptions?.queryKey===binding ? state.commute.automaticOptions.options : []).map(option=>Number(option?.onboardDurationSec)/60)
+    : [Number(resolveJourneyDuration(state,today)?.onboardToDestinationMin)]).filter(minutes=>Number.isFinite(minutes) && minutes>0));
+  const earliestArrive = today.getTime() + ((Number(state.commute.boardingAccessMin) || 0) + rideMin) * MINUTE_MS;
+  const certainLate = scheduleState.firing && !valid && !awaitingLive && Number.isFinite(earliestArrive) && Number.isFinite(goalAt.getTime()) &&
+    today.getTime() < goalAt.getTime() && earliestArrive > goalAt.getTime()
+    ? Math.max(1, Math.floor(earliestArrive / MINUTE_MS) - Math.floor(goalAt.getTime() / MINUTE_MS)) : 0;
   const wasAwaiting = Boolean(prior?.stageKey===stageKey && prior.awaitingLive);
   const notice = (kind, key, title, body, leaveAt, level) => ({triggerAt:today.toISOString(),triggerKind:kind,
-    triggerLabel:kind==='awaiting-live' ? '실시간 정보 대기 안내' : kind==='leave-earlier' ? '출발 시각 앞당김 긴급 알림' : '실시간 정보 확인 알림',reminderKey:key,
+    triggerLabel:kind==='awaiting-live' ? '제시간 도착 어려움 안내' : kind==='too-late' ? '지각 확정 안내' : kind==='leave-earlier' ? '출발 시각 앞당김 긴급 알림' : '실시간 정보 확인 알림',reminderKey:key,
     riskLevel:level,urgency:'HURRY',source:'live-snapshot',arrivalsMin:[],departureAt:leaveAt,departureEstimated:false,message:body,
     notificationSpec:{...getNotificationSpec({riskLevel:level,urgency:'HURRY',routeNumber:line.number,escalationEnabled:false,
       preferredSoundPresetId:state.notification.soundPresetId}),title,body,spokenText:body,alertPhraseKo:body,
@@ -363,8 +373,11 @@ function buildDepartureAlarmPlan(state, today, options) {
     noticeTrigger = notice('leave-earlier',`leave-earlier:${stageKey}:${Math.floor(newLeave/60000)}`,title,
       `실시간 정보로 출발 시각이 ${formatClock(new Date(newLeave))}로 앞당겨졌어요. ${copy.body}`,departureAt,'RED');
   } else if (!emergencyTrigger && awaitingLive)
-    noticeTrigger = notice('awaiting-live',`awaiting-live:${stageKey}`,'아직 실시간 정보가 확인되지 않았습니다',
-      '실시간 정보가 확인되는 대로 다시 알려드릴게요.',null,'ORANGE');
+    noticeTrigger = notice('awaiting-live',`awaiting-live:${stageKey}`,'제시간 도착이 어려워요',
+      '곧 오는 버스가 확인되지 않아 지각할 수 있어요. 도착 시각을 조금 더 늦게 조정해 주세요. 제시간에 탈 수 있는 버스가 확인되면 바로 알려드릴게요.',null,'ORANGE');
+  else if (!emergencyTrigger && certainLate)
+    noticeTrigger = notice('too-late',`too-late:${stageKey}`,`지금 출발해도 최소 ${certainLate}분 지각이에요`,
+      '도착 시각을 조금 더 늦게 조정해 주세요.',null,'RED');
   else if (!emergencyTrigger && scheduleState.firing && valid && wasAwaiting && Date.parse(departureAt) >= today.getTime() - 60_000) {
     const copy = buildDepartureReminder(boarding,today,line.number);
     noticeTrigger = notice('live-found',`live-found:${stageKey}`,`실시간 정보 확인 · ${copy.title}`,
