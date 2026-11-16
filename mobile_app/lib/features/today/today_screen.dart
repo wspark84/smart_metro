@@ -203,6 +203,7 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
       final data = await widget.api.home();
       if (!mounted) return;
       _apply(data);
+      _autoCheck(data);
     } catch (error) {
       if (!mounted) return;
       setState(() => _error = error is InochiApiException ? error.message : '정보를 불러오지 못했습니다.');
@@ -272,7 +273,23 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _manualRefresh() async {
+  DateTime? _autoCheckedAt;
+
+  // 대표 2026-11-16: opening the app (first login, or the next day) checks the
+  // arrivals once by itself, so the leave time shows without pressing 새로고침.
+  // Only when nothing has been checked today; the server allows one check
+  // every 3 minutes, so this never adds more provider calls than the button.
+  void _autoCheck(Map<String, dynamic> data) {
+    final forecast = asMap(data['forecast']);
+    final today = asMap(data['today']);
+    if ('${forecast['status'] ?? ''}' != 'not-checked' || today['departedToday'] == true || _checking) return;
+    final last = _autoCheckedAt;
+    if (last != null && DateTime.now().difference(last) < const Duration(minutes: 3)) return;
+    _autoCheckedAt = DateTime.now();
+    unawaited(_manualRefresh(silent: true));
+  }
+
+  Future<void> _manualRefresh({bool silent = false}) async {
     if (_checking) return;
     setState(() => _checking = true);
     try {
@@ -281,9 +298,9 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
     } on InochiApiException catch (error) {
       if (!mounted) return;
       if (error.code == 'REFRESH_TOO_SOON') setState(() => _setManualAvailable(error.retryAt));
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message)));
+      if (!silent) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message)));
     } catch (_) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('확인하지 못했습니다. 잠시 후 다시 눌러 주세요.')));
+      if (mounted && !silent) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('확인하지 못했습니다. 잠시 후 다시 눌러 주세요.')));
     } finally {
       if (mounted) setState(() => _checking = false);
     }
@@ -397,7 +414,7 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
             : awaitingLive
             ? '${forecast['title'] ?? '아직 실시간 정보가 확인되지 않았습니다.'}'
             : needsManual
-            ? '현재 시간이 조회되지 않습니다'
+            ? (_checking ? '도착정보를 확인하고 있어요' : '현재 시간이 조회되지 않습니다')
             : !ready
             ? (status == 'no-catchable' ? '제시간 도착이 어려워요' : '경로를 확인하고 있어요')
             : urgency == Urgency.now
