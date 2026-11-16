@@ -2,14 +2,14 @@
 //   /privacy          개인정보처리방침
 //   /terms            이용약관
 //   /account/delete   웹 계정 삭제 (Google Play "계정 삭제 URL")
-// Operator details supplied by 대표 (2026-10-13). Blank values would render as "등록 예정".
+// Operator details supplied by 대표 (2026-10-13; mail-order number updated 2026-11-16). Blank values would render as "등록 예정".
 
 export const OPERATOR = Object.freeze({
   serviceName: "이노치 (이거 놓치면 지각)",
   businessName: "라이프로직스",
   representative: "박우석",
   registrationNumber: "214-59-00854",
-  mailOrderNumber: "제2025-용인수지-1706호",
+  mailOrderNumber: "제2026-화성동탄-2521호",
   address: "경기도 화성시 동탄구 동탄중심상가1길 36, 8층 801-137A호(반송동, 원영빌딩)",
   email: "lifelogics@naver.com",
   privacyOfficer: "박우석 (대표)",
