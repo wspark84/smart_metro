@@ -1,6 +1,10 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
+import 'package:crypto/crypto.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class MobileSocialAuth {
@@ -51,6 +55,44 @@ class MobileSocialAuth {
     final launched = await client.auth.signInWithOAuth(provider, redirectTo: callback,
       authScreenLaunchMode: LaunchMode.externalApplication);
     if (!launched) throw StateError('로그인 브라우저를 열지 못했습니다.');
+  }
+
+  /// 애플 로그인은 아이폰에서만 보여 준다 (App Store 심사 규정 4.8).
+  static bool get appleAvailable => !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
+
+  /// iOS 기본 애플 로그인 창으로 받은 ID 토큰을 Supabase 세션으로 바꾼다.
+  /// 사용자가 창을 닫으면 false, 로그인되면 true.
+  static Future<bool> loginWithApple() async {
+    if (!ready) await initialize();
+    final rawNonce = _nonce();
+    final AuthorizationCredentialAppleID credential;
+    try {
+      credential = await SignInWithApple.getAppleIDCredential(
+        scopes: const [AppleIDAuthorizationScopes.email, AppleIDAuthorizationScopes.fullName],
+        nonce: sha256.convert(utf8.encode(rawNonce)).toString(),
+      );
+    } on SignInWithAppleAuthorizationException catch (error) {
+      if (error.code == AuthorizationErrorCode.canceled) return false;
+      rethrow;
+    }
+    final idToken = credential.identityToken;
+    if (idToken == null) throw StateError('애플 로그인 정보를 받지 못했습니다.');
+    await client.auth.signInWithIdToken(provider: OAuthProvider.apple, idToken: idToken, nonce: rawNonce);
+    // 애플은 이름을 첫 로그인 때 한 번만 준다. 받았을 때 계정에 저장해 둔다.
+    final name = [credential.familyName, credential.givenName]
+        .whereType<String>().where((part) => part.trim().isNotEmpty).join();
+    if (name.isNotEmpty) {
+      try {
+        await client.auth.updateUser(UserAttributes(data: {'full_name': name, 'name': name}));
+      } catch (_) {}
+    }
+    return true;
+  }
+
+  static String _nonce([int length = 32]) {
+    const chars = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-._';
+    final random = Random.secure();
+    return List.generate(length, (_) => chars[random.nextInt(chars.length)]).join();
   }
 }
 

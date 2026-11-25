@@ -64,7 +64,8 @@ test("consumer app uses the server app API and store-required account features",
   const settings = await read("lib/features/settings/settings_screen.dart");
   for (const text of ["회원 탈퇴", "개인정보처리방침", "이용약관", "/privacy", "/terms"]) assert.ok(settings.includes(text), text);
   const deletion = await read("lib/features/settings/account_delete_screen.dart");
-  assert.match(deletion, /탈퇴만으로는 Google Play 결제가 멈추지 않아요/);
+  assert.match(deletion, /탈퇴만으로는 \$\{PlayBilling\.storeName\} 결제가 멈추지 않아요/);
+  assert.match(deletion, /launchUrl\(PlayBilling\.manageUrl/);
   const basis = await read("lib/features/common/basis_chip.dart");
   assert.match(basis, /'timetable' => '시간표 기준'/);
   const today = await read("lib/features/today/today_screen.dart");

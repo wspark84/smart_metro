@@ -3400,7 +3400,10 @@ const server = createServer((request, response) => {
       const auth=await createRequestAuth(request,response).resolve();
       if(!auth){sendAuthJson(response,401,{error:'로그인이 필요합니다.'});return;}
       const billing=createPlaySubscriptions();
-      const result=request.method==='GET'?await billing.status(auth.user.id):await billing.verify(auth.user.id,(await readJsonBody(request)).purchaseToken);
+      let result;
+      if(request.method==='GET')result=await billing.status(auth.user.id);
+      else{const body=await readJsonBody(request);
+        result=body?.appleTransactionId!==undefined?await billing.verifyApple(auth.user.id,body.appleTransactionId):await billing.verify(auth.user.id,body?.purchaseToken);}
       sendAuthJson(response,200,result);
     })().catch(error=>sendAuthJson(response,error?.statusCode || 503,{error:error?.code?error.message:'구독 정보를 확인하지 못했습니다.',code:error?.code || 'BILLING_ERROR'}));
     return;

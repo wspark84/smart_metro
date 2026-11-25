@@ -33,3 +33,17 @@
 - 구독 활성화 전에 요금/자동 갱신/해지 안내 및 개인정보처리방침을 출시 화면에서 확인.
 - 서버 자동 알림이 구독 판정의 기준이다. 기존 기기에 예약된 구형 보조 알람은 새 앱에서 제거해야 한다.
 - 새 앱은 시작할 때 기존 다일 보조 알람을 취소하며, 운영 알림은 서버 검증 후 발송한다. 기존 앱은 업데이트 안내가 필요하다.
+
+## 아이폰 (App Store) 구독 (2026-11-22)
+- 앱 ID `com.buswakeup.buswakeup-mobile` (애플은 밑줄 불가). 상품 ID는 Play와 같은 `inochi_schedule_monthly`, 1개월 자동 갱신, 대한민국 3,000원.
+- 앱은 StoreKit 2로 결제하고 `appAccountToken`(계정 해시로 만든 UUID)을 결제에 붙인다. 결제 후 거래 ID만 서버에 보낸다 (`POST /api/subscription/verify {appleTransactionId}`).
+- 서버(`src/server/app-store-subscription.mjs`)는 App Store Server API `GET /inApps/v1/subscriptions/{id}`로 직접 조회해 앱 번들·상품·`appAccountToken`·상태·만료일을 확인한다. 운영 서버에서 없으면 샌드박스(TestFlight·심사)를 조회한다.
+- 저장은 기존 `inochi_play_subscriptions` 테이블에 `purchase_token = apple:<originalTransactionId>`로 하고, 상태는 Play 이름으로 맞춰 DB 일정 보호 트리거를 그대로 쓴다. DB 변경 없음.
+- App Store Server Notifications(V2)는 아직 연결하지 않았다. Play와 마찬가지로 상태 조회·일정 실행 때 1분 이상 지난 기록을 애플에 재조회한다.
+
+### 운영 활성화에 필요한 외부 작업
+1. 애플 개발자 계정 → App ID `com.buswakeup.buswakeup-mobile` 등록 (In-App Purchase, Push Notifications, Sign in with Apple 켜기).
+2. App Store Connect에서 앱 생성 → 유료 앱 계약(Paid Apps Agreement)·세금·은행 정보 완료. 이게 없으면 상품이 불러와지지 않는다.
+3. 구독 그룹 생성 → 자동 갱신 구독 `inochi_schedule_monthly`, 1개월, 대한민국 3,000원. 심사용 스크린샷과 설명 입력.
+4. 사용자 및 액세스 → 통합 → 앱 내 구입 키 생성 → Vercel Secret에 `APPSTORE_ISSUER_ID`, `APPSTORE_KEY_ID`, `APPSTORE_PRIVATE_KEY` 설정.
+5. TestFlight 샌드박스 테스터로 결제·복원·해지·만료·다른 계정 차단 검증 후 출시.
