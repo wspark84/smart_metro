@@ -28,6 +28,9 @@ dependencies:
   path_provider: ^2.1.6
   timezone: ^0.11.1
   vibration: ^3.2.0
+  sign_in_with_apple: ^8.2.0
+  crypto: ^3.0.8
+  in_app_purchase_storekit: ^0.4.17
 
 dev_dependencies:
   flutter_test:

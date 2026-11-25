@@ -83,6 +83,8 @@ class MobileApiClient {
   Future<Map<String, dynamic>> fetchSubscription() => _request('GET', '/api/subscription');
   Future<Map<String, dynamic>> verifySubscription(String token) => _request(
     'POST', '/api/subscription/verify', body: {'purchaseToken': token}, timeout: const Duration(seconds: 40));
+  Future<Map<String, dynamic>> verifyAppleSubscription(String transactionId) => _request(
+    'POST', '/api/subscription/verify', body: {'appleTransactionId': transactionId}, timeout: const Duration(seconds: 40));
 
   Future<Map<String, dynamic>> register({
     required String name,

@@ -11,15 +11,16 @@ class SubscriptionScreen extends StatelessWidget {
   const SubscriptionScreen({super.key, required this.billing});
   final PlayBilling billing;
 
-  static final _manageUrl = Uri.parse(
-      'https://play.google.com/store/account/subscriptions?sku=inochi_schedule_monthly&package=com.buswakeup.buswakeup_mobile');
+  static const _origin = 'https://smart-metro.vercel.app';
 
   Future<void> _manage(BuildContext context) async {
-    final opened = await launchUrl(_manageUrl, mode: LaunchMode.externalApplication);
+    final opened = await launchUrl(PlayBilling.manageUrl, mode: LaunchMode.externalApplication);
     if (!opened && context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Google Play 앱에서 구독을 관리해 주세요.')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${PlayBilling.storeName}에서 구독을 관리해 주세요.')));
     }
   }
+
+  void _open(String path) => launchUrl(Uri.parse('$_origin$path'), mode: LaunchMode.externalApplication);
 
   @override
   Widget build(BuildContext context) {
@@ -89,7 +90,10 @@ class SubscriptionScreen extends StatelessWidget {
       Text('월 $price · 매월 자동 갱신', textAlign: TextAlign.center,
           style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: p.ink, fontFeatures: tabular)),
       const SizedBox(height: 4),
-      Text('Google Play에서 언제든 해지할 수 있고, 해지해도 결제한 기간까지는 그대로 쓸 수 있어요.',
+      Text(PlayBilling.isIOS
+          ? '결제는 Apple ID 계정으로 청구되며, 다음 결제일 24시간 전까지 해지하지 않으면 자동 갱신돼요. '
+            '설정 > Apple ID > 구독에서 언제든 해지할 수 있고, 해지해도 결제한 기간까지는 그대로 쓸 수 있어요.'
+          : 'Google Play에서 언제든 해지할 수 있고, 해지해도 결제한 기간까지는 그대로 쓸 수 있어요.',
           textAlign: TextAlign.center, style: TextStyle(fontSize: 13, height: 1.4, color: p.muted)),
       const SizedBox(height: 14),
       SizedBox(
@@ -143,6 +147,9 @@ class SubscriptionScreen extends StatelessWidget {
       if (restore) TextButton(style: style, onPressed: billing.busy ? null : billing.restore, child: const Text('구매 복원')),
       TextButton(style: style, onPressed: billing.busy ? null : billing.refresh, child: const Text('구독 상태 다시 확인')),
       TextButton(style: style, onPressed: () => _manage(context), child: const Text('구독 관리 · 해지')),
+      // App Store 심사 규정 3.1.2: 자동 갱신 구독 화면에 이용약관과 개인정보처리방침 링크.
+      TextButton(style: style, onPressed: () => _open('/terms'), child: const Text('이용약관')),
+      TextButton(style: style, onPressed: () => _open('/privacy'), child: const Text('개인정보처리방침')),
     ]);
   }
 }

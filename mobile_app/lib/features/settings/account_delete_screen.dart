@@ -3,6 +3,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/device/local_alarm_scheduler.dart';
 import '../../core/network/inochi_api.dart';
+import '../../core/network/play_billing.dart';
 
 /// In-app account deletion (required by Google Play and the App Store).
 /// Pops `true` after the account is deleted on the server.
@@ -83,10 +84,10 @@ class _AccountDeleteScreenState extends State<AccountDeleteScreen> {
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text('구독 중이라면 먼저 해지해 주세요', style: TextStyle(fontWeight: FontWeight.w800, color: scheme.onErrorContainer)),
                 const SizedBox(height: 4),
-                Text('탈퇴만으로는 Google Play 결제가 멈추지 않아요.', style: TextStyle(color: scheme.onErrorContainer)),
+                Text('탈퇴만으로는 ${PlayBilling.storeName} 결제가 멈추지 않아요.', style: TextStyle(color: scheme.onErrorContainer)),
                 TextButton(
-                  onPressed: () => launchUrl(Uri.parse('https://play.google.com/store/account/subscriptions'), mode: LaunchMode.externalApplication),
-                  child: const Text('Google Play 구독 관리 열기'),
+                  onPressed: () => launchUrl(PlayBilling.manageUrl, mode: LaunchMode.externalApplication),
+                  child: Text('${PlayBilling.storeName} 구독 관리 열기'),
                 ),
               ]),
             ),

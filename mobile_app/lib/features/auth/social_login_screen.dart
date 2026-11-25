@@ -31,6 +31,20 @@ class _SocialLoginScreenState extends State<SocialLoginScreen> {
     }
   }
 
+  Future<void> _appleLogin() async {
+    setState(() {
+      _busy = true;
+      _error = '';
+    });
+    try {
+      await MobileSocialAuth.loginWithApple();
+    } catch (_) {
+      if (mounted) setState(() => _error = '애플 로그인에 실패했습니다. 잠시 후 다시 시도해 주세요.');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   Future<void> _emailLogin() async {
     final email = TextEditingController(), password = TextEditingController();
     final ok = await showDialog<bool>(
@@ -43,7 +57,7 @@ class _SocialLoginScreenState extends State<SocialLoginScreen> {
           TextField(controller: password, obscureText: true, autofillHints: const [AutofillHints.password],
               decoration: const InputDecoration(labelText: '비밀번호')),
           const SizedBox(height: 8),
-          const Text('안내받은 계정만 이용할 수 있어요. 처음이시면 구글·카카오로 시작해 주세요.', style: TextStyle(fontSize: 12)),
+          const Text('안내받은 계정만 이용할 수 있어요. 처음이시면 위의 간편 로그인으로 시작해 주세요.', style: TextStyle(fontSize: 12)),
         ]),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('취소')),
@@ -91,6 +105,15 @@ class _SocialLoginScreenState extends State<SocialLoginScreen> {
                 Text('집에서 나갈 시각을 버스·지하철 도착에 맞춰 알려드려요.', textAlign: TextAlign.center,
                     style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
                 const SizedBox(height: 32),
+                if (MobileSocialAuth.appleAvailable) ...[
+                  FilledButton.icon(
+                    style: FilledButton.styleFrom(backgroundColor: Colors.black, foregroundColor: Colors.white),
+                    onPressed: _busy ? null : _appleLogin,
+                    icon: const Icon(Icons.apple),
+                    label: const Text('Apple로 시작하기'),
+                  ),
+                  const SizedBox(height: 10),
+                ],
                 FilledButton(onPressed: _busy ? null : () => _login(OAuthProvider.google), child: const Text('구글로 시작하기')),
                 const SizedBox(height: 10),
                 FilledButton(

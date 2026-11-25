@@ -2,12 +2,22 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
 import 'package:in_app_purchase_android/in_app_purchase_android.dart';
+import 'package:in_app_purchase_storekit/in_app_purchase_storekit.dart';
+import 'package:in_app_purchase_storekit/store_kit_2_wrappers.dart';
 import 'mobile_api_client.dart';
 import 'mobile_social_auth.dart';
 
+/// 월 구독 결제. 안드로이드는 Google Play, 아이폰은 App Store(StoreKit 2).
+/// 어느 쪽이든 결제 확인은 서버가 각 스토어에 직접 조회해서 한다.
 class PlayBilling extends ChangeNotifier {
   PlayBilling(this.api, this.userId);
   static const productId = 'inochi_schedule_monthly';
+  static bool get isIOS => !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
+  static bool get supported => !kIsWeb && (defaultTargetPlatform == TargetPlatform.android || isIOS);
+  static String get storeName => isIOS ? 'App Store' : 'Google Play';
+  static Uri get manageUrl => isIOS
+      ? Uri.parse('https://apps.apple.com/account/subscriptions')
+      : Uri.parse('https://play.google.com/store/account/subscriptions?sku=inochi_schedule_monthly&package=com.buswakeup.buswakeup_mobile');
   // Must match the price set in Play Console (₩3,000, 2026-11-10). A different
   // price is not sold, so a console change cannot charge an unexpected amount.
   static const expectedPriceKrw = 3000;
@@ -25,8 +35,8 @@ class PlayBilling extends ChangeNotifier {
   bool get sameAccount => MobileSocialAuth.ready && MobileSocialAuth.client.auth.currentUser?.id == userId;
   void _notify() { if (!_disposed) notifyListeners(); }
   Future<void> initialize() async {
-    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
-      message = '구독 결제는 안드로이드 앱에서 지원합니다.'; _notify(); return;
+    if (!supported) {
+      message = '구독 결제는 휴대폰 앱에서 지원합니다.'; _notify(); return;
     }
     _stream ??= _store.purchaseStream.listen((items) { unawaited(_handle(items)); }, onError: (_) {
       message = '결제 정보를 확인하지 못했습니다. 구매 복원을 눌러 주세요.'; busy = false; _notify();
@@ -38,10 +48,20 @@ class PlayBilling extends ChangeNotifier {
     try {
       status = await api.fetchSubscription();
       if (!sameAccount) return;
-      if (status['available'] != true) { message = '구독 결제 연결을 준비 중입니다. 아직 결제되지 않습니다.'; return; }
-      if (!await _store.isAvailable()) { message = 'Google Play에 연결하지 못했습니다.'; return; }
+      if (status[isIOS ? 'appleAvailable' : 'available'] != true) { message = '구독 결제 연결을 준비 중입니다. 아직 결제되지 않습니다.'; return; }
+      if (!await _store.isAvailable()) { message = '$storeName에 연결하지 못했습니다.'; return; }
       final result = await _store.queryProductDetails({productId});
       product = null;
+      if (isIOS) {
+        for (final item in result.productDetails.whereType<AppStoreProduct2Details>()) {
+          final sub = item.sk2Product.subscription;
+          if (item.sk2Product.type == SK2ProductType.autoRenewable && sub != null &&
+              sub.subscriptionPeriod.unit == SK2SubscriptionPeriodUnit.month && sub.subscriptionPeriod.value == 1 &&
+              item.currencyCode == 'KRW' && item.rawPrice == expectedPriceKrw) { product = item; break; }
+        }
+        message = product == null ? '월 3,000원 구독 상품을 불러오지 못했습니다. 잠시 후 다시 확인해 주세요.' : '';
+        return;
+      }
       for (final item in result.productDetails.whereType<GooglePlayProductDetails>()) {
         final index = item.subscriptionIndex;
         if (index == null) continue;
@@ -59,29 +79,33 @@ class PlayBilling extends ChangeNotifier {
     busy = true; message = ''; _notify();
     try {
       final launched = await _store.buyNonConsumable(purchaseParam: PurchaseParam(
-        productDetails: product!, applicationUserName: status['accountId'] as String));
+        productDetails: product!, applicationUserName: _accountToken));
       if (!launched) { busy = false; message = '결제창을 열지 못했습니다.'; _notify(); }
     } catch (_) { busy = false; message = '결제를 시작하지 못했습니다. 다시 시도해 주세요.'; _notify(); }
   }
   Future<void> restore() async {
     if (busy || !sameAccount) return;
     busy = true; _notify();
-    try { await _store.restorePurchases(applicationUserName: status['accountId'] as String?); message = '구매 복원을 요청했습니다.'; }
+    try { await _store.restorePurchases(applicationUserName: _accountToken); message = '구매 복원을 요청했습니다.'; }
     catch (_) { message = '구매 복원에 실패했습니다. 다시 시도해 주세요.'; }
     finally { busy = false; _notify(); }
   }
+  // 아이폰은 appAccountToken(UUID), 안드로이드는 해시된 계정 ID로 결제를 계정에 묶는다.
+  String? get _accountToken => status[isIOS ? 'appleAccountToken' : 'accountId'] as String?;
+
   Future<void> _handle(List<PurchaseDetails> items) async {
     for (final purchase in items) {
       if (!sameAccount || _disposed || purchase.productID != productId) continue;
-      if (purchase.status == PurchaseStatus.pending) { busy = true; message = 'Google Play 결제 승인을 기다리고 있습니다.'; _notify(); continue; }
+      if (purchase.status == PurchaseStatus.pending) { busy = true; message = '$storeName 결제 승인을 기다리고 있습니다.'; _notify(); continue; }
       if (purchase.status == PurchaseStatus.canceled || purchase.status == PurchaseStatus.error) {
         busy = false; message = purchase.status == PurchaseStatus.canceled ? '결제를 취소했습니다.' : '결제에 실패했습니다.'; _notify(); continue;
       }
       if (purchase.status != PurchaseStatus.purchased && purchase.status != PurchaseStatus.restored) continue;
-      final token = purchase.verificationData.serverVerificationData;
-      if (!_processing.add(token)) continue;
+      // 아이폰은 거래 ID를 보내면 서버가 애플에 직접 조회한다.
+      final token = isIOS ? (purchase.purchaseID ?? '') : purchase.verificationData.serverVerificationData;
+      if (token.isEmpty || !_processing.add(token)) continue;
       try {
-        final verified = await api.verifySubscription(token);
+        final verified = isIOS ? await api.verifyAppleSubscription(token) : await api.verifySubscription(token);
         if (!sameAccount || _disposed) continue;
         status = verified;
         if (purchase.pendingCompletePurchase) await _store.completePurchase(purchase);

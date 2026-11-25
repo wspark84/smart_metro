@@ -1,6 +1,7 @@
 import {createHash, createSign} from 'node:crypto';
 import {createClient} from '@supabase/supabase-js';
 import {dateOnlyKey} from '../logic/commute.js';
+import {APPLE_TOKEN_PREFIX, appleAccountToken, createAppStoreClient, evaluateAppleSubscription} from './app-store-subscription.mjs';
 
 export const PLAY_PACKAGE = 'com.buswakeup.buswakeup_mobile';
 export const PLAY_PRODUCT = 'inochi_schedule_monthly';
@@ -33,8 +34,11 @@ export function enforceFreeHomeDate(state,now=new Date()) {
     {...state,schedule:{...state.schedule,snoozeDate:dateOnlyKey(now)}};
 }
 let oauthCache;
-export function createPlaySubscriptions({env=process.env,fetchImpl=globalThis.fetch,repository,playRequest,now=()=>new Date()}={}) {
+export function createPlaySubscriptions({env=process.env,fetchImpl=globalThis.fetch,repository,playRequest,appStore,now=()=>new Date()}={}) {
   const configured=Boolean(env.PLAY_SERVICE_ACCOUNT_JSON && env.SUPABASE_SERVICE_ROLE_KEY && env.SUPABASE_URL && env.INOCHI_BILLING_ENABLED==='true');
+  const apple=appStore || createAppStoreClient({env,fetchImpl});
+  const appleConfigured=appStore?Boolean(repository):Boolean(apple.configured && env.SUPABASE_SERVICE_ROLE_KEY && env.SUPABASE_URL && env.INOCHI_BILLING_ENABLED==='true');
+  const playConfigured=configured || Boolean(repository && playRequest);
   const ready=()=>{if(!configured && !(repository && playRequest))throw fail('BILLING_NOT_READY','구독 결제 연결을 준비 중입니다. 아직 결제되지 않습니다.');};
   let db;
   const client=()=>db ||= createClient(env.SUPABASE_URL,env.SUPABASE_SERVICE_ROLE_KEY,{auth:{persistSession:false,autoRefreshToken:false},global:{fetch:(url,options={})=>fetchImpl(url,{...options,signal:AbortSignal.timeout(10000)})}});
@@ -80,10 +84,23 @@ export function createPlaySubscriptions({env=process.env,fetchImpl=globalThis.fe
       product_id:PLAY_PRODUCT,state:value.state,expires_at:value.expiresAt,auto_renew:value.autoRenew,verified_at:now().toISOString()});
     if(value.active && purchase.acknowledgementState==='ACKNOWLEDGEMENT_STATE_PENDING')
       await request(`purchases/subscriptions/${PLAY_PRODUCT}/tokens/${encodeURIComponent(token)}:acknowledge`,'POST',{});
-    return {...value,available:true,productId:PLAY_PRODUCT,basePlanId:PLAY_BASE_PLAN,accountId:billingAccountId(userId)};
+    return {...value,...flags(userId)};
+  }
+  const flags=userId=>({available:playConfigured,appleAvailable:appleConfigured,productId:PLAY_PRODUCT,basePlanId:PLAY_BASE_PLAN,
+    accountId:billingAccountId(userId),appleAccountToken:appleAccountToken(userId)});
+  // 아이폰 구독: 앱이 보낸 거래 ID로 애플 서버에 직접 조회한다. 같은 구독의 갱신은
+  // originalTransactionId 하나로 묶어 저장하며, 한 구독은 한 계정에만 연결된다.
+  async function verifyApple(userId,transactionId) {
+    if(!appleConfigured)throw fail('BILLING_NOT_READY','구독 결제 연결을 준비 중입니다. 아직 결제되지 않습니다.');
+    if(typeof transactionId!=='string' || !/^[0-9]{1,32}$/.test(transactionId))throw fail('INVALID_TOKEN','올바른 결제 정보가 필요합니다.',400);
+    const value=evaluateAppleSubscription(await apple.lookup(transactionId),userId,{bundleId:apple.bundleId,now:now()});
+    const token=`${APPLE_TOKEN_PREFIX}${value.originalTransactionId}`;
+    await repo.save({token_hash:createHash('sha256').update(token).digest('hex'),user_id:userId,purchase_token:token,
+      product_id:PLAY_PRODUCT,state:value.state,expires_at:value.expiresAt,auto_renew:value.autoRenew,verified_at:now().toISOString()});
+    return {active:value.active,state:value.state,expiresAt:value.expiresAt,autoRenew:value.autoRenew,platform:'ios',...flags(userId)};
   }
   async function status(userId,{force=false}={}) {
-    if(!configured && !(repository && playRequest))return {active:false,available:false,productId:PLAY_PRODUCT,basePlanId:PLAY_BASE_PLAN,accountId:billingAccountId(userId)};
+    if(!playConfigured && !appleConfigured)return {active:false,...flags(userId)};
     const rows=await repo.list(userId);
     const values=[];
     let verificationError;
@@ -102,13 +119,15 @@ export function createPlaySubscriptions({env=process.env,fetchImpl=globalThis.fe
       }
       // Recheck refunds/renewals while running alarms, including expired rows (renewals can arrive without opening the app).
       if(force || now().getTime()-Date.parse(row.verified_at)>60000){
-        try { values.push(await verify(userId,row.purchase_token)); }
+        const appleRow=String(row.purchase_token || '').startsWith(APPLE_TOKEN_PREFIX);
+        try { values.push(appleRow?await verifyApple(userId,row.purchase_token.slice(APPLE_TOKEN_PREFIX.length))
+          :await verify(userId,row.purchase_token)); }
         catch(error) { verificationError=error; } // An obsolete token must not block a separately verified new purchase.
       }else values.push({active:ALLOWED.has(row.state)&&Date.parse(row.expires_at)>now().getTime(),expiresAt:row.expires_at,state:row.state,autoRenew:row.auto_renew});
     }
     const value=values.filter(item=>item.active).sort((a,b)=>Date.parse(b.expiresAt)-Date.parse(a.expiresAt))[0] || {active:false};
     if(!value.active && verificationError)throw verificationError;
-    return {...value,available:true,productId:PLAY_PRODUCT,basePlanId:PLAY_BASE_PLAN,accountId:billingAccountId(userId)};
+    return {...value,...flags(userId)};
   }
-  return {status,verify};
+  return {status,verify,verifyApple};
 }
